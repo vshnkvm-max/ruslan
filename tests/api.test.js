@@ -157,6 +157,15 @@ test('product categories, sorting, review aggregates and deletion retain history
  assert.ok(!(await request('/storefront',{auth:false})).data.products.some(row=>row.id===p.id));
  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM reviews WHERE product_id=?').get(p.id).n,count);
 });
+test('products can be created and edited without a SKU',async()=>{
+ const product={name:'Без артикула',category:'Тест',price:100,cost:50,stock:2,active:true,image:'',description:''};
+ const first=await request('/products',{method:'POST',body:product}),second=await request('/products',{method:'POST',body:product});
+ assert.equal(first.res.status,201);assert.equal(second.res.status,201);
+ const before=(await request('/bootstrap')).data.products.find(p=>p.id===first.data.id);
+ assert.ok(before.sku);assert.equal((await request(`/products/${first.data.id}`,{method:'PATCH',body:{...product,name:'Обновлён'}})).res.status,200);
+ const after=(await request('/bootstrap')).data.products.find(p=>p.id===first.data.id);
+ assert.equal(after.sku,before.sku);assert.equal(after.name,'Обновлён');
+});
 test('password change invalidates other sessions and logout revokes current session',async()=>{
   const other=await request('/auth/login',{method:'POST',auth:false,body:{username:'admin',password}});
   const otherCookie=other.res.headers.get('set-cookie').split(';')[0];

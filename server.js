@@ -117,7 +117,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const b=await body(req);
           if(table==='products') {
             if(Object.keys(b).length===1&&'sort_order' in b){db.prepare('UPDATE products SET sort_order=? WHERE id=?').run(num(b.sort_order,'Сортировка',1000000),id);return json(res,200,{ok:true});}
-            const p=validateProduct(b);db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=? WHERE id=?').run(...p,id);
+            b.sku??=db.prepare('SELECT sku FROM products WHERE id=?').get(id).sku;const p=validateProduct(b);db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=? WHERE id=?').run(...p,id);
           } else if(table==='customers') {
             if(Object.keys(b).length===1&&'banned' in b){const banned=bool(b.banned);db.prepare("UPDATE customers SET banned=?,status=? WHERE id=?").run(banned,banned?'banned':'active',id);}
             else {const c=validateCustomer({...b,email:b.email??db.prepare('SELECT email FROM customers WHERE id=?').get(id).email});db.prepare('UPDATE customers SET name=?,username=?,phone=?,email=?,city=?,status=?,banned=? WHERE id=?').run(...c,id);}
@@ -129,7 +129,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         }
         if(path==='/api/categories'&&method==='POST') {const b=await body(req);const name=str(b.name,'Категория',80);saveSettings('categories',[...new Set([...getSettings('categories'),name])]);return json(res,201,{name});}
         if(path==='/api/customers'&&method==='POST') {const c=validateCustomer(await body(req));const result=db.prepare('INSERT INTO customers (name,username,phone,email,city,status,banned,joined,referral_code) VALUES (?,?,?,?,?,?,?,?,?)').run(...c,new Date().toISOString(),token().slice(0,12));return json(res,201,{id:Number(result.lastInsertRowid)});}
-        if(path==='/api/products'&&method==='POST') {const p=validateProduct(await body(req));const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description) VALUES (?,?,?,?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
+        if(path==='/api/products'&&method==='POST') {const b=await body(req);b.sku??=token().slice(0,32);const p=validateProduct(b);const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description) VALUES (?,?,?,?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
         if(path==='/api/banners'&&method==='POST') {const p=validateBanner(await body(req));const r=db.prepare('INSERT INTO banners (title,subtitle,color,link,active) VALUES (?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
         if(path==='/api/transactions'&&method==='POST') {
           const b=await body(req);const amount=num(b.amount,'Сумма');if(!amount) fail(400,'Сумма должна быть больше нуля.');

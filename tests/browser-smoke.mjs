@@ -59,7 +59,7 @@ try {
  await page.getByRole('searchbox').fill('');
  await page.getByRole('button',{name:'Добавить товар',exact:true}).click();
  await page.getByLabel('Название',{exact:true}).fill('Browser test lamp');
- await page.getByLabel('Артикул',{exact:true}).fill('UI-001');
+ assert.equal(await page.getByLabel('Артикул',{exact:true}).count(),0);
  await page.locator('#product-form input[name=category]').fill('Для дома');
  await page.getByLabel('Цена, ₽',{exact:true}).fill('1200');
  await page.getByLabel('Остаток, шт.',{exact:true}).fill('8');
@@ -69,16 +69,16 @@ try {
  await page.locator('.modal').waitFor({state:'detached'});
  await page.getByRole('searchbox').fill('Browser test lamp');
  assert.equal(await page.locator('.products-table tbody tr').count(),1);
- await page.getByRole('button',{name:'Browser test lamp UI-001'}).click();
+ await page.getByRole('button',{name:'Browser test lamp Для дома'}).click();
  assert.equal(await page.getByLabel('Цена, ₽',{exact:true}).inputValue(),'1200');
  await page.getByLabel('Цена, ₽',{exact:true}).fill('1500');
  await page.locator('#product-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.match(await page.locator('.products-table tbody').innerText(),/1\s500/);
  await page.reload();await page.locator('.products-table').waitFor();await page.getByRole('searchbox').fill('Browser test lamp');
  assert.ok(await page.locator('.products-table img').evaluate(img=>img.complete&&img.naturalWidth>0));
- const savedPhoto=await page.evaluate(async()=>{const d=await(await fetch('/api/storefront')).json();return d.products.find(p=>p.sku==='UI-001').image;});
+ const savedPhoto=await page.evaluate(async()=>{const d=await(await fetch('/api/storefront')).json();return d.products.find(p=>p.name==='Browser test lamp').image;});
  assert.match(savedPhoto,/^data:image\/jpeg;base64,/);
- await page.getByRole('button',{name:'Browser test lamp UI-001'}).click();
+ await page.getByRole('button',{name:'Browser test lamp Для дома'}).click();
  await page.getByRole('button',{name:'Убрать фото',exact:true}).click();
  await page.locator('#product-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.equal(await page.locator('.products-table img').count(),0);
