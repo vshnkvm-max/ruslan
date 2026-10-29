@@ -40,3 +40,5 @@ h1,h2,h3{letter-spacing:-.025em}button:focus-visible,a:focus-visible{outline-col
 @media(max-width:760px){.header-account{font-size:10px;gap:5px}.header-section{display:none}.customers-panel .toolbar-right{width:100%;gap:7px}.customers-panel .select-wrap{min-width:150px}.customers-panel .toolbar-right>.button{flex:1}.category-tabs .tab{padding:8px 13px}.page-heading{flex-wrap:wrap}.customers-panel .table-scroll{margin:0 8px 8px}.catalog-panel .toolbar-right{width:100%}.catalog-panel .compact-select{flex:1}.products-table .product-cell{min-width:150px}.sidebar .inventory-brand{height:52px}.create-document{margin-top:0}}
 
 .products-table .price,.customers-panel .person-cell strong{color:#23476f}.toast{background:#173f6c;color:white;box-shadow:0 5px 20px #174c7925}.toast>.icon{color:#7dc8ff}
+
+.category-tabs{max-width:100%}.content-form-layout{max-width:900px;width:100%}

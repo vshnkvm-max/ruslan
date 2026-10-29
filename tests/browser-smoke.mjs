@@ -45,9 +45,7 @@ try {
  for(const field of ['name','headline','description','phone','address','hours'])assert.equal(await page.locator(`#shop-form [name=${field}]`).inputValue(),'');
  await page.getByRole('button',{name:/Баннеры/}).click();
  await page.getByRole('heading',{name:'Баннеров пока нет',exact:true}).waitFor();
- await page.locator('[data-action=preview]').click();
- await page.getByRole('heading',{name:'В каталоге пока пусто',exact:true}).waitFor();
- await page.getByRole('button',{name:'Закрыть',exact:true}).click();
+ assert.equal(await page.locator('[data-action=preview],.content-aside').count(),0);
  await page.reload();await page.locator('#shop-form').waitFor();await page.getByRole('button',{name:/Баннеры/}).click();await page.getByRole('heading',{name:'Баннеров пока нет',exact:true}).waitFor();
  const storefront=await page.evaluate(async()=>await (await fetch('/api/storefront')).json());assert.deepEqual(storefront.products,[]);assert.deepEqual(storefront.banners,[]);
  console.log('PASS: empty default sections, blank settings, disabled referrals, empty storefront and reload');
@@ -171,8 +169,7 @@ try {
  assert.match(await page.locator('tbody tr').first().innerText(),/Заблокирован/);
  await page.reload();await page.locator('#main-content').waitFor();assert.equal(await page.locator('#login-form').count(),0);
  await page.getByRole('button',{name:'Аккаунт администратора',exact:true}).click();
- await page.locator('.account-options [data-action=settings]').click();
- await page.locator('#password-form').waitFor();assert.equal(await page.locator('.modal').count(),0);
+ assert.equal(await page.locator('[data-action=settings]').count(),0);
  await page.getByRole('button',{name:'Выйти из аккаунта',exact:true}).click();
  await page.locator('#login-form').waitFor();
  assert.deepEqual(errors,[]);console.log('PASS: mobile layout/navigation, customer blocking, session restore, no browser errors');
