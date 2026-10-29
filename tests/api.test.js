@@ -117,6 +117,18 @@ test('store information and banners appear in public API without private data',a
   await request(`/banners/${data.id}`,{method:'DELETE'});
   assert.equal((await request(`/banners/${data.id}`,{method:'DELETE'})).res.status,404);
 });
+
+test('product photos validate formats, persist, appear on storefront and can be removed',async()=>{
+ const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0a0AAAAASUVORK5CYII=';
+ const product={name:'Photo product',sku:'PHOTO-1',category:'Test',price:10,cost:5,stock:1,active:true,image,description:''};
+ const created=await request('/products',{method:'POST',body:product});assert.equal(created.res.status,201);
+ const productId=created.data.id;
+ assert.equal((await request('/storefront',{auth:false})).data.products.find(p=>p.id===productId).image,image);
+ for(const invalid of ['data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,YWJj', 'https://example.com/image.jpg','x'.repeat(700001)])assert.equal((await request(`/products/${productId}`,{method:'PATCH',body:{...product,image:invalid}})).res.status,400);
+ assert.equal((await request(`/products/${productId}`,{method:'PATCH',body:{...product,image:''}})).res.status,200);
+ assert.equal((await request('/bootstrap')).data.products.find(p=>p.id===productId).image,'');
+});
+
 test('password change invalidates other sessions and logout revokes current session',async()=>{
   const other=await request('/auth/login',{method:'POST',auth:false,body:{username:'admin',password}});
   const otherCookie=other.res.headers.get('set-cookie').split(';')[0];
@@ -128,11 +140,12 @@ test('password change invalidates other sessions and logout revokes current sess
   assert.equal((await request('/auth/me')).res.status,401);
 });
 test('SQLite data survives server restart without reseeding',async()=>{
+  const before=app.db.prepare('SELECT * FROM products ORDER BY id').all();
   await new Promise(resolve=>app.server.close(resolve));
   app=createApp({dbPath});await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));base=`http://127.0.0.1:${app.server.address().port}`;
   const data=(await request('/storefront',{auth:false})).data;
   assert.equal(data.shop.name,'Test Store');
-  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM products').get().n,13);
+  assert.deepEqual(app.db.prepare('SELECT * FROM products ORDER BY id').all(),before);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM admins').get().n,1);
 });
 test('login rate limiting activates after repeated failures',async()=>{

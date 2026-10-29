@@ -26,6 +26,13 @@ try {
  await page.locator('.products-table').waitFor();
  if(screenshots)await page.screenshot({path:join(screenshots,'products.png'),fullPage:true});
  assert.equal(await page.locator('.products-table tbody tr').count(),0);
+ assert.equal(await page.locator('.metrics-grid').count(),0);
+ await page.locator('nav a[href="#statistics"]').click();
+ await page.getByRole('heading',{name:'Статистика',exact:true}).waitFor();
+ assert.equal(await page.locator('.statistics-group').count(),6);
+ assert.equal(await page.locator('.metric').count(),19);
+ await page.reload();await page.locator('.statistics-group').first().waitFor();
+ await page.locator('nav a[href="#products"]').click();await page.locator('.products-table').waitFor();
  assert.ok(await page.getByRole('heading',{name:'Товаров пока нет',exact:true}).isVisible());
  assert.ok(await page.locator('#select-all').isDisabled());
  for(const [section,title] of [['customers','Клиентов пока нет'],['orders','Заказов пока нет'],['finance','Операций пока нет'],['reviews','Отзывов пока нет'],['referrals','Приглашений пока нет']]) {
@@ -56,6 +63,8 @@ try {
  await page.locator('#product-form input[name=category]').fill('Для дома');
  await page.getByLabel('Цена, ₽',{exact:true}).fill('1200');
  await page.getByLabel('Остаток, шт.',{exact:true}).fill('8');
+ await page.getByLabel('Фото товара',{exact:true}).setInputFiles({name:'photo.png',mimeType:'image/png',buffer:Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=32;c.height=32;const ctx=c.getContext('2d');ctx.fillStyle='#087fff';ctx.fillRect(0,0,32,32);return c.toDataURL('image/png').split(',')[1];}),'base64')});
+ await page.locator('#product-photo-preview img').waitFor();
  await page.locator('#product-form button[type=submit]').click();
  await page.locator('.modal').waitFor({state:'detached'});
  await page.getByRole('searchbox').fill('Browser test lamp');
@@ -65,13 +74,21 @@ try {
  await page.getByLabel('Цена, ₽',{exact:true}).fill('1500');
  await page.locator('#product-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.match(await page.locator('.products-table tbody').innerText(),/1\s500/);
+ await page.reload();await page.locator('.products-table').waitFor();await page.getByRole('searchbox').fill('Browser test lamp');
+ assert.ok(await page.locator('.products-table img').evaluate(img=>img.complete&&img.naturalWidth>0));
+ const savedPhoto=await page.evaluate(async()=>{const d=await(await fetch('/api/storefront')).json();return d.products.find(p=>p.sku==='UI-001').image;});
+ assert.match(savedPhoto,/^data:image\/jpeg;base64,/);
+ await page.getByRole('button',{name:'Browser test lamp UI-001'}).click();
+ await page.getByRole('button',{name:'Убрать фото',exact:true}).click();
+ await page.locator('#product-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ assert.equal(await page.locator('.products-table img').count(),0);
  await page.locator('[data-select]').check();await page.getByRole('button',{name:'Скрыть (1)'}).click();
  await page.waitForFunction(()=>document.querySelector('.products-table tbody')?.textContent.includes('Скрыт'));
  console.log('PASS: login, product search, create, edit, selection, hiding');
- for (const section of ['customers','orders','finance','reviews','referrals','content']) {
+ for (const section of ['statistics','customers','orders','finance','reviews','referrals','content']) {
   await page.locator(`nav a[href="#${section}"]`).click();
   await page.waitForFunction(key=>location.hash==='#'+key,section);
-  assert.ok(await page.locator('#main-content h1').innerText());
+  assert.ok(await page.locator('#main-content h1').innerText());if(section!=='statistics')assert.equal(await page.locator('.metrics-grid').count(),0);
  }
  await page.getByLabel('Название магазина').fill('UI store');
  await page.locator('#shop-form button[type=submit]').click();

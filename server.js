@@ -28,6 +28,17 @@ const safeLink = v => {
 };
 const imageKeys = ['headphones','lamp','bag','speaker','cup','watch','organizer','tote'];
 
+function productImage(value) {
+ if(value===''||imageKeys.includes(value))return value;
+ if(typeof value!=='string'||value.length>700000)fail(400,'Фото слишком большое.');
+ const match=/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+ if(!match)fail(400,'Используйте фото JPG, PNG или WebP.');
+ const bytes=Buffer.from(match[2],'base64');
+ const valid=match[1]==='jpeg'?bytes[0]===255&&bytes[1]===216&&bytes[2]===255:match[1]==='png'?bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])):bytes.toString('ascii',0,4)==='RIFF'&&bytes.toString('ascii',8,12)==='WEBP';
+ if(!valid||bytes.toString('base64')!==match[2])fail(400,'Некорректный файл изображения.');
+ return value;
+}
+
 export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/shop.db'), secureCookie=process.env.COOKIE_SECURE==='true'}={}) {
   const db=openDatabase(dbPath);
   const attempts=new Map();
@@ -52,7 +63,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   async function body(req) {
     if(!req.headers['content-type']?.startsWith('application/json')) fail(415,'Ожидается JSON.');
     let size=0; const chunks=[];
-    for await(const chunk of req) { size+=chunk.length; if(size>65536) fail(413,'Слишком большой запрос.');chunks.push(chunk); }
+    for await(const chunk of req) { size+=chunk.length; if(size>(/^\/api\/products(?:\/\d+)?$/.test(req.url?.split('?')[0])?750000:65536)) fail(413,'Слишком большой запрос.');chunks.push(chunk); }
     try { const value=JSON.parse(Buffer.concat(chunks).toString()); if(!value||typeof value!=='object'||Array.isArray(value)) fail(400,'Неверный JSON.'); return value; }
     catch { fail(400,'Неверный JSON.'); }
   }
@@ -148,7 +159,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
 }
 
 function validateProduct(b) {
-  return [str(b.name,'Название'),str(b.sku,'Артикул',40),str(b.category,'Категория',80),num(b.price,'Цена'),num(b.cost,'Закупочная цена'),num(b.stock,'Остаток',1000000),bool(b.active),choice(b.image,imageKeys),str(b.description,'Описание',2000,false)];
+  return [str(b.name,'Название'),str(b.sku,'Артикул',40),str(b.category,'Категория',80),num(b.price,'Цена'),num(b.cost,'Закупочная цена'),num(b.stock,'Остаток',1000000),bool(b.active),productImage(b.image),str(b.description,'Описание',2000,false)];
 }
 function validateBanner(b) {
   if(!/^#[0-9a-f]{6}$/i.test(b.color)) fail(400,'Некорректный цвет.');
