@@ -166,6 +166,18 @@ test('products can be created and edited without a SKU',async()=>{
  const after=(await request('/bootstrap')).data.products.find(p=>p.id===first.data.id);
  assert.equal(after.sku,before.sku);assert.equal(after.name,'Обновлён');
 });
+test('archiving and restoring a product preserves its ID and reviews',async()=>{
+ const p=(await request('/bootstrap')).data.products.find(p=>p.review_count>0&&p.active);assert.ok(p);
+ const reviews=app.db.prepare('SELECT * FROM reviews WHERE product_id=? ORDER BY id').all(p.id);
+ assert.equal((await request(`/products/${p.id}`,{method:'PATCH',body:{...p,active:false}})).res.status,200);
+ assert.ok(!(await request('/storefront',{auth:false})).data.products.some(row=>row.id===p.id));
+ const archived=(await request('/bootstrap')).data.products.find(row=>row.id===p.id);assert.equal(archived.active,0);
+ assert.equal((await request(`/products/${p.id}`,{method:'PATCH',body:{...archived,active:true}})).res.status,200);
+ const restored=(await request('/bootstrap')).data.products.find(row=>row.id===p.id);
+ assert.equal(restored.review_count,p.review_count);assert.equal(restored.rating,p.rating);
+ assert.deepEqual(app.db.prepare('SELECT * FROM reviews WHERE product_id=? ORDER BY id').all(p.id),reviews);
+ assert.ok((await request('/storefront',{auth:false})).data.products.some(row=>row.id===p.id));
+});
 test('password change invalidates other sessions and logout revokes current session',async()=>{
   const other=await request('/auth/login',{method:'POST',auth:false,body:{username:'admin',password}});
   const otherCookie=other.res.headers.get('set-cookie').split(';')[0];
