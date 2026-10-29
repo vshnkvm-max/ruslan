@@ -129,6 +129,33 @@ test('product photos validate formats, persist, appear on storefront and can be 
  assert.equal((await request('/bootstrap')).data.products.find(p=>p.id===productId).image,'');
 });
 
+test('customer CRUD preserves order history and validates contact fields',async()=>{
+ const customer={name:'Новый клиент',username:'test-client',phone:'+7 999 123-45-67',email:'client@example.com',city:'Москва',status:'pending'};
+ assert.equal((await request('/customers',{method:'POST',body:{...customer,email:'bad'}})).res.status,400);
+ const created=await request('/customers',{method:'POST',body:customer});assert.equal(created.res.status,201);
+ const id=created.data.id;let saved=(await request('/bootstrap')).data.customers.find(c=>c.id===id);
+ assert.equal(saved.order_total,0);assert.equal(saved.phone,customer.phone);assert.equal(saved.status,'pending');assert.equal(saved.last_order,null);
+ assert.equal((await request(`/customers/${id}`,{method:'PATCH',body:{...customer,name:'Изменён',status:'banned'}})).res.status,200);
+ saved=(await request('/bootstrap')).data.customers.find(c=>c.id===id);assert.equal(saved.banned,1);
+ const linked=(await request('/bootstrap')).data.customers.find(c=>c.orders_count>0);
+ const count=app.db.prepare('SELECT COUNT(*) AS n FROM orders WHERE customer_id=?').get(linked.id).n;
+ assert.ok(linked.last_order);assert.equal((await request(`/customers/${linked.id}`,{method:'DELETE'})).res.status,200);
+ assert.ok(!(await request('/bootstrap')).data.customers.some(c=>c.id===linked.id));
+ assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM orders WHERE customer_id=?').get(linked.id).n,count);
+ assert.equal((await request(`/customers/${id}`,{method:'DELETE'})).res.status,200);
+});
+test('product categories, sorting, review aggregates and deletion retain history',async()=>{
+ assert.equal((await request('/categories',{method:'POST',body:{name:'Новая категория'}})).res.status,201);
+ assert.ok((await request('/bootstrap')).data.categories.includes('Новая категория'));
+ const p=(await request('/bootstrap')).data.products.find(p=>p.review_count>0);assert.ok(p);assert.ok(p.rating>=1&&p.rating<=5);
+ assert.equal((await request(`/products/${p.id}`,{method:'PATCH',body:{sort_order:-1}})).res.status,400);
+ assert.equal((await request(`/products/${p.id}`,{method:'PATCH',body:{sort_order:5}})).res.status,200);
+ assert.equal((await request('/bootstrap')).data.products.find(row=>row.id===p.id).sort_order,5);
+ const count=app.db.prepare('SELECT COUNT(*) AS n FROM reviews WHERE product_id=?').get(p.id).n;
+ assert.equal((await request(`/products/${p.id}`,{method:'DELETE'})).res.status,200);
+ assert.ok(!(await request('/storefront',{auth:false})).data.products.some(row=>row.id===p.id));
+ assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM reviews WHERE product_id=?').get(p.id).n,count);
+});
 test('password change invalidates other sessions and logout revokes current session',async()=>{
   const other=await request('/auth/login',{method:'POST',auth:false,body:{username:'admin',password}});
   const otherCookie=other.res.headers.get('set-cookie').split(';')[0];
@@ -144,7 +171,7 @@ test('SQLite data survives server restart without reseeding',async()=>{
   await new Promise(resolve=>app.server.close(resolve));
   app=createApp({dbPath});await new Promise(resolve=>app.server.listen(0,'127.0.0.1',resolve));base=`http://127.0.0.1:${app.server.address().port}`;
   const data=(await request('/storefront',{auth:false})).data;
-  assert.equal(data.shop.name,'Test Store');
+  assert.equal(data.shop.name,'Test Store');assert.ok(app.db.prepare("SELECT value FROM settings WHERE key='categories'").get().value.includes('Новая категория'));
   assert.deepEqual(app.db.prepare('SELECT * FROM products ORDER BY id').all(),before);
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM admins').get().n,1);
 });

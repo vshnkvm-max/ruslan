@@ -44,15 +44,15 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const attempts=new Map();
   const getSettings=key => JSON.parse(db.prepare('SELECT value FROM settings WHERE key=?').get(key).value);
   const saveSettings=(key,value)=> db.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify(value),key);
-  const products=()=>db.prepare('SELECT * FROM products ORDER BY id DESC').all();
-  const customers=()=>db.prepare(`SELECT c.*, COUNT(o.id) AS orders_count, COALESCE(SUM(CASE WHEN o.status='completed' THEN (SELECT SUM(price*quantity) FROM order_items WHERE order_id=o.id) ELSE 0 END),0) AS spent FROM customers c LEFT JOIN orders o ON o.customer_id=c.id GROUP BY c.id ORDER BY c.id`).all();
+  const products=()=>db.prepare(`SELECT p.*, (SELECT AVG(rating) FROM reviews WHERE product_id=p.id AND status='published') AS rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id AND status='published') AS review_count FROM products p WHERE p.deleted=0 ORDER BY p.sort_order,p.id DESC`).all();
+  const customers=()=>db.prepare(`SELECT c.*, COUNT(o.id) AS orders_count, COALESCE(SUM(CASE WHEN o.status='completed' THEN (SELECT SUM(price*quantity) FROM order_items WHERE order_id=o.id) ELSE 0 END),0) AS spent, COALESCE(SUM(CASE WHEN o.status!='cancelled' THEN (SELECT SUM(price*quantity) FROM order_items WHERE order_id=o.id) ELSE 0 END),0) AS order_total, MAX(o.created_at) AS last_order FROM customers c LEFT JOIN orders o ON o.customer_id=c.id WHERE c.deleted=0 GROUP BY c.id ORDER BY c.id`).all();
   const orders=()=>db.prepare(`SELECT o.*,c.name AS customer_name,c.username,COALESCE(SUM(i.price*i.quantity),0) AS total,COALESCE(SUM(i.quantity),0) AS quantity FROM orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN order_items i ON i.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC`).all().map(o=>({...o,items:db.prepare('SELECT * FROM order_items WHERE order_id=?').all(o.id)}));
   const ledger=()=>[
     ...db.prepare('SELECT * FROM transactions').all().map(t=>({...t,id:`t${t.id}`})),
     ...db.prepare(`SELECT o.id,o.created_at,SUM(i.price*i.quantity) AS amount FROM orders o JOIN order_items i ON i.order_id=o.id WHERE o.status='completed' GROUP BY o.id`).all().map(o=>({...o,id:`o${o.id}`,type:'income',category:'Продажи',description:`Заказ #${String(o.id).padStart(4,'0')}`}))
   ].sort((a,b)=>b.created_at.localeCompare(a.created_at));
   const bootstrap=()=>({
-    products:products(),customers:customers(),orders:orders(),
+    products:products(),customers:customers(),orders:orders(),categories:[...new Set([...getSettings('categories'),...products().map(p=>p.category)])],
     reviews:db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all(),
     transactions:ledger(),referrals:db.prepare('SELECT r.*,c.name AS inviter_name,c.referral_code,i.name AS invitee_name FROM referrals r JOIN customers c ON c.id=r.inviter_id JOIN customers i ON i.id=r.invitee_id ORDER BY r.created_at DESC').all(),
     banners:db.prepare('SELECT * FROM banners ORDER BY id').all(),shop:getSettings('shop'),referral:getSettings('referral')
@@ -111,17 +111,24 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(match) {
           const [,table,idText]=match; const id=Number(idText);
           if(!db.prepare(`SELECT id FROM ${table} WHERE id=?`).get(id)) fail(404,'Запись не найдена.');
+          if(method==='DELETE'&&['products','customers'].includes(table)) {db.prepare(`UPDATE ${table} SET deleted=1 WHERE id=?`).run(id);return json(res,200,{ok:true});}
           if(method==='DELETE'&&table==='banners') {db.prepare('DELETE FROM banners WHERE id=?').run(id);return json(res,200,{ok:true});}
           if(method!=='PATCH') fail(405,'Метод не поддерживается.');
           const b=await body(req);
           if(table==='products') {
+            if(Object.keys(b).length===1&&'sort_order' in b){db.prepare('UPDATE products SET sort_order=? WHERE id=?').run(num(b.sort_order,'Сортировка',1000000),id);return json(res,200,{ok:true});}
             const p=validateProduct(b);db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=? WHERE id=?').run(...p,id);
-          } else if(table==='customers') db.prepare('UPDATE customers SET banned=? WHERE id=?').run(bool(b.banned),id);
+          } else if(table==='customers') {
+            if(Object.keys(b).length===1&&'banned' in b){const banned=bool(b.banned);db.prepare("UPDATE customers SET banned=?,status=? WHERE id=?").run(banned,banned?'banned':'active',id);}
+            else {const c=validateCustomer(b);db.prepare('UPDATE customers SET name=?,username=?,phone=?,email=?,city=?,status=?,banned=? WHERE id=?').run(...c,id);}
+          }
           else if(table==='orders') db.prepare('UPDATE orders SET status=? WHERE id=?').run(choice(b.status,['new','accepted','completed','cancelled']),id);
           else if(table==='reviews') db.prepare('UPDATE reviews SET status=? WHERE id=?').run(choice(b.status,['pending','published','hidden']),id);
           else if(table==='banners') db.prepare('UPDATE banners SET title=?,subtitle=?,color=?,link=?,active=? WHERE id=?').run(...validateBanner(b),id);
           return json(res,200,{ok:true});
         }
+        if(path==='/api/categories'&&method==='POST') {const b=await body(req);const name=str(b.name,'Категория',80);saveSettings('categories',[...new Set([...getSettings('categories'),name])]);return json(res,201,{name});}
+        if(path==='/api/customers'&&method==='POST') {const c=validateCustomer(await body(req));const result=db.prepare('INSERT INTO customers (name,username,phone,email,city,status,banned,joined,referral_code) VALUES (?,?,?,?,?,?,?,?,?)').run(...c,new Date().toISOString(),token().slice(0,12));return json(res,201,{id:Number(result.lastInsertRowid)});}
         if(path==='/api/products'&&method==='POST') {const p=validateProduct(await body(req));const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description) VALUES (?,?,?,?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
         if(path==='/api/banners'&&method==='POST') {const p=validateBanner(await body(req));const r=db.prepare('INSERT INTO banners (title,subtitle,color,link,active) VALUES (?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
         if(path==='/api/transactions'&&method==='POST') {
@@ -156,6 +163,15 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   });
   server.on('close',()=>db.close());
   return {server,db};
+}
+
+function validateCustomer(b) {
+ const email=str(b.email??'','Email',200,false);
+ if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'Проверьте Email.');
+ const phone=str(b.phone??'','Телефон',40,false);
+ if(phone&&!/^[+\d\s()\-]{3,40}$/.test(phone))fail(400,'Проверьте телефон.');
+ const status=choice(b.status,['active','pending','banned']);
+ return [str(b.name,'Имя'),str(b.username??'','Username',80,false),phone,email,str(b.city??'','Город',100,false),status,Number(status==='banned')];
 }
 
 function validateProduct(b) {

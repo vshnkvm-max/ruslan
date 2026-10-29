@@ -54,7 +54,8 @@ try {
  // Business scenarios use explicit fixtures only in this temporary test database.
  insertTestFixtures(db);
  await page.goto(base+'/#products');await page.reload();await page.locator('.products-table tbody tr').first().waitFor();
- assert.equal(await page.locator('.products-table tbody tr').count(),8);
+ assert.equal(await page.locator('.products-table tbody tr').count(),12);
+ if(screenshots){await page.setViewportSize({width:1280,height:853});await page.screenshot({path:join(screenshots,'catalog.png'),fullPage:true});}
  await page.getByRole('searchbox').fill('Nothing');assert.equal(await page.locator('.products-table tbody tr').count(),1);
  await page.getByRole('searchbox').fill('');
  await page.getByRole('button',{name:'Добавить товар',exact:true}).click();
@@ -88,7 +89,7 @@ try {
  for (const section of ['statistics','customers','orders','finance','reviews','referrals','content']) {
   await page.locator(`nav a[href="#${section}"]`).click();
   await page.waitForFunction(key=>location.hash==='#'+key,section);
-  assert.ok(await page.locator('#main-content h1').innerText());if(section!=='statistics')assert.equal(await page.locator('.metrics-grid').count(),0);
+  assert.ok(await page.locator('#main-content h1').innerText());if(section!=='statistics')assert.equal(await page.locator('.metrics-grid').count(),0);if(section==='customers'&&screenshots)await page.screenshot({path:join(screenshots,'customers.png'),fullPage:true});
  }
  await page.getByLabel('Название магазина').fill('UI store');
  await page.locator('#shop-form button[type=submit]').click();
@@ -108,7 +109,7 @@ try {
  await page.getByLabel('Статус заказа',{exact:true}).selectOption('accepted');
  await page.locator('#order-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  const order=await page.locator('tbody tr').filter({has:page.getByRole('button',{name:'#0001',exact:true})}).innerText();assert.match(order,/В работе/);
- await page.locator('nav a[href="#reviews"]').click();
+ await page.locator('nav a[href="#reviews"]').click();await page.locator('[data-action=review-publish]').first().waitFor();
  const pending=await page.getByRole('button',{name:'Опубликовать',exact:true}).count();
  await page.getByRole('button',{name:'Опубликовать',exact:true}).first().click();
  await page.waitForFunction(count=>document.querySelectorAll('[data-action=review-publish]').length===count-1,pending);
@@ -118,6 +119,41 @@ try {
  await page.locator('#transaction-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.match(await page.locator('tbody').innerText(),/UI expense/);
  console.log('PASS: order status, review moderation, manual transaction');
+ // Reference-page actions: categories, sorting, review details, customers and deletion.
+ await page.locator('nav a[href="#products"]').click();await page.locator('.products-table').waitFor();
+ await page.getByRole('button',{name:'Добавить категорию',exact:true}).click();
+ await page.getByLabel('Название категории',{exact:true}).fill('UI category');
+ await page.locator('#category-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ await page.locator('[data-action=product-category]').filter({hasText:'UI category'}).click();
+ assert.equal(await page.locator('.products-table tbody tr').count(),0);
+ await page.locator('[data-action=product-category][data-value=all]').click();await page.locator('.sort-input').first().waitFor();
+ const sortId=await page.locator('.sort-input').first().getAttribute('data-product-order');
+ await page.locator('.sort-input').first().fill('42');await page.locator('.sort-input').first().press('Tab');
+ await page.waitForFunction(id=>document.querySelector(`[data-product-order="${id}"]`)?.value==='42'&&!document.querySelector(`[data-product-order="${id}"]`)?.disabled,sortId);
+ await page.reload();await page.locator(`[data-product-order="${sortId}"]`).waitFor();assert.equal(await page.locator(`[data-product-order="${sortId}"]`).inputValue(),'42');
+ await page.locator('[data-action=product-reviews]').first().click();await page.locator('.modal').waitFor();await page.getByRole('button',{name:'Закрыть',exact:true}).click();
+ await page.getByRole('searchbox').fill('Browser test lamp');
+ await page.getByRole('button',{name:'Удалить Browser test lamp',exact:true}).click();
+ await page.locator('#delete-records-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ assert.equal(await page.locator('.products-table tbody tr').count(),0);
+ await page.locator('nav a[href="#customers"]').click();await page.locator('.customers-table').waitFor();
+ await page.getByRole('button',{name:'Добавить клиента',exact:true}).click();
+ await page.getByLabel('Имя клиента',{exact:true}).fill('UI customer');await page.getByLabel('Телефон',{exact:true}).fill('+7 999 111-22-33');
+ await page.getByLabel('Email',{exact:true}).fill('ui@example.com');await page.getByLabel('Статус клиента',{exact:true}).selectOption('pending');
+ await page.locator('#customer-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ await page.getByRole('searchbox').fill('111-22-33');assert.equal(await page.locator('.customers-table tbody tr').count(),1);
+ assert.match(await page.locator('.customers-table tbody').innerText(),/В ожидании/);
+ await page.getByRole('button',{name:'Редактировать клиента UI customer',exact:true}).click();
+ await page.getByLabel('Имя клиента',{exact:true}).fill('UI changed');await page.locator('#customer-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ await page.locator('#customer-status-filter').selectOption('active');assert.equal(await page.locator('.customers-table tbody tr').count(),0);
+ await page.locator('#customer-status-filter').selectOption('pending');assert.equal(await page.locator('.customers-table tbody tr').count(),1);
+ await page.getByRole('button',{name:'Фильтры',exact:true}).click();await page.getByLabel('Количество заказов от',{exact:true}).fill('1');
+ await page.locator('#customer-filters-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});assert.equal(await page.locator('.customers-table tbody tr').count(),0);
+ await page.locator('[data-action=customer-filters]').click();await page.getByRole('button',{name:'Сбросить фильтры',exact:true}).click();await page.locator('.modal').waitFor({state:'detached'});
+ await page.getByRole('searchbox').fill('UI changed');await page.locator('#select-all-customers').check();
+ await page.getByRole('button',{name:'Удалить (1)',exact:true}).click();await page.locator('#delete-records-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ assert.equal(await page.locator('.customers-table tbody tr').count(),0);
+ console.log('PASS: categories, persistent product sorting, reviews, deletion, customer create/edit/search/status/filters/selection/delete');
  await page.locator('nav a[href="#products"]').click();
  await page.getByRole('button',{name:'Новые заказы',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('.tab.active')?.textContent.includes('Новый'));
