@@ -42,3 +42,12 @@ h1,h2,h3{letter-spacing:-.025em}button:focus-visible,a:focus-visible{outline-col
 .products-table .price,.customers-panel .person-cell strong{color:#23476f}.toast{background:#173f6c;color:white;box-shadow:0 5px 20px #174c7925}.toast>.icon{color:#7dc8ff}
 
 .category-tabs{max-width:100%}.content-form-layout{max-width:900px;width:100%}
+
+/* Keep the editing tabs and controls aligned with the page heading. */
+#main-content>.content-tabs{padding:12px 12px 0;margin:0;gap:24px;background:#fff;border:1px solid #edf4fc;border-top:0;border-bottom:1px solid #e1ecf8;overflow-x:auto;flex-shrink:0}
+.content-tabs button{flex-shrink:0;white-space:nowrap;padding-bottom:12px}
+.content-tabs button.active:after{background:#087fff}
+#main-content>.content-form-layout{max-width:none;padding:12px;background:#fff;border:1px solid #edf4fc;border-top:0;border-radius:0 0 6px 6px}
+.content-form-layout>.settings-panel{max-width:900px}
+#main-content>.banner-toolbar{margin:0;padding:12px;background:#fff;border-right:1px solid #edf4fc;border-left:1px solid #edf4fc}
+#main-content>.banner-grid{padding:0 12px 12px;background:#fff;border:1px solid #edf4fc;border-top:0;border-radius:0 0 6px 6px}
