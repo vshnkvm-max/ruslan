@@ -135,7 +135,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const b=await body(req);const amount=num(b.amount,'Сумма');if(!amount) fail(400,'Сумма должна быть больше нуля.');
           const r=db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run(choice(b.type,['income','expense']),str(b.category,'Категория',80),str(b.description,'Описание'),amount,new Date().toISOString());return json(res,201,{id:Number(r.lastInsertRowid)});
         }
-        if(path==='/api/settings/shop'&&method==='PATCH') {const b=await body(req);const shop={};for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');saveSettings('shop',shop);return json(res,200,{ok:true});}
+        if(path==='/api/settings/shop'&&method==='PATCH') {const b=await body(req);b.address??=getSettings('shop').address;const shop={};for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');saveSettings('shop',shop);return json(res,200,{ok:true});}
         if(path==='/api/settings/referral'&&method==='PATCH') {const b=await body(req);saveSettings('referral',{enabled:Boolean(bool(b.enabled)),bonus:num(b.bonus,'Бонус',100000),minPayout:num(b.minPayout,'Минимальная выплата',1000000)});return json(res,200,{ok:true});}
         if(path==='/api/auth/password'&&method==='POST') {
           const b=await body(req);const current=passwordValue(b.current);const next=passwordValue(b.password);

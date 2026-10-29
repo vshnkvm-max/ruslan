@@ -42,7 +42,8 @@ try {
   if(section==='referrals')assert.equal(await page.locator('#referral-form input[name=enabled]').isChecked(),false);
  }
  await page.locator('nav a[href="#content"]').click();
- for(const field of ['name','headline','description','phone','address','hours'])assert.equal(await page.locator(`#shop-form [name=${field}]`).inputValue(),'');
+ assert.equal(await page.locator('#shop-form [name=address]').count(),0);
+ for(const field of ['name','headline','description','phone','hours'])assert.equal(await page.locator(`#shop-form [name=${field}]`).inputValue(),'');
  await page.getByRole('button',{name:/Баннеры/}).click();
  await page.getByRole('heading',{name:'Баннеров пока нет',exact:true}).waitFor();
  assert.equal(await page.locator('[data-action=preview],.content-aside').count(),0);
