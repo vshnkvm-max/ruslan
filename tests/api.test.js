@@ -135,6 +135,7 @@ test('customer CRUD preserves order history and validates contact fields',async(
  const created=await request('/customers',{method:'POST',body:customer});assert.equal(created.res.status,201);
  const id=created.data.id;let saved=(await request('/bootstrap')).data.customers.find(c=>c.id===id);
  assert.equal(saved.order_total,0);assert.equal(saved.phone,customer.phone);assert.equal(saved.status,'pending');assert.equal(saved.last_order,null);
+ const {email:omitted,...withoutEmail}=customer;assert.equal((await request(`/customers/${id}`,{method:'PATCH',body:withoutEmail})).res.status,200);assert.equal((await request('/bootstrap')).data.customers.find(c=>c.id===id).email,customer.email);
  assert.equal((await request(`/customers/${id}`,{method:'PATCH',body:{...customer,name:'Изменён',status:'banned'}})).res.status,200);
  saved=(await request('/bootstrap')).data.customers.find(c=>c.id===id);assert.equal(saved.banned,1);
  const linked=(await request('/bootstrap')).data.customers.find(c=>c.orders_count>0);

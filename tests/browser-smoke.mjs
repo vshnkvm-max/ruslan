@@ -137,7 +137,7 @@ try {
  await page.locator('nav a[href="#customers"]').click();await page.locator('.customers-table').waitFor();
  await page.getByRole('button',{name:'Добавить клиента',exact:true}).click();
  await page.getByLabel('Имя клиента',{exact:true}).fill('UI customer');await page.getByLabel('Телефон',{exact:true}).fill('+7 999 111-22-33');
- await page.getByLabel('Email',{exact:true}).fill('ui@example.com');await page.getByLabel('Статус клиента',{exact:true}).selectOption('pending');
+ assert.equal(await page.getByLabel('Email',{exact:true}).count(),0);await page.getByLabel('Статус клиента',{exact:true}).selectOption('pending');
  await page.locator('#customer-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  await page.getByRole('searchbox').fill('111-22-33');assert.equal(await page.locator('.customers-table tbody tr').count(),1);
  assert.match(await page.locator('.customers-table tbody').innerText(),/В ожидании/);
@@ -152,6 +152,20 @@ try {
  await page.getByRole('button',{name:'Удалить (1)',exact:true}).click();await page.locator('#delete-records-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.equal(await page.locator('.customers-table tbody tr').count(),0);
  console.log('PASS: categories, persistent product sorting, reviews, deletion, customer create/edit/search/status/filters/selection/delete');
+ for(const [label,type] of [['Продажа','income'],['Закупка','expense'],['Списание','expense']]){
+  await page.getByRole('button',{name:'Создать документ',exact:true}).click();
+  assert.deepEqual(await page.locator('.document-actions button').allTextContents(),['Продажа','Закупка','Списание']);
+  await page.getByRole('button',{name:label,exact:true}).click();
+  await page.locator('#transaction-form').waitFor();
+  assert.equal(await page.locator('#transaction-form [name=type]').inputValue(),type);
+  assert.equal(await page.getByLabel('Категория',{exact:true}).inputValue(),label);
+  await page.getByLabel('Описание',{exact:true}).fill('Документ '+label);await page.getByLabel('Сумма, ₽',{exact:true}).fill('100');
+  await page.locator('#transaction-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ }
+ await page.locator('nav a[href="#finance"]').click();await page.locator('#main-content h1').waitFor();
+ for(const label of ['Продажа','Закупка','Списание'])assert.match(await page.locator('tbody').innerText(),new RegExp('Документ '+label));
+ console.log('PASS: document menu and sale/purchase/writeoff financial entries');
+
  await page.locator('nav a[href="#products"]').click();
  await page.getByRole('button',{name:'Новые заказы',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('.tab.active')?.textContent.includes('Новый'));

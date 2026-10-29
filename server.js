@@ -120,7 +120,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
             const p=validateProduct(b);db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=? WHERE id=?').run(...p,id);
           } else if(table==='customers') {
             if(Object.keys(b).length===1&&'banned' in b){const banned=bool(b.banned);db.prepare("UPDATE customers SET banned=?,status=? WHERE id=?").run(banned,banned?'banned':'active',id);}
-            else {const c=validateCustomer(b);db.prepare('UPDATE customers SET name=?,username=?,phone=?,email=?,city=?,status=?,banned=? WHERE id=?').run(...c,id);}
+            else {const c=validateCustomer({...b,email:b.email??db.prepare('SELECT email FROM customers WHERE id=?').get(id).email});db.prepare('UPDATE customers SET name=?,username=?,phone=?,email=?,city=?,status=?,banned=? WHERE id=?').run(...c,id);}
           }
           else if(table==='orders') db.prepare('UPDATE orders SET status=? WHERE id=?').run(choice(b.status,['new','accepted','completed','cancelled']),id);
           else if(table==='reviews') db.prepare('UPDATE reviews SET status=? WHERE id=?').run(choice(b.status,['pending','published','hidden']),id);
