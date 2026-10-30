@@ -29,7 +29,8 @@ try {
  assert.equal(await page.locator('.metrics-grid').count(),0);
  await page.locator('nav a[href="#statistics"]').click();
  await page.getByRole('heading',{name:'Статистика',exact:true}).waitFor();
- assert.equal(await page.locator('.statistics-group').count(),3);
+ assert.equal(await page.locator('.statistics-group').count(),4);
+ await page.getByRole('heading',{name:'Просмотров пока нет',exact:true}).waitFor();
  assert.equal(await page.locator('.metric').count(),7);
  assert.equal(await page.locator('.revenue-card').count(),4);
  await page.locator('#statistics-month').fill('2024-02');
@@ -57,6 +58,21 @@ try {
  console.log('PASS: empty default sections, blank settings, disabled referrals, empty storefront and reload');
  // Business scenarios use explicit fixtures only in this temporary test database.
  insertTestFixtures(db);
+ const viewedProducts=db.prepare('SELECT id,name FROM products WHERE active=1 AND deleted=0 ORDER BY id LIMIT 11').all();
+ await page.evaluate(async products=>{for(const [i,p] of products.entries())for(let n=0;n<=i;n++){const res=await fetch(`/api/storefront/products/${p.id}/view`,{method:'POST'});if(!res.ok)throw new Error('View recording failed');}},viewedProducts);
+ await page.goto(base+'/#statistics');await page.reload();await page.locator('.top-products-table').waitFor();
+ assert.equal(await page.locator('.top-products-table tbody tr').count(),10);
+ assert.equal(await page.locator('.top-products-table tbody tr').first().locator('strong').innerText(),viewedProducts.at(-1).name);
+ assert.equal(await page.locator('.top-products-table tbody tr').first().locator('td').last().innerText(),'11');
+ const topBox=await page.locator('.top-products-statistics').boundingBox(),warehouseBox=await page.locator('.warehouse-statistics').boundingBox();
+ assert.ok(topBox.x<warehouseBox.x);assert.ok(Math.abs(topBox.y-warehouseBox.y)<2);
+ if(screenshots)await page.screenshot({path:join(screenshots,'statistics-top.png'),fullPage:true,animations:'disabled'});
+ await page.setViewportSize({width:390,height:844});
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ const mobileTop=await page.locator('.top-products-statistics').boundingBox(),mobileWarehouse=await page.locator('.warehouse-statistics').boundingBox();assert.ok(mobileWarehouse.y>=mobileTop.y+mobileTop.height);
+ await page.setViewportSize({width:1440,height:1080});
+ console.log('PASS: real views, top ten ranking, empty state, desktop columns and mobile stacking');
+
  await page.goto(base+'/#products');await page.reload();await page.locator('.products-table tbody tr').first().waitFor();
  assert.equal(await page.locator('.products-table tbody tr').count(),12);
  if(screenshots){await page.setViewportSize({width:1280,height:853});await page.screenshot({path:join(screenshots,'catalog.png'),fullPage:true});}
