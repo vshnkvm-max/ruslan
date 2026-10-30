@@ -54,6 +54,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const bootstrap=()=>({
     products:products(),customers:customers(),orders:orders(),categories:[...new Set([...getSettings('categories'),...products().map(p=>p.category)])],
     reviews:db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all(),
+    purchases:db.prepare('SELECT * FROM purchases ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
     transactions:ledger(),referrals:db.prepare('SELECT r.*,c.name AS inviter_name,c.referral_code,i.name AS invitee_name FROM referrals r JOIN customers c ON c.id=r.inviter_id JOIN customers i ON i.id=r.invitee_id ORDER BY r.created_at DESC').all(),
     banners:db.prepare('SELECT * FROM banners ORDER BY id').all(),shop:getSettings('shop'),referral:getSettings('referral')
   });
@@ -137,6 +138,38 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/customers'&&method==='POST') {const c=validateCustomer(await body(req));const result=db.prepare('INSERT INTO customers (name,username,phone,email,city,status,banned,joined,referral_code) VALUES (?,?,?,?,?,?,?,?,?)').run(...c,new Date().toISOString(),token().slice(0,12));return json(res,201,{id:Number(result.lastInsertRowid)});}
         if(path==='/api/products'&&method==='POST') {const b=await body(req);b.sku??=token().slice(0,32);const p=validateProduct(b);const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description,short_description) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
         if(path==='/api/banners'&&method==='POST') {const p=validateBanner(await body(req));const r=db.prepare('INSERT INTO banners (title,subtitle,color,link,active) VALUES (?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
+        const purchaseMatch=path.match(/^\/api\/purchases(?:\/(\d+))?$/);
+        if(purchaseMatch&&['POST','PATCH'].includes(method)) {
+          if((method==='POST')===Boolean(purchaseMatch[1])) fail(405,'Метод не поддерживается.');
+          const b=await body(req),posted=bool(b.posted),paid=num(b.paid,'Оплачено');
+          const supplier=str(b.supplier,'Поставщик'),store=str(b.store,'Магазин'),comment=str(b.comment??'','Комментарий',2000,false);
+          const requestKey=str(b.request_key,'Ключ документа',80);
+          const previous=purchaseMatch[1]?db.prepare('SELECT * FROM purchases WHERE id=?').get(Number(purchaseMatch[1])):null;
+          if(purchaseMatch[1]&&!previous) fail(404,'Закупка не найдена.');
+          if(previous?.posted) fail(409,'Проведённая закупка доступна только для просмотра.');
+          if(method==='POST') {const existing=db.prepare('SELECT id FROM purchases WHERE request_key=?').get(requestKey);if(existing)return json(res,200,{id:existing.id});}
+          if(!Array.isArray(b.items)||!b.items.length||b.items.length>100) fail(400,'Добавьте от 1 до 100 товаров.');
+          const seen=new Set();let total=0;
+          const items=b.items.map(item=>{
+            const id=num(item.product_id,'Товар'),quantity=num(item.quantity,'Количество',1000000),cost=num(item.cost,'Цена закупки');
+            if(!quantity||seen.has(id))fail(400,'Количество должно быть больше нуля; товары не должны повторяться.');seen.add(id);
+            const product=db.prepare('SELECT * FROM products WHERE id=? AND deleted=0 AND active=1').get(id);
+            if(!product)fail(400,'Один из товаров удалён или находится в архиве.');
+            if(posted&&product.stock+quantity>1000000)fail(400,'Остаток товара превысит 1000000.');
+            total+=quantity*cost;if(!Number.isSafeInteger(total)||total>100000000)fail(400,'Сумма закупки превышает 100000000 ₽.');
+            return {product_id:id,name:product.name,sku:product.sku,quantity,cost};
+          });
+          if(paid>total)fail(400,'Оплата не может превышать итог закупки.');
+          let id;db.exec('BEGIN IMMEDIATE');
+          try {
+            if(previous){id=previous.id;db.prepare('UPDATE purchases SET supplier=?,store=?,posted=?,paid=?,total=?,comment=?,items=? WHERE id=?').run(supplier,store,posted,paid,total,comment,JSON.stringify(items),id);}
+            else {id=Number(db.prepare('INSERT INTO purchases (supplier,store,posted,paid,total,comment,items,created_at,request_key) VALUES (?,?,?,?,?,?,?,?,?)').run(supplier,store,posted,paid,total,comment,JSON.stringify(items),new Date().toISOString(),requestKey).lastInsertRowid);}
+            if(posted){for(const item of items)db.prepare('UPDATE products SET stock=stock+?,cost=? WHERE id=?').run(item.quantity,item.cost,item.product_id);
+              if(paid)db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run('expense','Закупка',`Закупка #${id} · ${supplier}`,paid,new Date().toISOString());}
+            db.exec('COMMIT');
+          }catch(error){db.exec('ROLLBACK');throw error;}
+          return json(res,previous?200:201,{id});
+        }
         if(path==='/api/transactions'&&method==='POST') {
           const b=await body(req);const amount=num(b.amount,'Сумма');if(!amount) fail(400,'Сумма должна быть больше нуля.');
           const r=db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run(choice(b.type,['income','expense']),str(b.category,'Категория',80),str(b.description,'Описание'),amount,new Date().toISOString());return json(res,201,{id:Number(r.lastInsertRowid)});

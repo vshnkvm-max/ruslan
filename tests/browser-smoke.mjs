@@ -174,7 +174,39 @@ try {
  await page.getByRole('button',{name:'Удалить (1)',exact:true}).click();await page.locator('#delete-records-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.equal(await page.locator('.customers-table tbody tr').count(),0);
  console.log('PASS: categories, persistent product sorting, reviews, deletion, customer create/edit/search/status/filters/selection/delete');
- for(const [label,type] of [['Продажа','income'],['Закупка','expense'],['Списание','expense']]){
+ // Purchase document: draft, posting, saved lines, stock and payment.
+ await page.getByRole('button',{name:'Создать документ',exact:true}).click();await page.getByRole('button',{name:'Закупка',exact:true}).click();
+ await page.locator('#purchase-form').waitFor();
+ const purchaseProduct=await page.locator('[data-action=purchase-add]').first().getAttribute('data-id');
+ const stockBefore=db.prepare('SELECT stock FROM products WHERE id=?').get(Number(purchaseProduct)).stock;
+ await page.locator('[data-action=purchase-add]').first().click();
+ await page.locator('#purchase-form [name=supplier]').fill('UI supplier');
+ await page.locator('[data-purchase-quantity]').fill('3');await page.locator('[data-purchase-cost]').fill('200');
+ await page.locator('[data-action=purchase-tab][data-value=payment]').click();
+ await page.locator('#purchase-form [name=paid]').fill('400');
+ await page.locator('#purchase-form [name=comment]').fill('UI purchase comment');
+ await page.locator('#purchase-form [name=posted]').uncheck();
+ await page.locator('#purchase-form [type=submit]').click();
+ await page.waitForFunction(()=>document.querySelector('#modal-title')?.textContent.startsWith('Закупка #'));
+ assert.equal(db.prepare('SELECT stock FROM products WHERE id=?').get(Number(purchaseProduct)).stock,stockBefore);
+ assert.equal(await page.locator('[data-purchase-quantity]').inputValue(),'3');
+ assert.equal(await page.locator('#purchase-total').innerText(),'600 ₽');
+ await page.locator('#purchase-form [name=posted]').check();await page.locator('#purchase-form [type=submit]').click();
+ await page.locator('.purchase-actions .badge').waitFor();
+ assert.equal(db.prepare('SELECT stock FROM products WHERE id=?').get(Number(purchaseProduct)).stock,stockBefore+3);
+ assert.equal(await page.locator('#purchase-form [name=comment]').inputValue(),'UI purchase comment');
+ assert.equal(await page.locator('#purchase-form [type=submit]').count(),0);
+ assert.equal(await page.locator('#purchase-paid').innerText(),'400 ₽');
+ if(screenshots)await page.screenshot({path:join(screenshots,'purchase.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ await page.setViewportSize({width:1440,height:1080});
+ await page.getByRole('button',{name:'Закрыть',exact:true}).click();
+ await page.locator('nav a[href="#finance"]').click();
+ await page.locator('[data-action=purchase-open]').first().click();await page.locator('#purchase-form').waitFor();
+ assert.equal(await page.locator('#purchase-total').innerText(),'600 ₽');
+ await page.getByRole('button',{name:'Закрыть',exact:true}).click();
+ console.log('PASS: purchase draft, lines, totals, posting stock once, payment, history and mobile layout');
+ for(const [label,type] of [['Продажа','income'],['Списание','expense']]){
   await page.getByRole('button',{name:'Создать документ',exact:true}).click();
   assert.deepEqual(await page.locator('.document-actions button').allTextContents(),['Продажа','Закупка','Списание']);
   await page.getByRole('button',{name:label,exact:true}).click();
@@ -185,8 +217,8 @@ try {
   await page.locator('#transaction-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  }
  await page.locator('nav a[href="#finance"]').click();await page.locator('#main-content h1').waitFor();
- for(const label of ['Продажа','Закупка','Списание'])assert.match(await page.locator('tbody').innerText(),new RegExp('Документ '+label));
- console.log('PASS: document menu and sale/purchase/writeoff financial entries');
+ for(const label of ['Продажа','Списание'])assert.match(await page.locator('#main-content>.panel').first().locator('tbody').innerText(),new RegExp('Документ '+label));
+ console.log('PASS: document menu and sale/writeoff financial entries');
 
  await page.locator('nav a[href="#products"]').click();
  await page.getByRole('button',{name:'Новые заказы',exact:true}).click();

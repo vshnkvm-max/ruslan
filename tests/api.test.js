@@ -199,6 +199,32 @@ test('storefront views count only explicit openings and persist across database 
   try {assert.equal(reopened.prepare('SELECT views FROM products WHERE id=?').get(product.id).views,3);} finally {reopened.close();}
 });
 
+test('purchase documents validate lines, preserve drafts and post stock and payment exactly once',async()=>{
+  const id=Number(app.db.prepare("INSERT INTO products (name,sku,category,price,cost,stock,image) VALUES ('Purchase item','BUY-TEST','Test',500,100,2,'')").run().lastInsertRowid);
+  const payload={supplier:'Поставщик',store:'Мой магазин',comment:'Проверка',posted:false,paid:100,request_key:'test-purchase',items:[{product_id:id,quantity:3,cost:120}]};
+  const product=()=>app.db.prepare('SELECT stock,cost FROM products WHERE id=?').get(id);
+  for(const invalid of [{items:[]},{items:[{product_id:id,quantity:0,cost:120}]},{items:[...payload.items,...payload.items]},{paid:361},{items:[{product_id:999999,quantity:1,cost:10}]},{items:[{product_id:id,quantity:3,cost:1.5}]}]){
+    assert.equal((await request('/purchases',{method:'POST',body:{...payload,...invalid}})).res.status,400);
+    assert.equal(product().stock,2);
+  }
+  const created=await request('/purchases',{method:'POST',body:payload});assert.equal(created.res.status,201);const purchaseId=created.data.id;
+  assert.equal(product().stock,2);assert.equal(product().cost,100);
+  const draft=(await request('/bootstrap')).data.purchases.find(p=>p.id===purchaseId);assert.equal(draft.total,360);assert.equal(draft.comment,'Проверка');assert.equal(draft.items[0].name,'Purchase item');
+  assert.equal(app.db.prepare("SELECT COUNT(*) AS n FROM transactions WHERE description LIKE ?").get(`Закупка #${purchaseId} · %`).n,0);
+  const posted=await request(`/purchases/${purchaseId}`,{method:'PATCH',body:{...payload,posted:true}});assert.equal(posted.res.status,200);
+  assert.equal(product().stock,5);assert.equal(product().cost,120);
+  assert.equal((await request(`/purchases/${purchaseId}`,{method:'PATCH',body:{...payload,posted:true}})).res.status,409);
+  assert.equal((await request('/purchases',{method:'POST',body:{...payload,posted:true}})).data.id,purchaseId);
+  assert.equal(product().stock,5);
+  const payments=app.db.prepare("SELECT * FROM transactions WHERE description LIKE ?").all(`Закупка #${purchaseId} · %`);assert.equal(payments.length,1);assert.equal(payments[0].amount,100);assert.equal(payments[0].type,'expense');
+  const {openDatabase}=await import('../lib/database.js');const reopened=openDatabase(dbPath);
+  try {assert.equal(JSON.parse(reopened.prepare('SELECT items FROM purchases WHERE id=?').get(purchaseId).items)[0].quantity,3);} finally {reopened.close();}
+  app.db.prepare('UPDATE products SET active=0 WHERE id=?').run(id);
+  assert.equal((await request('/purchases',{method:'POST',body:{...payload,request_key:'archived-purchase'}})).res.status,400);
+  assert.equal((await request('/purchases',{method:'POST',auth:false,body:payload})).res.status,401);
+  assert.equal((await request('/purchases',{method:'POST',body:payload,headers:{'X-CSRF-Token':''}})).res.status,403);
+});
+
 test('password change invalidates other sessions and logout revokes current session',async()=>{
   const other=await request('/auth/login',{method:'POST',auth:false,body:{username:'admin',password}});
   const otherCookie=other.res.headers.get('set-cookie').split(';')[0];
