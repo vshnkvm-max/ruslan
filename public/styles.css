@@ -85,3 +85,5 @@ h1,h2,h3{letter-spacing:-.025em}button:focus-visible,a:focus-visible{outline-col
 
 .description-editor textarea:focus-visible{outline:none;outline-offset:0}
 .description-editor textarea:focus{box-shadow:inset 0 0 0 1px #77b8fa}
+.description-editor textarea{line-height:1.35}
+.description-editor textarea::selection,.description-preview ::selection{background:#cfe5ff;color:var(--text)}
