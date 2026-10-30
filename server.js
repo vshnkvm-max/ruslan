@@ -85,6 +85,12 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const shop=getSettings('shop');
           return json(res,200,{shop,products:products().filter(p=>p.active).map(({id,name,sku,category,price,stock,image,description})=>({id,name,sku,category,price,stock,image,description})),banners:db.prepare('SELECT * FROM banners WHERE active=1').all()});
         }
+        const productView=path.match(/^\/api\/storefront\/products\/(\d+)\/view$/);
+        if(productView&&method==='POST') {
+          const result=db.prepare('UPDATE products SET views=views+1 WHERE id=? AND active=1 AND deleted=0').run(Number(productView[1]));
+          if(!result.changes) fail(404,'Товар не найден.');
+          return json(res,200,{ok:true});
+        }
         if(path==='/api/auth/login'&&method==='POST') {
           const key=req.socket.remoteAddress; const now=Date.now();
           for(const [ip,entry] of attempts) if(now-entry.started>900000) attempts.delete(ip);

@@ -178,6 +178,27 @@ test('archiving and restoring a product preserves its ID and reviews',async()=>{
  assert.deepEqual(app.db.prepare('SELECT * FROM reviews WHERE product_id=? ORDER BY id').all(p.id),reviews);
  assert.ok((await request('/storefront',{auth:false})).data.products.some(row=>row.id===p.id));
 });
+test('storefront views count only explicit openings and persist across database reopen',async()=>{
+  const product=app.db.prepare("INSERT INTO products (name,sku,category,price,cost,stock,image) VALUES ('Viewed product','VIEW-TEST','Test',100,50,2,'') RETURNING id").get();
+  const count=()=>app.db.prepare('SELECT views FROM products WHERE id=?').get(product.id).views;
+  assert.equal(count(),0);
+  await request('/storefront',{auth:false});
+  await request('/bootstrap');
+  assert.equal(count(),0);
+  for(let i=0;i<3;i++) assert.equal((await request(`/storefront/products/${product.id}/view`,{method:'POST',auth:false})).res.status,200);
+  assert.equal(count(),3);
+  assert.equal((await request('/bootstrap')).data.products.find(p=>p.id===product.id).views,3);
+  app.db.prepare('UPDATE products SET active=0 WHERE id=?').run(product.id);
+  assert.equal((await request(`/storefront/products/${product.id}/view`,{method:'POST',auth:false})).res.status,404);
+  app.db.prepare('UPDATE products SET active=1,deleted=1 WHERE id=?').run(product.id);
+  assert.equal((await request(`/storefront/products/${product.id}/view`,{method:'POST',auth:false})).res.status,404);
+  assert.equal((await request('/storefront/products/999999/view',{method:'POST',auth:false})).res.status,404);
+  assert.equal(count(),3);
+  const {openDatabase}=await import('../lib/database.js');
+  const reopened=openDatabase(dbPath);
+  try {assert.equal(reopened.prepare('SELECT views FROM products WHERE id=?').get(product.id).views,3);} finally {reopened.close();}
+});
+
 test('password change invalidates other sessions and logout revokes current session',async()=>{
   const other=await request('/auth/login',{method:'POST',auth:false,body:{username:'admin',password}});
   const otherCookie=other.res.headers.get('set-cookie').split(';')[0];
