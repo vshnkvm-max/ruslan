@@ -269,6 +269,10 @@ try {
         squareStories: stories.every(rect => Math.abs(rect.width - rect.height) < 1),
         order: rect('.stories').bottom < rect('#banner').top && rect('#banner').bottom < rect('.category-bar').top,
         dock: rect('.bottom-nav').bottom <= innerHeight,
+        patternSize: getComputedStyle(document.body, '::before').backgroundSize,
+        patternRepeat: getComputedStyle(document.body, '::before').backgroundRepeat,
+        patternHeight: parseFloat(getComputedStyle(document.body, '::before').height),
+        pageHeight: document.body.getBoundingClientRect().height,
         matchingBannerRadius: getComputedStyle(document.querySelector('#banner')).borderRadius === getComputedStyle(document.querySelector('.story')).borderRadius,
         cardContentFits: [...document.querySelectorAll('#products .product')].every(card => {
           const bounds = card.getBoundingClientRect();
@@ -283,6 +287,9 @@ try {
     assert.ok(layout.squareStories);
     assert.ok(layout.order);
     assert.ok(layout.dock);
+    assert.equal(layout.patternSize, '520px 520px', `pattern scale stays constant at ${width}px`);
+    assert.equal(layout.patternRepeat, 'repeat');
+    assert.ok(layout.patternHeight + .5 >= layout.pageHeight, `pattern covers the complete page: ${layout.patternHeight}px / ${layout.pageHeight}px`);
     assert.ok(layout.matchingBannerRadius, `matching banner and story corners at ${width}px`);
     assert.ok(layout.cardContentFits, `card contents fit at ${width}px`);
     await page.locator('#cart-tab').click();

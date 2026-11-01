@@ -245,4 +245,4 @@ dialog[data-profile-anchored] { --profile-y: clamp(12px, var(--profile-top), 50d
 @media (max-width: 359px) { #cart-content { padding-right: 16px; padding-left: 16px; } }
 
 body { position: relative; isolation: isolate; background: #540006; }
-body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: #540006 url('/miniapp/background.svg') center / cover no-repeat; }
+body::before { content: ""; position: absolute; inset: 0; min-height: 100dvh; z-index: -1; pointer-events: none; background-color: #540006; background-image: url('/miniapp/background.svg'); background-position: center top; background-size: 520px 520px; background-repeat: repeat; }

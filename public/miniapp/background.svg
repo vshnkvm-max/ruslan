@@ -1,22 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
  <defs>
-  <linearGradient id="base" x2="1" y2="1"><stop stop-color="#5c0003"/><stop offset=".5" stop-color="#310002"/><stop offset="1" stop-color="#780004"/></linearGradient>
-  <linearGradient id="red" x1="0" y1="1" x2=".8" y2="0"><stop stop-color="#d90008"/><stop offset=".55" stop-color="#a40005"/><stop offset="1" stop-color="#680003"/></linearGradient>
-  <linearGradient id="bright" x2=".7" y2="1"><stop stop-color="#f0000c"/><stop offset="1" stop-color="#9a0005"/></linearGradient>
-  <radialGradient id="glow"><stop stop-color="#f2000d" stop-opacity=".6"/><stop offset="1" stop-color="#a00000" stop-opacity="0"/></radialGradient>
+  <radialGradient id="base"><stop stop-color="#a00009"/><stop offset="1" stop-color="#590005"/></radialGradient>
+  <linearGradient id="red" x1="0" y1="1" x2=".8" y2="0"><stop stop-color="#dc000c"/><stop offset=".6" stop-color="#ad0008"/><stop offset="1" stop-color="#7c0006"/></linearGradient>
+  <linearGradient id="dark" x2="1" y2="1"><stop stop-color="#3e0003"/><stop offset="1" stop-color="#810007"/></linearGradient>
+  <linearGradient id="bright" x2=".8" y2="1"><stop stop-color="#e0000e"/><stop offset="1" stop-color="#a30009"/></linearGradient>
+  <g id="motif">
+   <path d="M-68 48c85-102 145-83 224-12 59 54 152 8 166 102 14 88-53 162-139 165C70 308 65 210-20 203c-99-8-101-90-48-155Z" fill="url(#red)"/>
+   <path d="M358 356c55-72 141-57 197 2 42 46 70 132 15 168-48 33-90-23-153-14-96 14-112-87-59-156Z" fill="url(#dark)"/>
+   <path d="M365 90c33-31 65-20 86 6 24 29 24 57 2 71-28 18-39-16-63-20-40-6-49-34-25-57Z" fill="url(#bright)"/>
+   <ellipse cx="472" cy="205" rx="12" ry="17" transform="rotate(22 472 205)" fill="url(#red)"/>
+   <path d="M127 510c37-53 91-43 127 3 39 49 15 128-44 135-70 9-130-75-83-138Z" fill="url(#bright)"/>
+   <g fill="none" stroke="#ff3747" stroke-width="1.4" opacity=".4">
+    <circle cx="24" cy="406" r="62"/><circle cx="24" cy="406" r="97"/><circle cx="24" cy="406" r="133"/><circle cx="24" cy="406" r="169"/>
+   </g>
+  </g>
  </defs>
- <rect width="1254" height="1254" fill="url(#base)"/>
- <path d="M0 0h161c78 114 194 69 263 179 57 91-4 177 128 260 108 70 197-10 268 31 87 50 68 134 169 155 96 19 176-61 265-86v715H0Z" fill="url(#red)"/>
- <ellipse cx="178" cy="699" rx="470" ry="540" fill="url(#glow)"/>
- <path d="M0 502c157-1 236 112 232 267-4 204 130 223 281 330l189 155H0Z" fill="url(#bright)"/>
- <path d="M1254 675c-143-26-259 60-342 159-81 98-112 201-213 268-68 44-160 57-241 85l97 67h699Z" fill="url(#bright)"/>
- <path d="M911 183c65-37 130-1 181 44 54 48 79 103 61 145-16 37-56 46-84 16-32-34-29-59-77-69-29-7-92 8-116-31-32-50-8-82 35-105Z" fill="url(#bright)"/>
- <ellipse cx="1098" cy="495" rx="31" ry="37" transform="rotate(20 1098 495)" fill="url(#bright)"/>
- <g fill="none" stroke="#ff3040" stroke-width="2.6" opacity=".7">
-  <circle cx="-1" cy="500" r="123"/><circle cx="-1" cy="500" r="205"/><circle cx="-1" cy="500" r="286"/><circle cx="-1" cy="500" r="374"/>
-  <path d="M281 1206c54-142 132-269 244-282 80-10 102 6 147-58 80-113 152-38 235 15 126 80 194-51 347-34"/>
-  <path d="M399 1217c47-125 86-207 204-223 95-14 96-54 188-46 130 11 168 101 304 25 55-30 109-27 159-26"/>
-  <path d="M497 1225c48-95 100-160 220-167 153-9 202 73 343 23 80-28 128-65 194-60"/>
+ <rect width="600" height="600" fill="url(#base)"/>
+ <!-- Wrapped motifs meet across both edges to form a seamless repeating tile. -->
+ <use href="#motif" x="-600" y="-600"/><use href="#motif" y="-600"/><use href="#motif" x="600" y="-600"/>
+ <use href="#motif" x="-600"/><use href="#motif"/><use href="#motif" x="600"/>
+ <use href="#motif" x="-600" y="600"/><use href="#motif" y="600"/><use href="#motif" x="600" y="600"/>
+ <g fill="none" stroke="#ff3042" stroke-width="1.5" opacity=".48">
+  <path d="M0 260c75-60 225 60 300 0s225 60 300 0"/>
+  <path d="M0 296c75-60 225 60 300 0s225 60 300 0"/>
+  <path d="M0 332c75-60 225 60 300 0s225 60 300 0"/>
  </g>
- <path d="M0 1012c161-23 231 118 349 154 77 23 126-2 200 13 60 11 101 44 153 75H0Z" fill="url(#base)"/>
 </svg>
