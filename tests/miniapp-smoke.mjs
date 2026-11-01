@@ -269,10 +269,12 @@ try {
         squareStories: stories.every(rect => Math.abs(rect.width - rect.height) < 1),
         order: rect('.stories').bottom < rect('#banner').top && rect('#banner').bottom < rect('.category-bar').top,
         dock: rect('.bottom-nav').bottom <= innerHeight,
-        patternSize: getComputedStyle(document.body, '::before').backgroundSize,
-        patternRepeat: getComputedStyle(document.body, '::before').backgroundRepeat,
-        patternHeight: parseFloat(getComputedStyle(document.body, '::before').height),
-        pageHeight: document.body.getBoundingClientRect().height,
+        patternSize: getComputedStyle(document.querySelector('.miniapp'), '::before').backgroundSize,
+        patternRepeat: getComputedStyle(document.querySelector('.miniapp'), '::before').backgroundRepeat,
+        patternHeight: parseFloat(getComputedStyle(document.querySelector('.miniapp'), '::before').height),
+        pageHeight: rect('.miniapp').height,
+        patternWidth: parseFloat(getComputedStyle(document.querySelector('.miniapp'), '::before').width),
+        outsideColor: getComputedStyle(document.body).backgroundColor,
         matchingBannerRadius: getComputedStyle(document.querySelector('#banner')).borderRadius === getComputedStyle(document.querySelector('.story')).borderRadius,
         cardContentFits: [...document.querySelectorAll('#products .product')].every(card => {
           const bounds = card.getBoundingClientRect();
@@ -283,6 +285,8 @@ try {
     });
     assert.equal(layout.overflow, false, `overflow at ${width}`);
     assert.ok(layout.shell <= 480);
+    assert.equal(layout.outsideColor, 'rgb(0, 0, 0)');
+    assert.ok(layout.patternWidth <= layout.shell && layout.patternWidth >= layout.shell - 3, 'pattern stays inside the phone frame');
     assert.ok(layout.twoColumns);
     assert.ok(layout.squareStories);
     assert.ok(layout.order);
@@ -309,6 +313,7 @@ try {
     assert.equal(await page.locator('#cart-tab').getAttribute('aria-current'), 'page');
     await home();
     if (width === 390) await page.screenshot({ path: '/tmp/gas-miniapp.png' });
+    if (width === 1280) await page.screenshot({ path: '/tmp/gas-miniapp-desktop.png' });
   }
 
   // Saved quantities, public prices and availability are always reconciled with current admin data.

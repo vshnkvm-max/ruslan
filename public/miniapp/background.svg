@@ -1,16 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" width="600" height="600">
  <defs>
-  <radialGradient id="base"><stop stop-color="#a00009"/><stop offset="1" stop-color="#590005"/></radialGradient>
-  <linearGradient id="red" x1="0" y1="1" x2=".8" y2="0"><stop stop-color="#dc000c"/><stop offset=".6" stop-color="#ad0008"/><stop offset="1" stop-color="#7c0006"/></linearGradient>
-  <linearGradient id="dark" x2="1" y2="1"><stop stop-color="#3e0003"/><stop offset="1" stop-color="#810007"/></linearGradient>
-  <linearGradient id="bright" x2=".8" y2="1"><stop stop-color="#e0000e"/><stop offset="1" stop-color="#a30009"/></linearGradient>
+  <radialGradient id="base"><stop stop-color="#1b0003"/><stop offset="1" stop-color="#080001"/></radialGradient>
+  <linearGradient id="red" x1="0" y1="1" x2=".8" y2="0"><stop stop-color="#3b0005"/><stop offset=".6" stop-color="#290004"/><stop offset="1" stop-color="#170002"/></linearGradient>
+  <linearGradient id="dark" x2="1" y2="1"><stop stop-color="#050000"/><stop offset="1" stop-color="#1b0003"/></linearGradient>
+  <linearGradient id="bright" x2=".8" y2="1"><stop stop-color="#450006"/><stop offset="1" stop-color="#250003"/></linearGradient>
   <g id="motif">
    <path d="M-68 48c85-102 145-83 224-12 59 54 152 8 166 102 14 88-53 162-139 165C70 308 65 210-20 203c-99-8-101-90-48-155Z" fill="url(#red)"/>
    <path d="M358 356c55-72 141-57 197 2 42 46 70 132 15 168-48 33-90-23-153-14-96 14-112-87-59-156Z" fill="url(#dark)"/>
    <path d="M365 90c33-31 65-20 86 6 24 29 24 57 2 71-28 18-39-16-63-20-40-6-49-34-25-57Z" fill="url(#bright)"/>
    <ellipse cx="472" cy="205" rx="12" ry="17" transform="rotate(22 472 205)" fill="url(#red)"/>
    <path d="M127 510c37-53 91-43 127 3 39 49 15 128-44 135-70 9-130-75-83-138Z" fill="url(#bright)"/>
-   <g fill="none" stroke="#ff3747" stroke-width="1.4" opacity=".4">
+   <g fill="none" stroke="#8a1020" stroke-width="1.4" opacity=".4">
     <circle cx="24" cy="406" r="62"/><circle cx="24" cy="406" r="97"/><circle cx="24" cy="406" r="133"/><circle cx="24" cy="406" r="169"/>
    </g>
   </g>
@@ -20,7 +20,7 @@
  <use href="#motif" x="-600" y="-600"/><use href="#motif" y="-600"/><use href="#motif" x="600" y="-600"/>
  <use href="#motif" x="-600"/><use href="#motif"/><use href="#motif" x="600"/>
  <use href="#motif" x="-600" y="600"/><use href="#motif" y="600"/><use href="#motif" x="600" y="600"/>
- <g fill="none" stroke="#ff3042" stroke-width="1.5" opacity=".48">
+ <g fill="none" stroke="#8e1124" stroke-width="1.5" opacity=".48">
   <path d="M0 260c75-60 225 60 300 0s225 60 300 0"/>
   <path d="M0 296c75-60 225 60 300 0s225 60 300 0"/>
   <path d="M0 332c75-60 225 60 300 0s225 60 300 0"/>

@@ -2,8 +2,8 @@ const telegram = window.Telegram?.WebApp;
 if (telegram) {
   telegram.ready();
   telegram.expand();
-  telegram.setHeaderColor?.('#540006');
-  telegram.setBackgroundColor?.('#540006');
+  telegram.setHeaderColor?.('#100002');
+  telegram.setBackgroundColor?.('#100002');
 }
 
 const $ = selector => document.querySelector(selector);

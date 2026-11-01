@@ -1,11 +1,12 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   color: #282127;
-  background: #540006;
+  background: #000;
   --red: #e71935;
   --muted: #93888e;
   --page: #f6f3f3;
   --promo-radius: 18px;
+  --app-width: 480px;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -17,7 +18,7 @@ button, input { font: inherit; }
 button { cursor: pointer; }
 button, a { -webkit-user-select: none; user-select: none; }
 svg { display: block; }
-.miniapp { max-width: 480px; min-height: 100dvh; margin: auto; padding-top: max(12px, env(safe-area-inset-top)); background: var(--page); }
+.miniapp { max-width: var(--app-width); min-height: 100dvh; margin: auto; padding-top: max(12px, env(safe-area-inset-top)); background: var(--page); }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 14px 22px; padding: 8px 10px; background: #fff; border-radius: 32px; }
 #shop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
 .bottom-tab svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -244,5 +245,9 @@ dialog[data-profile-anchored] { --profile-y: clamp(12px, var(--profile-top), 50d
 #cart-page > #cart-content { min-height: 300px; }
 @media (max-width: 359px) { #cart-content { padding-right: 16px; padding-left: 16px; } }
 
-body { position: relative; isolation: isolate; background: #540006; }
-body::before { content: ""; position: absolute; inset: 0; min-height: 100dvh; z-index: -1; pointer-events: none; background-color: #540006; background-image: url('/miniapp/background.svg'); background-position: center top; background-size: 520px 520px; background-repeat: repeat; }
+body { position: relative; isolation: isolate; background: #000; }
+.miniapp::before { content: ""; position: absolute; inset: 0; min-height: 100dvh; z-index: -1; pointer-events: none; background-color: #100002; background-image: url('/miniapp/background.svg'); background-position: center top; background-size: 520px 520px; background-repeat: repeat; }
+
+.miniapp { position: relative; isolation: isolate; border-inline: 1px solid #2c1119; }
+
+dialog::backdrop { clip-path: inset(0 max(0px, calc((100% - var(--app-width)) / 2))); }
