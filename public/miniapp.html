@@ -1,3 +1,90 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#d82332"><title>GAS — магазин</title><link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/miniapp.css"><script src="https://telegram.org/js/telegram-web-app.js" defer></script><script src="/miniapp.js" defer></script></head>
-<body><header><a class="brand" href="/miniapp">GAS<span>STORE</span></a><span id="shop-name">Ваш магазин</span><button id="refresh" aria-label="Обновить каталог">↻</button></header><main><section class="intro"><span class="eyebrow">ВСЁ, ЧТО ВАМ НУЖНО</span><h1>Хороший выбор.<br><em>Каждый день.</em></h1></section><nav class="stories" aria-label="Информация о магазине"><button data-info="important"><span>ⓘ</span>Важно прочитать<i>↗</i></button><button data-info="referral"><span>♡</span>Реферальная программа<i>↗</i></button><button data-info="reviews"><span>☆</span>Отзывы<i>↗</i></button></nav><section id="banner" hidden></section><section class="catalog"><div class="section-heading"><h2>Каталог</h2><span id="count"></span></div><label class="search"><span>⌕</span><input id="search" type="search" placeholder="Найти свой товар" aria-label="Поиск товаров"></label><div id="categories" aria-label="Категории"></div><div id="status" role="status">Загружаем каталог…</div><div id="products"></div></section><footer>GAS <span>С заботой о вашем выборе</span></footer></main><dialog id="details"><button class="close" aria-label="Закрыть">×</button><div id="detail-content"></div></dialog></body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f6f3f3">
+  <title>GAS — магазин</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='20' fill='%23da2035'/%3E%3Ctext x='32' y='43' text-anchor='middle' font-family='Arial' font-size='38' font-weight='900' fill='white'%3EG%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/miniapp.css">
+  <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+  <script src="/miniapp.js" defer></script>
+</head>
+<body>
+  <div class="miniapp">
+    <header class="topbar">
+      <a class="identity" href="/miniapp" aria-label="GAS — главная">
+        <span class="brand">GAS</span>
+        <span class="identity-copy"><strong id="shop-name">GAS STORE</strong><span>Магазин в Telegram</span></span>
+      </a>
+      <div class="header-actions">
+        <button id="search-toggle" class="icon-button" aria-label="Поиск товаров" aria-controls="search-panel" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
+        </button>
+        <button id="refresh" class="icon-button refresh-button" aria-label="Обновить каталог">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 8a8 8 0 1 0 1 8M19 3v5h-5"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <nav class="stories" aria-label="Информация о магазине">
+        <button class="story story-important" data-info="important">
+          <span class="story-kicker">О МАГАЗИНЕ</span>
+          <span class="story-title">Важно<br>прочитать</span>
+          <svg class="story-art book-art" viewBox="0 0 120 90" aria-hidden="true">
+            <path d="M17 22c17-6 30-3 43 6 13-9 26-12 43-6v53c-17-6-30-3-43 6-13-9-26-12-43-6Z" fill="white"/>
+            <path d="M60 29v51M29 37c9-1 16 1 22 5M29 48c9-1 16 1 22 5M70 42c7-4 13-6 22-5M70 53c7-4 13-6 22-5" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+          </svg>
+          <span class="story-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12"/></svg></span>
+        </button>
+        <button class="story story-referral" data-info="referral">
+          <span class="referral-word" aria-hidden="true">реф</span>
+          <span class="story-title">Реферальная<br>программа</span>
+          <svg class="story-art people-art" viewBox="0 0 120 90" aria-hidden="true">
+            <circle cx="43" cy="31" r="20" fill="none" stroke="white" stroke-width="6"/>
+            <path d="M8 89a35 35 0 0 1 70 0" fill="white"/>
+            <path d="M94 38v30M79 53h30" stroke="white" stroke-width="8" stroke-linecap="round"/>
+          </svg>
+        </button>
+        <button class="story story-reviews" data-info="reviews">
+          <span class="story-kicker">ВАШЕ МНЕНИЕ</span>
+          <span class="story-title">Отзывы</span>
+          <svg class="story-art reviews-art" viewBox="0 0 120 100" aria-hidden="true">
+            <rect x="14" y="13" width="90" height="66" rx="15" fill="white"/>
+            <path d="m35 75-7 17 28-17" fill="white"/>
+            <path d="M32 32h19v15c0 10-6 16-16 18v-8c5-1 7-4 7-8H32ZM64 32h19v15c0 10-6 16-16 18v-8c5-1 7-4 7-8H64Z" fill="currentColor"/>
+          </svg>
+          <span class="review-stars" aria-hidden="true">★★★</span>
+        </button>
+      </nav>
+
+      <section id="banner" aria-label="Предложение магазина" hidden></section>
+
+      <section class="catalog" id="catalog" aria-label="Каталог товаров">
+        <div id="search-panel" hidden>
+          <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg><input id="search" type="search" placeholder="Поиск по каталогу" aria-label="Поиск товаров"></label>
+        </div>
+        <div class="category-bar">
+          <div id="categories" aria-label="Категории"></div>
+          <span class="currency" aria-label="Цены в рублях">₽</span>
+        </div>
+        <span id="count" class="sr-only" aria-live="polite"></span>
+        <div id="status" role="status">Загружаем каталог…</div>
+        <div id="products"></div>
+      </section>
+      <footer><span class="footer-brand">GAS</span><span>С заботой о вашем выборе</span></footer>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Основная навигация">
+      <a href="#catalog" class="bottom-tab" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="3"/><path d="M9 7h6M10 17h4"/></svg><span>Каталог</span></a>
+      <button class="bottom-tab" id="shop-info"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v.2"/></svg><span>О магазине</span></button>
+    </nav>
+  </div>
+
+  <dialog id="details" aria-labelledby="detail-title">
+    <button class="close" aria-label="Закрыть">×</button>
+    <div id="detail-content"></div>
+  </dialog>
+</body>
+</html>
