@@ -5,6 +5,7 @@
   --red: #e71935;
   --muted: #93888e;
   --page: #f6f3f3;
+  --promo-radius: 18px;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -26,8 +27,8 @@ svg { display: block; }
 .refresh-button:disabled { opacity: .5; }
 main { padding: 0 22px 100px; }
 .stories { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-.story { position: relative; display: block; aspect-ratio: 1; padding: 0; border: 0; border-radius: 18px; overflow: hidden; background: #ee0010; box-shadow: 0 5px 14px #d3000c14; }
-#banner { isolation: isolate; position: relative; overflow: hidden; display: flex; min-height: 104px; align-items: center; border-radius: 18px; margin-bottom: 16px; padding: 18px 62px 18px 18px; color: #fff; background: linear-gradient(110deg, #df1c35, #bd1129); }
+.story { position: relative; display: block; aspect-ratio: 1; padding: 0; border: 0; border-radius: var(--promo-radius); overflow: hidden; background: #ee0010; box-shadow: 0 5px 14px #d3000c14; }
+#banner { isolation: isolate; position: relative; overflow: hidden; display: flex; min-height: 104px; align-items: center; border-radius: var(--promo-radius); margin-bottom: 16px; padding: 18px 62px 18px 18px; color: #fff; background: linear-gradient(110deg, #df1c35, #bd1129); }
 #banner::after { content: "GAS"; z-index: -1; position: absolute; right: -18px; bottom: -19px; font-size: 92px; letter-spacing: -10px; font-style: italic; font-weight: 950; color: #ffffff0f; pointer-events: none; }
 .banner-copy { min-width: 0; }
 #banner h2 { font-size: 17px; font-weight: 800; line-height: 1.15; letter-spacing: -.4px; margin: 0; overflow-wrap: anywhere; }
@@ -70,7 +71,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   main { padding-right: 14px; padding-left: 14px; }
   .topbar { margin-right: 10px; margin-left: 10px; }
   .stories { gap: 8px; }
-  .story { border-radius: 15px; }
+  .miniapp { --promo-radius: 15px; }
   .products { gap: 12px; }
   .product { border-radius: 20px; }
   .price { font-size: 14px; }
@@ -141,7 +142,6 @@ dialog[data-view="profile"] { background: #f9f5f8b8; backdrop-filter: blur(24px)
 .remove-item svg { width: 15px; height: 15px; }
 .cart-total { display: flex; align-items: baseline; justify-content: space-between; gap: 15px; margin-top: 25px; font-size: 15px; }
 .cart-total strong { font-size: 25px; font-weight: 800; letter-spacing: -.6px; }
-.cart-note { color: #a38b97; font-size: 10px; }
 #toast { position: fixed; z-index: 10; bottom: calc(90px + env(safe-area-inset-bottom)); left: 50%; width: max-content; max-width: min(360px, calc(100% - 40px)); padding: 12px 17px; border-radius: 16px; background: #402932eb; color: #fff; box-shadow: 0 4px 18px #3b112924; font-size: 12px; text-align: center; pointer-events: none; opacity: 0; transform: translate(-50%, 12px) scale(.96); transition: transform .25s ease, opacity .25s ease; }
 #toast.visible { opacity: 1; transform: translate(-50%, 0) scale(1); }
 .cart-flight { position: fixed; z-index: 20; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--red); color: #fff; box-shadow: 0 4px 12px #d6002433; pointer-events: none; }

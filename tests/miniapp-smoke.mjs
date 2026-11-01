@@ -90,6 +90,8 @@ try {
   await page.goto(base + '/miniapp');
   await page.getByText('Товары скоро появятся.', { exact: false }).waitFor();
   assert.equal(await page.locator('footer').count(), 0);
+  assert.ok(await page.locator('#banner').isHidden());
+  assert.equal(await page.locator('#banner').textContent(), '');
   assert.equal(await page.getByText('Магазин в Telegram', { exact: true }).count(), 0);
   assert.equal(await page.locator('#profile-button svg').count(), 1);
   assert.equal(await page.locator('#shop-info').count(), 0);
@@ -140,6 +142,20 @@ try {
   await page.locator('#refresh').click();
   await page.locator('.product').first().waitFor();
   assert.equal(await page.locator('.product').count(), 12);
+  // Banner visibility and content follow the admin data, including removing the final active banner.
+  const banners = db.prepare('SELECT * FROM banners ORDER BY id').all();
+  await page.locator('#banner h2').filter({ hasText: banners[0].title }).waitFor();
+  db.prepare('UPDATE banners SET active=0 WHERE id=?').run(banners[0].id);
+  await page.locator('#refresh').click();
+  await page.locator('#banner h2').filter({ hasText: banners[1].title }).waitFor();
+  db.prepare('UPDATE banners SET active=0').run();
+  await page.locator('#refresh').click();
+  await page.locator('#banner').waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#banner').textContent(), '');
+  db.prepare('UPDATE banners SET active=1,title=?,subtitle=? WHERE id=?').run('Баннер из админки', 'Условия из редактора магазина', banners[0].id);
+  await page.locator('#refresh').click();
+  await page.getByRole('heading', { name: 'Баннер из админки', exact: true }).waitFor();
+  await page.getByText('Условия из редактора магазина', { exact: true }).waitFor();
   await slideToCategory('Для дома', 1, 5);
   assert.equal(await page.getByRole('searchbox').count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Поиск товаров' }).count(), 0);
@@ -235,6 +251,7 @@ try {
         squareStories: stories.every(rect => Math.abs(rect.width - rect.height) < 1),
         order: rect('.stories').bottom < rect('#banner').top && rect('#banner').bottom < rect('.category-bar').top,
         dock: rect('.bottom-nav').bottom <= innerHeight,
+        matchingBannerRadius: getComputedStyle(document.querySelector('#banner')).borderRadius === getComputedStyle(document.querySelector('.story')).borderRadius,
         cardContentFits: [...document.querySelectorAll('#products .product')].every(card => {
           const bounds = card.getBoundingClientRect();
           const price = card.querySelector('.product-bottom').getBoundingClientRect();
@@ -248,6 +265,7 @@ try {
     assert.ok(layout.squareStories);
     assert.ok(layout.order);
     assert.ok(layout.dock);
+    assert.ok(layout.matchingBannerRadius, `matching banner and story corners at ${width}px`);
     assert.ok(layout.cardContentFits, `card contents fit at ${width}px`);
     await page.locator('#profile-button').click();
     await settle();

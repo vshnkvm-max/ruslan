@@ -332,6 +332,7 @@ async function load() {
     if (!data.categories.includes(category)) category = '';
     const banner = data.banners[0];
     $('#banner').hidden = !banner;
+    $('#banner').replaceChildren();
     if (banner) {
       const safe = /^\/(?!\/)|^https:\/\//i.test(banner.link);
       $('#banner').innerHTML = `<div class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></div>
@@ -510,8 +511,7 @@ function renderCart(shouldAnimate = true) {
         </div>
         <button class="remove-item" data-remove="${product.id}" aria-label="Удалить: ${escape(product.name)}">${icons.trash}</button>
       </div>`).join('')}</div>
-      <div class="cart-total"><span>Итого</span><strong>${moneyMarkup(amount)}</strong></div>
-      <p class="cart-note">Товары в корзине не резервируются.</p>` : `<div class="cart-empty">${icons.bag}<h3>Корзина пока пуста</h3><p>Добавьте то, что вам понравилось.</p></div>`}
+      <div class="cart-total"><span>Итого</span><strong>${moneyMarkup(amount)}</strong></div>` : `<div class="cart-empty">${icons.bag}<h3>Корзина пока пуста</h3><p>Добавьте то, что вам понравилось.</p></div>`}
     <button class="primary-button" data-continue>${items.length ? 'Продолжить покупки' : 'Перейти в каталог'}${icons.arrow}</button>`, 'cart', shouldAnimate);
 }
 async function continueShopping() {
