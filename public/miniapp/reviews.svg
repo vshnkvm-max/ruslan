@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+ <defs>
+  <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#cc0006"/><stop offset=".55" stop-color="#ff0010"/><stop offset="1" stop-color="#c90004"/></linearGradient>
+  <linearGradient id="paper" x2=".8" y2="1"><stop stop-color="#fff"/><stop offset=".55" stop-color="#fff4f5"/><stop offset="1" stop-color="#ffb4bc"/></linearGradient>
+  <linearGradient id="red" x2=".9" y2="1"><stop stop-color="#ff6573"/><stop offset=".5" stop-color="#fb0017"/><stop offset="1" stop-color="#b60010"/></linearGradient>
+  <filter id="shadow" x="-.4" y="-.4" width="1.8" height="1.8"><feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#780000" flood-opacity=".3"/></filter>
+  <path id="star" d="m0-17 5 10 12 2-9 8 2 12L0 10l-10 5 2-12-9-8 12-2Z"/>
+ </defs>
+ <rect width="400" height="400" rx="40" fill="url(#bg)"/>
+ <path d="M0 194C80 118 253 154 400 22v110C272 271 127 186 0 346Z" fill="#ba0000" opacity=".22"/>
+ <g filter="url(#shadow)">
+  <path d="M36 96q0-47 48-47h196q48 0 48 47v85q0 43-45 43H141l-52 32 7-32H79q-43 0-43-42Z" fill="#ff7184"/>
+  <path d="M36 91q0-47 48-47h196q48 0 48 47v85q0 43-45 43H139l-50 32 7-32H79q-43 0-43-42Z" fill="url(#paper)"/>
+  <g fill="#ee0010"><use href="#star" x="86" y="96"/><use href="#star" x="132" y="96"/><use href="#star" x="178" y="96"/><use href="#star" x="224" y="96"/><use href="#star" x="270" y="96"/></g>
+  <path d="M80 152h165M80 181h126" stroke="#ff7e8d" stroke-width="17" stroke-linecap="round"/>
+  <circle cx="321" cy="196" r="64" fill="#ff7e90"/>
+  <circle cx="317" cy="190" r="62" fill="url(#paper)"/>
+  <circle cx="317" cy="190" r="54" fill="url(#red)"/>
+  <path d="M286 185q-4 0-4 5v28q0 5 4 5h11v-38Zm17 3 12-19q4-6 4-14 0-8 7-6 11 3 7 18l-2 8h15q13 0 10 12l-5 27q-1 9-11 9h-37Z" fill="white"/>
+ </g>
+ <path d="m325 30-8 20M359 48l-19 14" stroke="white" stroke-width="13" stroke-linecap="round"/>
+ <text x="200" y="339" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="62" font-weight="900" fill="white" textLength="337" lengthAdjust="spacingAndGlyphs">ОТЗЫВЫ</text>
+</svg>

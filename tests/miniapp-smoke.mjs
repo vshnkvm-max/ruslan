@@ -1,62 +1,200 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
-import {createApp} from '../server.js';
-import {insertTestFixtures} from './fixtures/store.js';
-const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
-const dir=mkdtempSync(join(tmpdir(),'gas-mini-'));
-const {server,db}=createApp({dbPath:join(dir,'test.db')});
-await new Promise(r=>server.listen(0,'127.0.0.1',r));
-const base=`http://127.0.0.1:${server.address().port}`;
-const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage']});
-try{
- const page=await browser.newPage({viewport:{width:390,height:844}});const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route('https://telegram.org/**',r=>r.fulfill({body:'window.Telegram={WebApp:{ready(){},expand(){}}};',contentType:'text/javascript'}));
- await page.goto(base+'/miniapp');await page.getByText('Товары скоро появятся.',{exact:false}).waitFor();
- insertTestFixtures(db);await page.locator('#refresh').click();await page.locator('.product').first().waitFor();
- assert.equal(await page.locator('.product').count(),12);assert.equal(await page.locator('#banner').count(),1);
- await page.getByRole('button',{name:'Для дома',exact:true}).click();assert.equal(await page.locator('.product').count(),5);
- await page.locator('#search-toggle').click();assert.equal(await page.locator('#search-toggle').getAttribute('aria-expanded'),'true');
- await page.locator('#search').fill('Лампа');assert.equal(await page.locator('.product').count(),2);
- const before=db.prepare('SELECT views FROM products WHERE id=2').get().views;
- const viewResponse=page.waitForResponse(r=>r.url().endsWith('/products/2/view'));
- await page.locator('[data-product="2"]').click();await page.locator('dialog[open]').waitFor();
- await viewResponse;assert.equal(db.prepare('SELECT views FROM products WHERE id=2').get().views,before+1);
- await page.locator('.close').click();await page.getByRole('button',{name:'Отзывы',exact:false}).click();await page.locator('dialog article').first().waitFor();assert.equal(await page.locator('dialog article').count(),4);
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);assert.deepEqual(errors,[]);
- const api=await (await fetch(base+'/api/storefront')).json();assert.ok(api.reviews.every(r=>!('customer_id' in r)));assert.ok(api.products.every(p=>!('cost' in p)));
- await page.locator('.close').click();
- await page.locator('#search-toggle').click();assert.equal(await page.locator('.product').count(),5);
- await page.getByRole('button',{name:'Все товары',exact:true}).click();
- await page.getByRole('button',{name:'Реферальная программа',exact:false}).click();
- await page.getByText('Реферальная программа пока не действует.',{exact:true}).waitFor();await page.locator('.close').click();
- await page.locator('#shop-info').click();await page.getByText('Информация о магазине скоро появится.',{exact:true}).waitFor();await page.locator('.close').click();
- assert.equal(await page.locator('.intro').count(),0);
- for(const width of [320,390,480,1280]) {
-  await page.setViewportSize({width,height:844});
-  await page.evaluate(()=>window.scrollTo(0,0));
-  const layout=await page.evaluate(()=>{
-   const rect=selector=>document.querySelector(selector).getBoundingClientRect();
-   const cards=[...document.querySelectorAll('.product')].map(el=>el.getBoundingClientRect());
-   const stories=[...document.querySelectorAll('.story')].map(el=>el.getBoundingClientRect());
-   return {overflow:document.documentElement.scrollWidth>innerWidth,shell:rect('.miniapp').width,
-    twoColumns:cards[0].top===cards[1].top&&cards[2].top>cards[0].top,
-    squareStories:stories.every(r=>Math.abs(r.width-r.height)<1),
-    order:rect('.stories').bottom<rect('#banner').top&&rect('#banner').bottom<rect('.category-bar').top,
-    dock:rect('.bottom-nav').bottom<=innerHeight};
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createApp } from '../server.js';
+import { insertTestFixtures } from './fixtures/store.js';
+
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const dir = mkdtempSync(join(tmpdir(), 'gas-mini-'));
+const { server, db } = createApp({ dbPath: join(dir, 'test.db') });
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+const base = `http://127.0.0.1:${server.address().port}`;
+const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+try {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await context.route('https://telegram.org/**', route => route.fulfill({
+    body: 'window.Telegram={WebApp:{ready(){},expand(){},initDataUnsafe:{user:{id:101,first_name:"Александр",last_name:"Морозов",username:"alex"}}}};',
+    contentType: 'text/javascript'
+  }));
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    window.motionLog = [];
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (...args) {
+      window.motionLog.push(this.id || this.className);
+      return animate.apply(this, args);
+    };
   });
-  assert.equal(layout.overflow,false,`overflow at ${width}`);assert.ok(layout.shell<=480);
-  assert.ok(layout.twoColumns);assert.ok(layout.squareStories);assert.ok(layout.order);assert.ok(layout.dock);
-  if(width<=480)await page.screenshot({path:`/tmp/gas-miniapp-${width}.png`,fullPage:true});
- }
- // Refresh must use current admin data and handle long content safely.
- db.prepare("UPDATE settings SET value=? WHERE key='shop'").run(JSON.stringify({name:'GAS — магазин с очень длинным названием',headline:'',description:'Условия магазина',phone:'',address:'',hours:''}));
- db.prepare('UPDATE banners SET title=?,subtitle=? WHERE id=1').run('Большой выбор каждый день','Новые поступления в каталоге');
- await page.setViewportSize({width:390,height:844});await page.locator('#refresh').click();await page.getByText('Большой выбор каждый день',{exact:true}).waitFor();
- await page.screenshot({path:'/tmp/gas-miniapp.png',fullPage:true});
- await page.locator('#shop-info').click();await page.getByText('Условия магазина',{exact:true}).waitFor();await page.locator('.close').click();
- assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
- assert.deepEqual(errors,[]);
- console.log('Mini App passed: admin data, search, categories, product views, reviews, information, compact layout at 320/390/480/1280px, and refresh.');
-}finally{await browser.close();await new Promise(r=>server.close(r));rmSync(dir,{recursive:true,force:true});}
+  const close = async () => {
+    await page.locator('.close').click();
+    await page.locator('dialog').waitFor({ state: 'hidden' });
+  };
+  const settle = () => page.waitForFunction(() => document.getAnimations().every(animation =>
+    animation.effect.getComputedTiming().iterations === Infinity || animation.playState === 'finished'));
+
+  await page.goto(base + '/miniapp');
+  await page.getByText('Товары скоро появятся.', { exact: false }).waitFor();
+  assert.equal(await page.locator('footer').count(), 0);
+  assert.equal(await page.getByText('Магазин в Telegram', { exact: true }).count(), 0);
+  assert.equal(await page.locator('#profile-button svg').count(), 1);
+  assert.equal(await page.locator('#shop-info').count(), 0);
+  await page.waitForFunction(() => [...document.querySelectorAll('.story img')].every(image => image.complete && image.naturalWidth > 0));
+  for (const asset of ['important', 'referral', 'reviews']) {
+    const response = await fetch(`${base}/miniapp/${asset}.svg`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /image\/svg\+xml/);
+  }
+  await page.locator('#profile-button').click();
+  await page.getByRole('heading', { name: 'Александр Морозов' }).waitFor();
+  assert.equal(await page.locator('.profile-stats strong').first().textContent(), '0');
+  await page.getByRole('tab', { name: 'Реферальная программа' }).click();
+  await page.getByText('Реферальная программа пока не действует.', { exact: true }).waitFor();
+  await page.keyboard.press('ArrowLeft');
+  assert.equal(await page.getByRole('tab', { name: 'Обзор' }).getAttribute('aria-selected'), 'true');
+  await close();
+  await page.locator('#cart-tab').click();
+  await page.getByText('Корзина пока пуста', { exact: true }).waitFor();
+  await page.locator('[data-continue]').click();
+  await page.locator('dialog').waitFor({ state: 'hidden' });
+
+  insertTestFixtures(db);
+  db.prepare('UPDATE products SET stock=2 WHERE id=2').run();
+  await page.locator('#refresh').click();
+  await page.locator('.product').first().waitFor();
+  assert.equal(await page.locator('.product').count(), 12);
+  await page.getByRole('button', { name: 'Для дома', exact: true }).click();
+  assert.equal(await page.locator('.product').count(), 5);
+  await page.locator('#search-toggle').click();
+  await page.locator('#search').fill('Лампа');
+  assert.equal(await page.locator('.product').count(), 2);
+  const before = db.prepare('SELECT views FROM products WHERE id=2').get().views;
+  const view = page.waitForResponse(response => response.url().endsWith('/products/2/view'));
+  await page.locator('[data-product="2"]').click();
+  await view;
+  await page.locator('#product-add').click();
+  assert.equal(await page.locator('#cart-badge').textContent(), '1');
+  await page.locator('#product-add').click();
+  assert.equal(await page.locator('#cart-badge').textContent(), '2');
+  assert.ok(await page.locator('#product-add').isDisabled());
+  assert.equal(db.prepare('SELECT views FROM products WHERE id=2').get().views, before + 1);
+  await close();
+  await page.locator('#cart-tab').click();
+  assert.equal(await page.locator('[data-cart-item]').count(), 1);
+  assert.equal(await page.locator('.quantity-control output').textContent(), '2');
+  assert.ok(await page.locator('[data-cart-change="1"]').isDisabled());
+  await page.locator('[data-cart-change="-1"]').click();
+  assert.equal(await page.locator('.quantity-control output').textContent(), '1');
+  assert.match(await page.locator('.cart-total strong').textContent(), /4\D?590/);
+  await page.locator('[data-cart-change="1"]').click();
+  await settle();
+  await page.screenshot({ path: '/tmp/gas-cart.png' });
+  await close();
+  await page.reload();
+  await page.locator('.product').first().waitFor();
+  assert.equal(await page.locator('#cart-badge').textContent(), '2');
+  await page.locator('#profile-button').click();
+  assert.equal(await page.locator('.profile-stats strong').first().textContent(), '2');
+  await settle();
+  await page.screenshot({ path: '/tmp/gas-profile.png' });
+  await page.locator('[data-open-cart]').click();
+  await page.locator('[data-remove="2"]').click();
+  await page.getByText('Корзина пока пуста', { exact: true }).waitFor();
+  assert.ok(await page.locator('#cart-badge').isHidden());
+  await close();
+
+  // Quick add must not register a product view, or permit an out-of-stock item.
+  const views = db.prepare('SELECT views FROM products WHERE id=1').get().views;
+  await page.locator('[data-add="1"]').click();
+  assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views);
+  assert.ok(await page.locator('[data-add="6"]').isDisabled());
+  await page.locator('[data-info="reviews"]').click();
+  assert.equal(await page.locator('dialog .review').count(), 4);
+  await close();
+  await page.locator('[data-info="important"]').click();
+  await page.getByText('Информация о магазине скоро появится.', { exact: true }).waitFor();
+  await close();
+
+  for (const width of [320, 390, 480, 1280]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await settle();
+    const layout = await page.evaluate(() => {
+      const rect = selector => document.querySelector(selector).getBoundingClientRect();
+      const cards = [...document.querySelectorAll('.product')].map(element => element.getBoundingClientRect());
+      const stories = [...document.querySelectorAll('.story')].map(element => element.getBoundingClientRect());
+      return {
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        shell: rect('.miniapp').width,
+        twoColumns: cards[0].top === cards[1].top && cards[2].top > cards[0].top,
+        squareStories: stories.every(rect => Math.abs(rect.width - rect.height) < 1),
+        order: rect('.stories').bottom < rect('#banner').top && rect('#banner').bottom < rect('.category-bar').top,
+        dock: rect('.bottom-nav').bottom <= innerHeight
+      };
+    });
+    assert.equal(layout.overflow, false, `overflow at ${width}`);
+    assert.ok(layout.shell <= 480);
+    assert.ok(layout.twoColumns);
+    assert.ok(layout.squareStories);
+    assert.ok(layout.order);
+    assert.ok(layout.dock);
+    await page.locator('#profile-button').click();
+    await settle();
+    assert.ok(await page.locator('#details').evaluate(element => element.scrollWidth <= element.clientWidth));
+    await close();
+    if (width === 390) await page.screenshot({ path: '/tmp/gas-miniapp.png' });
+  }
+
+  // Saved quantities, public prices and availability are always reconciled with current admin data.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('[data-add="2"]').click();
+  await page.locator('[data-add="2"]').click();
+  assert.ok(await page.evaluate(() => window.motionLog.includes('cart-flight')));
+  db.prepare('UPDATE products SET stock=0 WHERE id=1').run();
+  db.prepare('UPDATE products SET stock=1,price=5000 WHERE id=2').run();
+  await page.reload();
+  await page.locator('.product').first().waitFor();
+  assert.equal(await page.locator('#cart-badge').textContent(), '1');
+  await page.locator('#cart-tab').click();
+  assert.equal(await page.locator('[data-cart-item]').count(), 1);
+  assert.equal(await page.locator('.quantity-control output').textContent(), '1');
+  assert.match(await page.locator('.cart-total strong').textContent(), /5\D?000/);
+  await close();
+
+  // Both explicit motion and the reduced-motion preference are respected.
+  assert.ok(await page.evaluate(() => window.motionLog.includes('details')));
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const motionCount = await page.evaluate(() => window.motionLog.length);
+  await page.locator('#profile-button').click();
+  await close();
+  assert.equal(await page.evaluate(() => window.motionLog.length), motionCount);
+  await page.evaluate(() => localStorage.setItem('gas-cart:v1:101', '{broken'));
+  await page.reload();
+  await page.locator('.product').first().waitFor();
+  assert.ok(await page.locator('#cart-badge').isHidden());
+  const api = await (await fetch(base + '/api/storefront')).json();
+  assert.ok(api.reviews.every(review => !('customer_id' in review)));
+  assert.ok(api.products.every(product => !('cost' in product)));
+  assert.deepEqual(errors, []);
+
+  // Browser fallback without Telegram or usable localStorage still supports a local cart.
+  const guest = await browser.newPage({ viewport: { width: 320, height: 700 }, reducedMotion: 'reduce' });
+  await guest.route('https://telegram.org/**', route => route.abort());
+  await guest.addInitScript(() => Object.defineProperty(window, 'localStorage', { get() { throw Error('Storage unavailable'); } }));
+  await guest.goto(base + '/miniapp');
+  await guest.locator('.product').first().waitFor();
+  await guest.locator('#profile-button').click();
+  await guest.getByRole('heading', { name: 'Гость' }).waitFor();
+  await guest.locator('.close').click();
+  await guest.locator('[data-add="2"]').click();
+  await guest.locator('#cart-tab').click();
+  assert.equal(await guest.locator('[data-cart-item]').count(), 1);
+  await guest.close();
+  console.log('Mini App passed: new icons, profile, local cart, stock limits, refreshed prices, persistence, animations, reduced motion, and layouts at 320/390/480/1280px.');
+} finally {
+  await browser.close();
+  await new Promise(resolve => server.close(resolve));
+  rmSync(dir, { recursive: true, force: true });
+}

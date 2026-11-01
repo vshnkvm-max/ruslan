@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+ <defs>
+  <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#c90005"/><stop offset=".55" stop-color="#ff0010"/><stop offset="1" stop-color="#c90004"/></linearGradient>
+  <linearGradient id="paper" x2=".8" y2="1"><stop stop-color="#fff"/><stop offset=".55" stop-color="#fff5f6"/><stop offset="1" stop-color="#ffb4bc"/></linearGradient>
+  <linearGradient id="pink" x2=".5" y2="1"><stop stop-color="#ffb6c0"/><stop offset="1" stop-color="#ff6379"/></linearGradient>
+  <filter id="shadow" x="-.4" y="-.4" width="1.8" height="1.8"><feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#780000" flood-opacity=".3"/></filter>
+ </defs>
+ <rect width="400" height="400" rx="40" fill="url(#bg)"/>
+ <path d="M0 194C80 118 253 154 400 22v110C272 271 127 186 0 346Z" fill="#ba0000" opacity=".22"/>
+ <text x="196" y="140" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="180" font-weight="900" letter-spacing="-12" fill="url(#pink)" textLength="378" lengthAdjust="spacingAndGlyphs">реф</text>
+ <text x="200" y="173" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="39" font-weight="900" fill="white" textLength="255" lengthAdjust="spacingAndGlyphs">программа</text>
+ <g filter="url(#shadow)">
+  <circle cx="183" cy="265" r="73" fill="#ff91a1"/>
+  <circle cx="180" cy="258" r="73" fill="url(#paper)"/>
+  <circle cx="180" cy="258" r="55" fill="url(#pink)"/>
+  <circle cx="177" cy="263" r="47" fill="url(#bg)"/>
+  <path d="M57 408a123 123 0 0 1 246 0" stroke="url(#paper)" stroke-width="24" fill="none"/>
+  <path d="M316 284v66M283 317h66" stroke="url(#paper)" stroke-width="28" stroke-linecap="round"/>
+ </g>
+</svg>
