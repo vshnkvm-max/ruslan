@@ -17,6 +17,7 @@ const icons = {
   minus: icon('<path d="M5 12h14"/>'),
   user: icon('<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'),
   bag: icon('<path d="M4 7h16l-1 14H5ZM8 8V6a4 4 0 0 1 8 0v2"/>'),
+  package: icon('<path d="m12 3 9 5v9l-9 5-9-5V8ZM3 8l9 5 9-5M12 13v9M8 5l9 5"/>'),
   trash: icon('<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'),
   chevron: icon('<path d="m9 5 7 7-7 7"/>'),
   check: icon('<path d="m5 12 4 4L19 6"/>')
@@ -24,6 +25,7 @@ const icons = {
 const money = value => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency: 'RUB', maximumFractionDigits: 0
 }).format(value);
+const moneyMarkup = value => money(value).replace('₽', '<span class="currency-symbol">₽</span>');
 // Telegram's display data is used only for presentation and local cart separation.
 // It never authorizes access to customers, orders or any other private API.
 const user = telegram?.initDataUnsafe?.user;
@@ -32,6 +34,8 @@ const maxQuantity = product => Math.min(product.stock, 999);
 let data, category = '', loading = false, modalVersion = 0, toastTimer;
 let cart = readCart();
 let categorySlide;
+let categoryMenuKey;
+let profileTab = 'overview', profileTransition, ordersTransition;
 
 function readCart() {
   try {
@@ -149,9 +153,14 @@ function setNav(view) {
   (inCart ? $('#cart-tab') : $('#catalog-tab')).setAttribute('aria-current', 'page');
 }
 function show(html, view = 'info', shouldAnimate = true) {
+  stopProfileTransition();
+  ordersTransition?.cancel();
+  ordersTransition = undefined;
   modalVersion++;
   const dialog = $('#details'), content = $('#detail-content');
   const wasOpen = dialog.open;
+  delete dialog.dataset.profileAnchored;
+  dialog.style.removeProperty('--profile-top');
   const scroll = dialog.scrollTop;
   dialog.getAnimations().forEach(animation => animation.cancel());
   delete dialog.dataset.closing;
@@ -180,12 +189,52 @@ async function closeDetails() {
 $('#details').addEventListener('close', () => { document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav('catalog'); });
 $('#details').addEventListener('cancel', event => { event.preventDefault(); void closeDetails(); });
 
+function positionCategoryIndicator(smooth = false) {
+  const selected = $('#categories [aria-pressed="true"]');
+  const indicator = $('#category-indicator');
+  if (!selected || !indicator) return;
+  if (!smooth) indicator.setAttribute('data-instant', '');
+  indicator.style.width = `${selected.offsetWidth}px`;
+  indicator.style.transform = `translate3d(${selected.offsetLeft}px, 0, 0)`;
+  indicator.classList.add('is-positioned');
+  if (!smooth) {
+    // Commit non-animated placement on first load and after size changes.
+    indicator.getBoundingClientRect();
+    indicator.removeAttribute('data-instant');
+  }
+}
+function centerActiveCategory(smooth = false) {
+  const menu = $('#categories'), selected = $('#categories [aria-pressed="true"]');
+  if (!selected) return;
+  const left = selected.offsetLeft - (menu.clientWidth - selected.offsetWidth) / 2;
+  menu.scrollTo({
+    left: Math.max(0, Math.min(menu.scrollWidth - menu.clientWidth, left)),
+    behavior: smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches ? 'smooth' : 'instant'
+  });
+}
+function renderCategories(smooth = false) {
+  const menu = $('#categories');
+  const entries = [['', 'Все товары'], ...data.categories.map(name => [name, name])];
+  const key = JSON.stringify(entries);
+  if (key !== categoryMenuKey) {
+    const scroll = menu.scrollLeft;
+    menu.innerHTML = '<span class="category-indicator" id="category-indicator" aria-hidden="true"></span>'
+      + entries.map(([value, label]) => `<button data-category="${escape(value)}" aria-pressed="false">${escape(label)}</button>`).join('');
+    categoryMenuKey = key;
+    menu.scrollLeft = scroll;
+    smooth = false;
+  }
+  menu.querySelectorAll('[data-category]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.category === category)));
+  positionCategoryIndicator(smooth);
+}
+
 function stopCategorySlide() {
   if (!categorySlide) return;
   const slide = categorySlide;
   categorySlide = undefined;
   slide.animations.forEach(animation => animation.cancel());
   slide.outgoing.remove();
+  slide.wind.remove();
   $('#catalog-page').inert = false;
   $('#catalog-viewport').classList.remove('is-sliding');
   $('#catalog-viewport').style.height = '';
@@ -205,7 +254,7 @@ async function selectCategory(next) {
   render(false);
   const selected = $('#categories [aria-pressed="true"]');
   selected.focus({ preventScroll: true });
-  selected.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  centerActiveCategory(true);
   if (!shouldSlide) return;
 
   // The old page is a visual snapshot; only the new page remains accessible.
@@ -220,17 +269,26 @@ async function selectCategory(next) {
   viewport.style.height = `${oldHeight}px`;
   page.inert = true;
   const newHeight = page.getBoundingClientRect().height;
-  const timing = { duration: 300, easing: 'cubic-bezier(.22,.68,0,1)', fill: 'both' };
-  const slide = { outgoing, animations: [
+  const wind = document.createElement('div');
+  wind.className = 'category-wind';
+  wind.setAttribute('aria-hidden', 'true');
+  viewport.append(wind);
+  const timing = { duration: 380, easing: 'cubic-bezier(.16,.8,.18,1)', fill: 'both' };
+  const slide = { outgoing, wind, animations: [
     page.animate([
-      { transform: `translate3d(${direction * 100}%, 0, 0)` },
-      { transform: 'translate3d(0, 0, 0)' }
+      { transform: `translate3d(${direction * 105}%, 0, 0) scaleX(1.035)`, filter: 'blur(5px)' },
+      { transform: 'translate3d(0, 0, 0) scaleX(1)', filter: 'blur(0)' }
     ], timing),
     outgoing.animate([
-      { transform: 'translate3d(0, 0, 0)' },
-      { transform: `translate3d(${-direction * 100}%, 0, 0)` }
+      { transform: 'translate3d(0, 0, 0) scaleX(1)', filter: 'blur(0)' },
+      { transform: `translate3d(${-direction * 105}%, 0, 0) scaleX(.98)`, filter: 'blur(6px)' }
     ], timing),
-    viewport.animate([{ height: `${oldHeight}px` }, { height: `${newHeight}px` }], timing)
+    viewport.animate([{ height: `${oldHeight}px` }, { height: `${newHeight}px` }], timing),
+    wind.animate([
+      { transform: `translateX(${-direction * 100}%)`, opacity: 0 },
+      { transform: 'translateX(0)', opacity: .65, offset: .35 },
+      { transform: `translateX(${direction * 100}%)`, opacity: 0 }
+    ], timing)
   ] };
   categorySlide = slide;
   await Promise.all(slide.animations.map(animation => animation.finished.catch(() => {})));
@@ -252,17 +310,14 @@ function render(animateProducts = true) {
         </div>
         <div class="product-body">
           <h3>${escape(product.name)}</h3>
-          <div class="product-bottom"><span class="price">${money(product.price)}</span><span class="product-chevron" aria-hidden="true">${icons.chevron}</span></div>
+          <div class="product-bottom"><span class="price">${moneyMarkup(product.price)}</span><span class="product-chevron" aria-hidden="true">${icons.chevron}</span></div>
         </div>
       </button>
       <button class="quick-add" data-add="${product.id}" aria-label="Добавить в корзину: ${escape(product.name)}" ${product.stock <= 0 ? 'disabled' : ''}>${icons.plus}</button>
     </article>`).join('');
   $('#status').hidden = Boolean(items.length);
   $('#status').textContent = data.products.length ? 'В этой категории пока нет товаров.' : 'Товары скоро появятся. Загляните чуть позже.';
-  const scroll = $('#categories').scrollLeft;
-  $('#categories').innerHTML = [['', 'Все товары'], ...data.categories.map(name => [name, name])]
-    .map(([value, label]) => `<button data-category="${escape(value)}" aria-pressed="${category === value}">${escape(label)}</button>`).join('');
-  $('#categories').scrollLeft = scroll;
+  renderCategories(!animateProducts);
 }
 async function load() {
   if (loading) return;
@@ -297,7 +352,7 @@ function openProduct(id) {
   const product = data?.products.find(item => item.id === id);
   if (!product) return;
   $('#details').dataset.productId = id;
-  show(`${photo(product)}<h2>${escape(product.name)}</h2><strong class="price">${money(product.price)}</strong>
+  show(`${photo(product)}<h2>${escape(product.name)}</h2><strong class="price">${moneyMarkup(product.price)}</strong>
     <p class="detail-stock">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</p>
     ${formatted(product.short_description)}${formatted(product.description)}
     <button class="primary-button" id="product-add" data-add="${product.id}"></button><button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>`, 'product');
@@ -319,7 +374,7 @@ function referralContent() {
   const referral = data?.referral;
   if (!referral) return '<p>Информация пока недоступна. Обновите каталог.</p>';
   return referral.enabled
-    ? `<div class="referral-summary"><span>Бонус за приглашение</span><strong>${money(referral.bonus)}</strong></div><p>Минимальная выплата: ${money(referral.minPayout)}.</p><p>Условия участия уточняйте у магазина.</p>`
+    ? `<div class="referral-summary"><span>Бонус за приглашение</span><strong>${moneyMarkup(referral.bonus)}</strong></div><p>Минимальная выплата: ${moneyMarkup(referral.minPayout)}.</p><p>Условия участия уточняйте у магазина.</p>`
     : '<div class="empty-inline">Реферальная программа пока не действует.</div>';
 }
 function openInfo(type) {
@@ -339,40 +394,123 @@ function openInfo(type) {
       </article>`).join('') || '<p>Опубликованных отзывов пока нет.</p>'}`);
   }
 }
+function profileContent(tab) {
+  return tab === 'overview' ? `<button class="profile-link" data-open-cart>${icons.bag}<span>Моя корзина</span>${icons.arrow}</button>
+    <div class="recent-orders">
+      <button class="recent-orders-toggle" data-toggle-orders aria-expanded="false" aria-controls="recent-orders-list">${icons.package}<span>Последние заказы</span>${icons.chevron}</button>
+      <div class="recent-orders-list" id="recent-orders-list" hidden><p>История заказов пока недоступна.</p></div>
+    </div><p class="profile-hint">Выбранные товары сохраняются на этом устройстве.</p>` : referralContent();
+}
+function stopProfileTransition() {
+  if (!profileTransition) return;
+  const transition = profileTransition;
+  profileTransition = undefined;
+  transition.animations.forEach(animation => animation.cancel());
+  transition.outgoing.remove();
+  const panel = $('#profile-panel');
+  if (panel) {
+    panel.style.height = '';
+    panel.removeAttribute('aria-busy');
+  }
+  const body = $('#profile-body');
+  if (body) body.inert = false;
+}
+async function switchProfileTab(tab) {
+  if (tab === profileTab || !['overview', 'referral'].includes(tab)) return;
+  stopProfileTransition();
+  ordersTransition?.cancel();
+  ordersTransition = undefined;
+  const panel = $('#profile-panel'), body = $('#profile-body');
+  if (!panel || !body) return;
+  const direction = tab === 'referral' ? 1 : -1;
+  const dialog = $('#details');
+  if (!dialog.hasAttribute('data-profile-anchored')) {
+    dialog.style.setProperty('--profile-top', `${dialog.getBoundingClientRect().top}px`);
+    dialog.dataset.profileAnchored = 'true';
+  }
+  const oldHeight = body.getBoundingClientRect().height;
+  const outgoing = body.cloneNode(true);
+  profileTab = tab;
+  $('.profile-tabs').dataset.active = tab;
+  panel.setAttribute('aria-labelledby', `profile-${tab}`);
+  document.querySelectorAll('[data-profile-tab]').forEach(button => {
+    const active = button.dataset.profileTab === tab;
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  body.innerHTML = profileContent(tab);
+  $(`#profile-${tab}`).focus({ preventScroll: true });
+  if (!body.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  outgoing.removeAttribute('id');
+  outgoing.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+  outgoing.classList.add('outgoing-profile-body');
+  outgoing.setAttribute('aria-hidden', 'true');
+  outgoing.inert = true;
+  panel.append(outgoing);
+  panel.style.height = `${oldHeight}px`;
+  panel.setAttribute('aria-busy', 'true');
+  body.inert = true;
+  const timing = { duration: 320, easing: 'cubic-bezier(.22,.8,.25,1)', fill: 'both' };
+  const transition = { outgoing, animations: [
+    body.animate([{ opacity: 0, transform: `translateX(${direction * 22}px)`, filter: 'blur(2px)' }, { opacity: 1, transform: 'translateX(0)', filter: 'blur(0)' }], timing),
+    outgoing.animate([{ opacity: 1, transform: 'translateX(0)' }, { opacity: 0, transform: `translateX(${-direction * 22}px)` }], timing),
+    panel.animate([{ height: `${oldHeight}px` }, { height: `${body.getBoundingClientRect().height}px` }], timing)
+  ] };
+  profileTransition = transition;
+  await Promise.all(transition.animations.map(animation => animation.finished.catch(() => {})));
+  if (profileTransition === transition) stopProfileTransition();
+}
+async function toggleRecentOrders(button) {
+  const list = $('#recent-orders-list');
+  if (!list) return;
+  const open = button.getAttribute('aria-expanded') !== 'true';
+  const from = list.hidden ? 0 : list.getBoundingClientRect().height;
+  ordersTransition?.cancel();
+  button.setAttribute('aria-expanded', String(open));
+  list.hidden = false;
+  if (!list.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) { list.hidden = !open; return; }
+  const animation = list.animate([{ height: `${from}px`, opacity: open ? 0 : 1 }, { height: open ? `${list.scrollHeight}px` : '0px', opacity: open ? 1 : 0 }], { duration: 260, easing: 'ease', fill: 'both' });
+  ordersTransition = animation;
+  await animation.finished.catch(() => {});
+  if (ordersTransition !== animation) return;
+  list.hidden = !open;
+  animation.cancel();
+  ordersTransition = undefined;
+}
 function renderProfile(tab = 'overview') {
   const text = key => typeof user?.[key] === 'string' ? user[key].slice(0, 80) : '';
   const name = [text('first_name'), text('last_name')].filter(Boolean).join(' ') || text('username') || 'Гость';
   const initials = [text('first_name'), text('last_name')].filter(Boolean).map(value => [...value][0]).join('').toUpperCase();
   const { count, amount } = cartSummary();
+  profileTab = tab;
   show(`<div class="profile-card">
       <div class="profile-identity"><span class="profile-avatar">${initials ? escape(initials) : icons.user}</span><div><h2>${escape(name)}</h2>${text('username') ? `<span class="profile-username">@${escape(text('username'))}</span>` : ''}</div></div>
-      <div class="profile-stats"><div><span>В КОРЗИНЕ</span><strong>${count}</strong></div><div><span>СУММА</span><strong>${money(amount)}</strong></div></div>
+      <div class="profile-stats"><div><span>В КОРЗИНЕ</span><strong>${count}</strong></div><div><span>СУММА</span><strong>${moneyMarkup(amount)}</strong></div></div>
     </div>
-    <div class="profile-tabs" role="tablist" aria-label="Разделы профиля">
+    <div class="profile-tabs" role="tablist" aria-label="Разделы профиля" data-active="${tab}">
+      <span class="profile-tab-indicator" aria-hidden="true"></span>
       <button role="tab" id="profile-overview" aria-controls="profile-panel" aria-selected="${tab === 'overview'}" tabindex="${tab === 'overview' ? 0 : -1}" data-profile-tab="overview">Обзор</button>
       <button role="tab" id="profile-referral" aria-controls="profile-panel" aria-selected="${tab === 'referral'}" tabindex="${tab === 'referral' ? 0 : -1}" data-profile-tab="referral">Реферальная программа</button>
     </div>
-    <div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-${tab}">
-      ${tab === 'overview' ? `<button class="profile-link" data-open-cart>${icons.bag}<span>Моя корзина</span>${icons.arrow}</button><p class="profile-hint">Выбранные товары сохраняются на этом устройстве.</p>` : referralContent()}
-    </div>`, 'profile', false);
-  void animate($('.profile-panel'), [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 200 });
+    <div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-${tab}"><div class="profile-body" id="profile-body">${profileContent(tab)}</div></div>`, 'profile', false);
 }
+
 function renderCart(shouldAnimate = true) {
   const items = cartItems(), { count, amount } = cartSummary();
   show(`<div class="cart-heading"><span class="sheet-kicker">ВАШ ВЫБОР</span><h2>Корзина <span>${count}</span></h2></div>
     ${!data ? '<p>Сначала загрузите каталог, чтобы проверить наличие и цены.</p>' : items.length ? `
       <div class="cart-items">${items.map(({ product, quantity }) => `<div class="cart-item" data-cart-item="${product.id}">
         <button class="cart-item-photo" data-open-product="${product.id}" aria-label="Открыть: ${escape(product.name)}">${photo(product)}</button>
-        <div class="cart-item-body"><button class="cart-item-name" data-open-product="${product.id}">${escape(product.name)}</button><span class="cart-unit-price">${money(product.price)} / шт.</span>
+        <div class="cart-item-body"><button class="cart-item-name" data-open-product="${product.id}">${escape(product.name)}</button><span class="cart-unit-price">${moneyMarkup(product.price)} / шт.</span>
           <div class="cart-item-controls"><div class="quantity-control">
             <button data-cart-id="${product.id}" data-cart-change="-1" aria-label="Уменьшить количество: ${escape(product.name)}">${icons.minus}</button>
             <output aria-label="Количество: ${escape(product.name)}">${quantity}</output>
             <button data-cart-id="${product.id}" data-cart-change="1" aria-label="Увеличить количество: ${escape(product.name)}" ${quantity >= maxQuantity(product) ? 'disabled' : ''}>${icons.plus}</button>
-          </div><strong>${money(product.price * quantity)}</strong></div>
+          </div><strong>${moneyMarkup(product.price * quantity)}</strong></div>
         </div>
         <button class="remove-item" data-remove="${product.id}" aria-label="Удалить: ${escape(product.name)}">${icons.trash}</button>
       </div>`).join('')}</div>
-      <div class="cart-total"><span>Итого</span><strong>${money(amount)}</strong></div>
+      <div class="cart-total"><span>Итого</span><strong>${moneyMarkup(amount)}</strong></div>
       <p class="cart-note">Товары в корзине не резервируются.</p>` : `<div class="cart-empty">${icons.bag}<h3>Корзина пока пуста</h3><p>Добавьте то, что вам понравилось.</p></div>`}
     <button class="primary-button" data-continue>${items.length ? 'Продолжить покупки' : 'Перейти в каталог'}${icons.arrow}</button>`, 'cart', shouldAnimate);
 }
@@ -380,6 +518,13 @@ async function continueShopping() {
   await closeDetails();
   $('#catalog').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 }
+
+const resizeCategoryPanel = () => {
+  positionCategoryIndicator();
+  centerActiveCategory();
+};
+if (window.ResizeObserver) new ResizeObserver(resizeCategoryPanel).observe($('#categories'));
+else window.addEventListener('resize', resizeCategoryPanel);
 
 $('#refresh').onclick = load;
 $('#profile-button').onclick = () => renderProfile();
@@ -419,7 +564,8 @@ $('#detail-content').onclick = event => {
     const id = Number(remove.dataset.remove);
     changeCart(id, -(cart.get(id) || 0));
   } else if (product) openProduct(Number(product.dataset.openProduct));
-  else if (tab) { renderProfile(tab.dataset.profileTab); $(`#profile-${tab.dataset.profileTab}`).focus({ preventScroll: true }); }
+  else if (tab) void switchProfileTab(tab.dataset.profileTab);
+  else if (event.target.closest('[data-toggle-orders]')) void toggleRecentOrders(event.target.closest('[data-toggle-orders]'));
   else if (event.target.closest('[data-open-cart]')) renderCart();
   else if (event.target.closest('[data-continue]')) void continueShopping();
 };
@@ -428,8 +574,7 @@ $('#detail-content').addEventListener('keydown', event => {
   event.preventDefault();
   const current = $('[role="tab"][aria-selected="true"]').dataset.profileTab;
   const tab = event.key === 'Home' ? 'overview' : event.key === 'End' ? 'referral' : current === 'overview' ? 'referral' : 'overview';
-  renderProfile(tab);
-  $(`#profile-${tab}`).focus();
+  void switchProfileTab(tab);
 });
 document.addEventListener('click', event => { if (event.target.id === 'retry') load(); });
 load();

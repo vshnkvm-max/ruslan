@@ -38,9 +38,13 @@ try {
   const slideToCategory = async (name, direction, expectedCount) => {
     await settle();
     const state = await page.evaluate(async name => {
-      [...document.querySelectorAll('[data-category]')].find(button => button.textContent === name).click();
-      await new Promise(requestAnimationFrame);
-      await new Promise(requestAnimationFrame);
+      const buttons = [...document.querySelectorAll('[data-category]')];
+      const marker = document.querySelector('#category-indicator');
+      const startMarkerX = new DOMMatrixReadOnly(getComputedStyle(marker).transform).m41;
+      buttons.find(button => button.textContent === name).click();
+      const animations = document.getAnimations().filter(animation => animation.playState !== 'finished');
+      await Promise.all(animations.map(animation => animation.ready));
+      animations.forEach(animation => { animation.currentTime = 120; });
       const viewport = document.querySelector('#catalog-viewport');
       const current = document.querySelector('#catalog-page');
       const outgoing = document.querySelector('.outgoing-catalog-page');
@@ -52,7 +56,11 @@ try {
         clipped: getComputedStyle(viewport).overflowX === 'hidden',
         overflow: document.documentElement.scrollWidth > innerWidth,
         count: document.querySelectorAll('#products .product').length,
-        busy: viewport.getAttribute('aria-busy')
+        busy: viewport.getAttribute('aria-busy'),
+        markerDirection: Math.sign(new DOMMatrixReadOnly(getComputedStyle(marker).transform).m41 - startMarkerX),
+        buttonsRetained: buttons.every(button => button.isConnected),
+        wind: Boolean(document.querySelector('.category-wind')),
+        movingBlur: parseFloat(getComputedStyle(current).filter.replace('blur(', '')) > 0
       };
     }, name);
     assert.equal(Math.sign(state.incomingX), direction, 'incoming category slides from the correct side');
@@ -62,11 +70,21 @@ try {
     assert.equal(state.overflow, false);
     assert.equal(state.count, expectedCount);
     assert.equal(state.busy, 'true');
+    assert.equal(state.markerDirection, direction, 'panel highlight glides towards the selected category');
+    assert.ok(state.buttonsRetained);
+    assert.ok(state.wind);
+    assert.ok(state.movingBlur);
     await settle();
     assert.equal(await page.locator('.outgoing-catalog-page').count(), 0);
     assert.equal(await page.locator('#catalog-viewport').getAttribute('aria-busy'), null);
     assert.equal(await page.locator('#products .product').count(), expectedCount);
     assert.equal(await page.locator('#catalog-page').evaluate(element => element.inert), false);
+    assert.equal(await page.locator('.category-wind').count(), 0);
+    assert.ok(await page.evaluate(() => {
+      const button = document.querySelector('#categories [aria-pressed="true"]').getBoundingClientRect();
+      const marker = document.querySelector('#category-indicator').getBoundingClientRect();
+      return Math.abs(button.left - marker.left) < 1 && Math.abs(button.width - marker.width) < 1;
+    }));
   };
 
   await page.goto(base + '/miniapp');
@@ -77,6 +95,7 @@ try {
   assert.equal(await page.locator('#shop-info').count(), 0);
   assert.equal(await page.locator('.currency').count(), 0);
   assert.equal(await page.locator('#shop-name').textContent(), 'GAS SHOP');
+  assert.match(await page.locator('.category-bar').evaluate(element => getComputedStyle(element).backdropFilter), /blur/);
   await page.waitForFunction(() => [...document.querySelectorAll('.story img')].every(image => image.complete && image.naturalWidth > 0));
   for (const asset of ['important', 'referral', 'reviews']) {
     const response = await fetch(`${base}/miniapp/${asset}.svg`);
@@ -86,10 +105,29 @@ try {
   await page.locator('#profile-button').click();
   await page.getByRole('heading', { name: 'Александр Морозов' }).waitFor();
   assert.equal(await page.locator('.profile-stats strong').first().textContent(), '0');
-  await page.getByRole('tab', { name: 'Реферальная программа' }).click();
+  await page.locator('[data-toggle-orders]').click();
+  await page.getByText('История заказов пока недоступна.', { exact: true }).waitFor();
+  await settle();
+  const profileMotion = await page.evaluate(async () => {
+    const card = document.querySelector('.profile-card');
+    const cardTop = card.getBoundingClientRect().top;
+    document.querySelector('#profile-referral').click();
+    const animations = document.getAnimations().filter(animation => animation.playState !== 'finished');
+    await Promise.all(animations.map(animation => animation.ready));
+    animations.forEach(animation => { animation.currentTime = 120; });
+    const body = document.querySelector('#profile-body');
+    return { headerShift: card.getBoundingClientRect().top - cardTop, retained: card === document.querySelector('.profile-card'), outgoing: Boolean(document.querySelector('.outgoing-profile-body')), opacity: Number(getComputedStyle(body).opacity) };
+  });
+  assert.ok(profileMotion.retained);
+  assert.ok(Math.abs(profileMotion.headerShift) < 1, 'profile header stays in place');
+  assert.ok(profileMotion.outgoing);
+  assert.ok(profileMotion.opacity > 0 && profileMotion.opacity < 1);
   await page.getByText('Реферальная программа пока не действует.', { exact: true }).waitFor();
   await page.keyboard.press('ArrowLeft');
+  await settle();
   assert.equal(await page.getByRole('tab', { name: 'Обзор' }).getAttribute('aria-selected'), 'true');
+  assert.equal(await page.locator('.outgoing-profile-body').count(), 0);
+  assert.equal(await page.locator('#profile-body').evaluate(element => element.inert), false);
   await close();
   await page.locator('#cart-tab').click();
   await page.getByText('Корзина пока пуста', { exact: true }).waitFor();
@@ -124,6 +162,7 @@ try {
   const view = page.waitForResponse(response => response.url().endsWith('/products/2/view'));
   await page.locator('[data-product="2"]').click();
   await view;
+  assert.equal(await page.locator('#detail-content .price .currency-symbol').evaluate(element => getComputedStyle(element).fontWeight), '400');
   await page.locator('#product-add').click();
   assert.equal(await page.locator('#cart-badge').textContent(), '1');
   await page.locator('#product-add').click();
@@ -244,6 +283,9 @@ try {
   assert.equal(await page.locator('.outgoing-catalog-page').count(), 0);
   assert.equal(await page.locator('#catalog-viewport').getAttribute('aria-busy'), null);
   await page.locator('#profile-button').click();
+  await page.getByRole('tab', { name: 'Реферальная программа' }).click();
+  await page.getByRole('tab', { name: 'Обзор' }).click();
+  assert.equal(await page.locator('.outgoing-profile-body').count(), 0);
   await close();
   assert.equal(await page.evaluate(() => window.motionLog.length), motionCount);
   await page.evaluate(() => localStorage.setItem('gas-cart:v1:101', '{broken'));
