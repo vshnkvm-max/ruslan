@@ -153,11 +153,19 @@ try {
   assert.ok(await page.locator('#cart-badge').isHidden());
   await close();
 
-  // Quick add must not register a product view, or permit an out-of-stock item.
+  // The whole catalog card, including its price, opens details. Adding stays in the details sheet.
+  assert.equal(await page.locator('#products [data-add]').count(), 0);
   const views = db.prepare('SELECT views FROM products WHERE id=1').get().views;
-  await page.locator('[data-add="1"]').click();
-  assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views);
-  assert.ok(await page.locator('[data-add="6"]').isDisabled());
+  const priceView = page.waitForResponse(response => response.url().endsWith('/products/1/view'));
+  await page.locator('[data-product="1"] .price').click();
+  await priceView;
+  await page.locator('#product-add').click();
+  assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views + 1);
+  await close();
+  assert.equal(await page.locator('[data-product="6"] .availability-badge').textContent(), 'Нет в наличии');
+  await page.locator('[data-product="6"]').click();
+  assert.ok(await page.locator('#product-add').isDisabled());
+  await close();
   await page.locator('[data-info="reviews"]').click();
   assert.equal(await page.locator('dialog .review').count(), 4);
   await close();
@@ -179,7 +187,12 @@ try {
         twoColumns: cards[0].top === cards[1].top && cards[2].top > cards[0].top,
         squareStories: stories.every(rect => Math.abs(rect.width - rect.height) < 1),
         order: rect('.stories').bottom < rect('#banner').top && rect('#banner').bottom < rect('.category-bar').top,
-        dock: rect('.bottom-nav').bottom <= innerHeight
+        dock: rect('.bottom-nav').bottom <= innerHeight,
+        cardContentFits: [...document.querySelectorAll('#products .product')].every(card => {
+          const bounds = card.getBoundingClientRect();
+          const price = card.querySelector('.product-bottom').getBoundingClientRect();
+          return price.bottom <= bounds.bottom && price.left >= bounds.left && price.right <= bounds.right;
+        })
       };
     });
     assert.equal(layout.overflow, false, `overflow at ${width}`);
@@ -188,6 +201,7 @@ try {
     assert.ok(layout.squareStories);
     assert.ok(layout.order);
     assert.ok(layout.dock);
+    assert.ok(layout.cardContentFits, `card contents fit at ${width}px`);
     await page.locator('#profile-button').click();
     await settle();
     assert.ok(await page.locator('#details').evaluate(element => element.scrollWidth <= element.clientWidth));
@@ -197,8 +211,10 @@ try {
 
   // Saved quantities, public prices and availability are always reconciled with current admin data.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('[data-add="2"]').click();
-  await page.locator('[data-add="2"]').click();
+  await page.locator('[data-product="2"]').click();
+  await page.locator('#product-add').click();
+  await page.locator('#product-add').click();
+  await close();
   assert.ok(await page.evaluate(() => window.motionLog.includes('cart-flight')));
   db.prepare('UPDATE products SET stock=0 WHERE id=1').run();
   db.prepare('UPDATE products SET stock=1,price=5000 WHERE id=2').run();
@@ -240,8 +256,9 @@ try {
   await guest.locator('#profile-button').click();
   await guest.getByRole('heading', { name: 'Гость' }).waitFor();
   await guest.locator('.close').click();
-  await guest.locator('[data-add="2"]').click();
-  await guest.locator('#cart-tab').click();
+  await guest.locator('[data-product="2"]').click();
+  await guest.locator('#product-add').click();
+  await guest.locator('#product-cart').click();
   assert.equal(await guest.locator('[data-cart-item]').count(), 1);
   await guest.close();
   console.log('Mini App passed: new icons, profile, local cart, stock limits, refreshed prices, persistence, bidirectional category slides, rapid switching, reduced motion, and layouts at 320/390/480/1280px.');

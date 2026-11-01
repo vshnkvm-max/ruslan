@@ -18,6 +18,7 @@ const icons = {
   user: icon('<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'),
   bag: icon('<path d="M4 7h16l-1 14H5ZM8 8V6a4 4 0 0 1 8 0v2"/>'),
   trash: icon('<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'),
+  chevron: icon('<path d="m9 5 7 7-7 7"/>'),
   check: icon('<path d="m5 12 4 4L19 6"/>')
 };
 const money = value => new Intl.NumberFormat('ru-RU', {
@@ -244,14 +245,16 @@ function render(animateProducts = true) {
   $('#count').textContent = `${items.length} товаров`;
   $('#products').innerHTML = items.map((product, index) => `
     <article class="product" style="--item-index:${Math.min(index, 7)}">
-      <button class="product-open" data-product="${product.id}">
-        ${photo(product)}
-        <div class="product-body"><small class="product-category">${escape(product.category)}</small><h3>${escape(product.name)}</h3></div>
+      <button class="product-open" data-product="${product.id}" aria-label="Открыть товар: ${escape(product.name)}">
+        <div class="catalog-photo">${photo(product)}
+          <span class="product-badge">${escape(product.category)}</span>
+          ${product.stock <= 0 ? '<span class="availability-badge">Нет в наличии</span>' : ''}
+        </div>
+        <div class="product-body">
+          <h3>${escape(product.name)}</h3>
+          <div class="product-bottom"><span class="price">${money(product.price)}</span><span class="product-chevron" aria-hidden="true">${icons.chevron}</span></div>
+        </div>
       </button>
-      <div class="product-purchase">
-        <div class="product-bottom"><span class="price">${money(product.price)}</span><button class="quick-add" data-add="${product.id}" aria-label="Добавить в корзину: ${escape(product.name)}" ${product.stock <= 0 ? 'disabled' : ''}>${icons.plus}</button></div>
-        <span class="stock ${product.stock > 0 ? 'in-stock' : ''}">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</span>
-      </div>
     </article>`).join('');
   $('#status').hidden = Boolean(items.length);
   $('#status').textContent = data.products.length ? 'В этой категории пока нет товаров.' : 'Товары скоро появятся. Загляните чуть позже.';
@@ -388,8 +391,6 @@ $('#categories').onclick = event => {
   void selectCategory(button.dataset.category);
 };
 $('#products').onclick = event => {
-  const add = event.target.closest('[data-add]');
-  if (add) { changeCart(Number(add.dataset.add), 1, add); return; }
   const button = event.target.closest('[data-product]');
   if (button) openProduct(Number(button.dataset.product));
 };
