@@ -35,6 +35,40 @@ try {
   const settle = () => page.waitForFunction(() => document.getAnimations().every(animation =>
     animation.effect.getComputedTiming().iterations === Infinity || animation.playState === 'finished'));
 
+  const slideToCategory = async (name, direction, expectedCount) => {
+    await settle();
+    const state = await page.evaluate(async name => {
+      [...document.querySelectorAll('[data-category]')].find(button => button.textContent === name).click();
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      const viewport = document.querySelector('#catalog-viewport');
+      const current = document.querySelector('#catalog-page');
+      const outgoing = document.querySelector('.outgoing-catalog-page');
+      const bounds = viewport.getBoundingClientRect();
+      return {
+        incomingX: current.getBoundingClientRect().left - bounds.left,
+        outgoingX: outgoing?.getBoundingClientRect().left - bounds.left,
+        verticalShift: outgoing ? current.getBoundingClientRect().top - outgoing.getBoundingClientRect().top : null,
+        clipped: getComputedStyle(viewport).overflowX === 'hidden',
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        count: document.querySelectorAll('#products .product').length,
+        busy: viewport.getAttribute('aria-busy')
+      };
+    }, name);
+    assert.equal(Math.sign(state.incomingX), direction, 'incoming category slides from the correct side');
+    assert.equal(Math.sign(state.outgoingX), -direction, 'previous category slides in the opposite direction');
+    assert.ok(Math.abs(state.verticalShift) < 1, 'slide stays horizontal');
+    assert.ok(state.clipped);
+    assert.equal(state.overflow, false);
+    assert.equal(state.count, expectedCount);
+    assert.equal(state.busy, 'true');
+    await settle();
+    assert.equal(await page.locator('.outgoing-catalog-page').count(), 0);
+    assert.equal(await page.locator('#catalog-viewport').getAttribute('aria-busy'), null);
+    assert.equal(await page.locator('#products .product').count(), expectedCount);
+    assert.equal(await page.locator('#catalog-page').evaluate(element => element.inert), false);
+  };
+
   await page.goto(base + '/miniapp');
   await page.getByText('Товары скоро появятся.', { exact: false }).waitFor();
   assert.equal(await page.locator('footer').count(), 0);
@@ -62,17 +96,28 @@ try {
 
   insertTestFixtures(db);
   db.prepare('UPDATE products SET stock=2 WHERE id=2').run();
+  db.prepare("UPDATE settings SET value=? WHERE key='categories'").run(JSON.stringify(['Скоро']));
   await page.locator('#refresh').click();
   await page.locator('.product').first().waitFor();
   assert.equal(await page.locator('.product').count(), 12);
-  await page.getByRole('button', { name: 'Для дома', exact: true }).click();
-  assert.equal(await page.locator('.product').count(), 5);
+  await slideToCategory('Для дома', 1, 5);
   assert.equal(await page.getByRole('searchbox').count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Поиск товаров' }).count(), 0);
-  await page.getByRole('button', { name: 'Все товары', exact: true }).click();
-  assert.equal(await page.locator('.product').count(), 12);
-  await page.getByRole('button', { name: 'Для дома', exact: true }).click();
-  assert.equal(await page.locator('.product').count(), 5);
+  await slideToCategory('Все товары', -1, 12);
+  // Rapid selections must cancel old transitions and leave only the latest grid.
+  await page.evaluate(() => {
+    for (const name of ['Для дома', 'Аксессуары', 'Электроника', 'Для дома']) {
+      [...document.querySelectorAll('[data-category]')].find(button => button.textContent === name).click();
+    }
+  });
+  await settle();
+  assert.equal(await page.locator('#categories [aria-pressed="true"]').textContent(), 'Для дома');
+  assert.equal(await page.locator('#products .product').count(), 5);
+  assert.equal(await page.locator('.outgoing-catalog-page').count(), 0);
+  assert.equal(await page.locator('#catalog-viewport').evaluate(element => element.style.height), '');
+  await slideToCategory('Скоро', -1, 0);
+  await page.getByText('В этой категории пока нет товаров.', { exact: true }).waitFor();
+  await slideToCategory('Для дома', 1, 5);
   const before = db.prepare('SELECT views FROM products WHERE id=2').get().views;
   const view = page.waitForResponse(response => response.url().endsWith('/products/2/view'));
   await page.locator('[data-product="2"]').click();
@@ -170,6 +215,10 @@ try {
   assert.ok(await page.evaluate(() => window.motionLog.includes('details')));
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const motionCount = await page.evaluate(() => window.motionLog.length);
+  await page.getByRole('button', { name: 'Для дома', exact: true }).click();
+  assert.equal(await page.locator('#products .product').count(), 5);
+  assert.equal(await page.locator('.outgoing-catalog-page').count(), 0);
+  assert.equal(await page.locator('#catalog-viewport').getAttribute('aria-busy'), null);
   await page.locator('#profile-button').click();
   await close();
   assert.equal(await page.evaluate(() => window.motionLog.length), motionCount);
@@ -195,7 +244,7 @@ try {
   await guest.locator('#cart-tab').click();
   assert.equal(await guest.locator('[data-cart-item]').count(), 1);
   await guest.close();
-  console.log('Mini App passed: new icons, profile, local cart, stock limits, refreshed prices, persistence, animations, reduced motion, and layouts at 320/390/480/1280px.');
+  console.log('Mini App passed: new icons, profile, local cart, stock limits, refreshed prices, persistence, bidirectional category slides, rapid switching, reduced motion, and layouts at 320/390/480/1280px.');
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));

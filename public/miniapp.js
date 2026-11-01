@@ -30,6 +30,7 @@ const cartKey = `gas-cart:v1:${Number.isSafeInteger(user?.id) && user.id > 0 ? u
 const maxQuantity = product => Math.min(product.stock, 999);
 let data, category = '', loading = false, modalVersion = 0, toastTimer;
 let cart = readCart();
+let categorySlide;
 
 function readCart() {
   try {
@@ -178,7 +179,67 @@ async function closeDetails() {
 $('#details').addEventListener('close', () => { document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav('catalog'); });
 $('#details').addEventListener('cancel', event => { event.preventDefault(); void closeDetails(); });
 
-function render() {
+function stopCategorySlide() {
+  if (!categorySlide) return;
+  const slide = categorySlide;
+  categorySlide = undefined;
+  slide.animations.forEach(animation => animation.cancel());
+  slide.outgoing.remove();
+  $('#catalog-page').inert = false;
+  $('#catalog-viewport').classList.remove('is-sliding');
+  $('#catalog-viewport').style.height = '';
+  $('#catalog-viewport').removeAttribute('aria-busy');
+}
+
+async function selectCategory(next) {
+  const order = ['', ...data.categories];
+  if (next === category || !order.includes(next)) return;
+  const direction = order.indexOf(next) > order.indexOf(category) ? 1 : -1;
+  stopCategorySlide();
+  const viewport = $('#catalog-viewport'), page = $('#catalog-page');
+  const shouldSlide = Boolean(page.animate) && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const oldHeight = page.getBoundingClientRect().height;
+  const outgoing = shouldSlide ? page.cloneNode(true) : null;
+  category = next;
+  render(false);
+  const selected = $('#categories [aria-pressed="true"]');
+  selected.focus({ preventScroll: true });
+  selected.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  if (!shouldSlide) return;
+
+  // The old page is a visual snapshot; only the new page remains accessible.
+  outgoing.removeAttribute('id');
+  outgoing.querySelectorAll('[id]').forEach(element => element.removeAttribute('id'));
+  outgoing.classList.add('outgoing-catalog-page');
+  outgoing.setAttribute('aria-hidden', 'true');
+  outgoing.inert = true;
+  viewport.append(outgoing);
+  viewport.classList.add('is-sliding');
+  viewport.setAttribute('aria-busy', 'true');
+  viewport.style.height = `${oldHeight}px`;
+  page.inert = true;
+  const newHeight = page.getBoundingClientRect().height;
+  const timing = { duration: 300, easing: 'cubic-bezier(.22,.68,0,1)', fill: 'both' };
+  const slide = { outgoing, animations: [
+    page.animate([
+      { transform: `translate3d(${direction * 100}%, 0, 0)` },
+      { transform: 'translate3d(0, 0, 0)' }
+    ], timing),
+    outgoing.animate([
+      { transform: 'translate3d(0, 0, 0)' },
+      { transform: `translate3d(${-direction * 100}%, 0, 0)` }
+    ], timing),
+    viewport.animate([{ height: `${oldHeight}px` }, { height: `${newHeight}px` }], timing)
+  ] };
+  categorySlide = slide;
+  await Promise.all(slide.animations.map(animation => animation.finished.catch(() => {})));
+  // A newer selection or a catalog refresh may already have replaced this slide.
+  if (categorySlide === slide) stopCategorySlide();
+}
+
+function render(animateProducts = true) {
+  stopCategorySlide();
+  $('#catalog-page').classList.toggle('no-product-entrance', !animateProducts);
   const items = data.products.filter(product => !category || product.category === category);
   $('#count').textContent = `${items.length} товаров`;
   $('#products').innerHTML = items.map((product, index) => `
@@ -324,9 +385,7 @@ $('#catalog-tab').onclick = continueShopping;
 $('#categories').onclick = event => {
   const button = event.target.closest('[data-category]');
   if (!button) return;
-  category = button.dataset.category;
-  render();
-  $('#categories [aria-pressed="true"]').scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  void selectCategory(button.dataset.category);
 };
 $('#products').onclick = event => {
   const add = event.target.closest('[data-add]');
