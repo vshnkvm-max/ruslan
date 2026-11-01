@@ -67,9 +67,12 @@ try {
   assert.equal(await page.locator('.product').count(), 12);
   await page.getByRole('button', { name: 'Для дома', exact: true }).click();
   assert.equal(await page.locator('.product').count(), 5);
-  await page.locator('#search-toggle').click();
-  await page.locator('#search').fill('Лампа');
-  assert.equal(await page.locator('.product').count(), 2);
+  assert.equal(await page.getByRole('searchbox').count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Поиск товаров' }).count(), 0);
+  await page.getByRole('button', { name: 'Все товары', exact: true }).click();
+  assert.equal(await page.locator('.product').count(), 12);
+  await page.getByRole('button', { name: 'Для дома', exact: true }).click();
+  assert.equal(await page.locator('.product').count(), 5);
   const before = db.prepare('SELECT views FROM products WHERE id=2').get().views;
   const view = page.waitForResponse(response => response.url().endsWith('/products/2/view'));
   await page.locator('[data-product="2"]').click();

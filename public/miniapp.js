@@ -179,9 +179,7 @@ $('#details').addEventListener('close', () => { document.body.style.overflow = '
 $('#details').addEventListener('cancel', event => { event.preventDefault(); void closeDetails(); });
 
 function render() {
-  const query = $('#search').value.trim().toLocaleLowerCase('ru');
-  const items = data.products.filter(product => (!category || product.category === category)
-    && (!query || `${product.name} ${product.short_description} ${product.category}`.toLocaleLowerCase('ru').includes(query)));
+  const items = data.products.filter(product => !category || product.category === category);
   $('#count').textContent = `${items.length} товаров`;
   $('#products').innerHTML = items.map((product, index) => `
     <article class="product" style="--item-index:${Math.min(index, 7)}">
@@ -195,7 +193,7 @@ function render() {
       </div>
     </article>`).join('');
   $('#status').hidden = Boolean(items.length);
-  $('#status').textContent = data.products.length ? 'По вашему запросу ничего не найдено.' : 'Товары скоро появятся. Загляните чуть позже.';
+  $('#status').textContent = data.products.length ? 'В этой категории пока нет товаров.' : 'Товары скоро появятся. Загляните чуть позже.';
   const scroll = $('#categories').scrollLeft;
   $('#categories').innerHTML = [['', 'Все товары'], ...data.categories.map(name => [name, name])]
     .map(([value, label]) => `<button data-category="${escape(value)}" aria-pressed="${category === value}">${escape(label)}</button>`).join('');
@@ -323,21 +321,6 @@ $('#refresh').onclick = load;
 $('#profile-button').onclick = () => renderProfile();
 $('#cart-tab').onclick = () => renderCart();
 $('#catalog-tab').onclick = continueShopping;
-$('#search-toggle').onclick = async () => {
-  const open = $('#search-panel').hidden;
-  $('#search-toggle').setAttribute('aria-expanded', String(open));
-  if (open) {
-    $('#search-panel').hidden = false;
-    void animate($('#search-panel'), [{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'translateY(0)' }]);
-    $('#search').focus();
-  } else {
-    await animate($('#search-panel'), [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-6px)' }], { duration: 140 });
-    $('#search-panel').hidden = true;
-    $('#search').value = '';
-    if (data) render();
-  }
-};
-$('#search').oninput = () => { if (data) render(); };
 $('#categories').onclick = event => {
   const button = event.target.closest('[data-category]');
   if (!button) return;

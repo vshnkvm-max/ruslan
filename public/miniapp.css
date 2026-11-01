@@ -21,7 +21,7 @@ svg { display: block; }
 #shop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
 .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .icon-button { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 50%; color: #66565e; background: #f7f3f4; }
-.icon-button svg, .search svg, .bottom-tab svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.icon-button svg, .bottom-tab svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .refresh-button { background: var(--red); color: #fff; }
 .refresh-button:disabled { opacity: .5; }
 main { padding: 0 22px 100px; }
@@ -33,9 +33,6 @@ main { padding: 0 22px 100px; }
 #banner h2 { font-size: 17px; font-weight: 800; line-height: 1.15; letter-spacing: -.4px; margin: 0; overflow-wrap: anywhere; }
 #banner p { margin: 6px 0 0; font-size: 11px; line-height: 1.4; color: #ffdde2; overflow-wrap: anywhere; }
 .banner-link { position: absolute; right: 16px; top: calc(50% - 17px); display: grid; place-items: center; background: #fff; color: var(--red); border-radius: 50%; width: 34px; height: 34px; text-decoration: none; font-size: 20px; }
-.search { display: flex; align-items: center; gap: 10px; padding: 12px 15px; background: #fff; border-radius: 16px; margin-bottom: 12px; color: var(--muted); }
-.search svg { flex-shrink: 0; width: 18px; height: 18px; }
-.search input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; font-size: 13px; color: inherit; }
 .category-bar { display: flex; gap: 6px; align-items: center; background: #eae5e7; border-radius: 28px; padding: 5px; margin-bottom: 16px; }
 #categories { display: flex; flex: 1; min-width: 0; gap: 4px; overflow-x: auto; scrollbar-width: none; border-radius: 24px; }
 #categories::-webkit-scrollbar { display: none; }
