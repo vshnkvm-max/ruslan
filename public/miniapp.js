@@ -323,8 +323,6 @@ function render(animateProducts = true) {
 async function load() {
   if (loading) return;
   loading = true;
-  $('#refresh').disabled = true;
-  $('#refresh').classList.add('refreshing');
   try {
     const response = await fetch('/api/storefront', { credentials: 'omit', cache: 'no-store' });
     if (!response.ok) throw Error();
@@ -347,8 +345,6 @@ async function load() {
     $('#status').innerHTML = 'Не удалось обновить каталог.<br><button class="retry" id="retry">Повторить</button>';
   } finally {
     loading = false;
-    $('#refresh').disabled = false;
-    $('#refresh').classList.remove('refreshing');
   }
 }
 function openProduct(id) {
@@ -562,7 +558,6 @@ const resizeCategoryPanel = () => {
 if (window.ResizeObserver) new ResizeObserver(resizeCategoryPanel).observe($('#categories'));
 else window.addEventListener('resize', resizeCategoryPanel);
 
-$('#refresh').onclick = load;
 $('#profile-button').onclick = () => renderProfile();
 $('#cart-tab').onclick = () => { void navigateToPage('cart'); };
 $('#catalog-tab').onclick = () => { void navigateToPage('home'); };

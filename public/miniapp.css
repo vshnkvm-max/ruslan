@@ -20,11 +20,7 @@ svg { display: block; }
 .miniapp { max-width: 480px; min-height: 100dvh; margin: auto; padding-top: max(12px, env(safe-area-inset-top)); background: var(--page); }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 14px 22px; padding: 8px 10px; background: #fff; border-radius: 32px; }
 #shop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 750; }
-.header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-.icon-button { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 50%; color: #66565e; background: #f7f3f4; }
-.icon-button svg, .bottom-tab svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.refresh-button { background: var(--red); color: #fff; }
-.refresh-button:disabled { opacity: .5; }
+.bottom-tab svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 main { padding: 0 22px 100px; }
 .stories { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
 .story { position: relative; display: block; aspect-ratio: 1; padding: 0; border: 0; border-radius: var(--promo-radius); overflow: hidden; background: #ee0010; box-shadow: 0 5px 14px #d3000c14; }
@@ -150,7 +146,6 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 @keyframes backdrop-out { to { background-color: transparent; backdrop-filter: blur(0); } }
 @keyframes backdrop-in { from { background-color: transparent; backdrop-filter: blur(0); } }
 @keyframes dock-in { from { opacity: 0; transform: translate(-50%, 18px); } to { opacity: 1; transform: translate(-50%, 0); } }
-@keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: no-preference) {
   button, a { transition: color .2s, background-color .2s, transform .22s cubic-bezier(.2,.9,.3,1.25), box-shadow .2s; }
   button:not(:disabled):active, a:active { transform: scale(.94); }
@@ -162,7 +157,6 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
   .category-bar { animation: rise-in .45s .18s both; }
   .product { animation: rise-in .35s both; animation-delay: calc(var(--item-index) * 35ms); }
   .bottom-nav { animation: dock-in .4s .2s backwards; }
-  .refreshing svg { animation: spin .8s linear infinite; }
 }
 @media (hover: hover) {
   .story:hover img { transform: scale(1.05); }

@@ -150,21 +150,21 @@ try {
   insertTestFixtures(db);
   db.prepare('UPDATE products SET stock=2 WHERE id=2').run();
   db.prepare("UPDATE settings SET value=? WHERE key='categories'").run(JSON.stringify(['Скоро']));
-  await page.locator('#refresh').click();
+  await page.reload();
   await page.locator('.product').first().waitFor();
   assert.equal(await page.locator('.product').count(), 12);
   // Banner visibility and content follow the admin data, including removing the final active banner.
   const banners = db.prepare('SELECT * FROM banners ORDER BY id').all();
   await page.locator('#banner h2').filter({ hasText: banners[0].title }).waitFor();
   db.prepare('UPDATE banners SET active=0 WHERE id=?').run(banners[0].id);
-  await page.locator('#refresh').click();
+  await page.reload();
   await page.locator('#banner h2').filter({ hasText: banners[1].title }).waitFor();
   db.prepare('UPDATE banners SET active=0').run();
-  await page.locator('#refresh').click();
+  await page.reload();
   await page.locator('#banner').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('#banner').textContent(), '');
   db.prepare('UPDATE banners SET active=1,title=?,subtitle=? WHERE id=?').run('Баннер из админки', 'Условия из редактора магазина', banners[0].id);
-  await page.locator('#refresh').click();
+  await page.reload();
   await page.getByRole('heading', { name: 'Баннер из админки', exact: true }).waitFor();
   await page.getByText('Условия из редактора магазина', { exact: true }).waitFor();
   await slideToCategory('Для дома', 1, 5);
