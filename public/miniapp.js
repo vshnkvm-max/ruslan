@@ -2,8 +2,8 @@ const telegram = window.Telegram?.WebApp;
 if (telegram) {
   telegram.ready();
   telegram.expand();
-  telegram.setHeaderColor?.('#f6f3f3');
-  telegram.setBackgroundColor?.('#f6f3f3');
+  telegram.setHeaderColor?.('#540006');
+  telegram.setBackgroundColor?.('#540006');
 }
 
 const $ = selector => document.querySelector(selector);
@@ -36,6 +36,8 @@ let cart = readCart();
 let categorySlide;
 let categoryMenuKey;
 let profileTab = 'overview', profileTransition, ordersTransition;
+let activePage = 'home', pageSwitchVersion = 0, pageTransition;
+const pageScroll = { home: 0, cart: 0 };
 
 function readCart() {
   try {
@@ -120,13 +122,13 @@ function changeCart(id, delta, source) {
   if (delta > 0) {
     flyToCart(source);
     void animate(source, [{ transform: 'scale(.8)' }, { transform: 'scale(1.12)' }, { transform: 'scale(1)' }]);
-    if ($('#details').dataset.view !== 'cart') notify('Товар добавлен в корзину');
+    if (activePage !== 'cart' || $('#details').open) notify('Товар добавлен в корзину');
   }
-  if ($('#details').open && $('#details').dataset.view === 'cart') {
-    renderCart(false);
+  if (activePage === 'cart') {
+    renderCart();
     const next = $(`[data-cart-id="${id}"][data-cart-change="${delta}"]:not(:disabled)`)
       || $(`[data-cart-id="${id}"][data-cart-change="-1"]`) || $('[data-continue]');
-    next?.focus({ preventScroll: true });
+    if (!$('#details').open) next?.focus({ preventScroll: true });
   }
   void animate($(`[data-cart-item="${id}"] .quantity-control output`), [{ opacity: .3, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 160 });
   updateProductAddButton();
@@ -167,7 +169,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   dialog.dataset.view = view;
   content.innerHTML = html;
   content.querySelector('h2').id = 'detail-title';
-  setNav(view);
+  setNav(activePage === 'cart' ? 'cart' : 'catalog');
   if (!wasOpen) {
     dialog.showModal();
     document.body.style.overflow = 'hidden';
@@ -186,13 +188,13 @@ async function closeDetails() {
   if (version !== modalVersion) return;
   dialog.close();
 }
-$('#details').addEventListener('close', () => { document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav('catalog'); });
+$('#details').addEventListener('close', () => { document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav(activePage === 'cart' ? 'cart' : 'catalog'); });
 $('#details').addEventListener('cancel', event => { event.preventDefault(); void closeDetails(); });
 
 function positionCategoryIndicator(smooth = false) {
   const selected = $('#categories [aria-pressed="true"]');
   const indicator = $('#category-indicator');
-  if (!selected || !indicator) return;
+  if (!selected || !indicator || !$('#categories').clientWidth) return;
   if (!smooth) indicator.setAttribute('data-instant', '');
   indicator.style.width = `${selected.offsetWidth}px`;
   indicator.style.transform = `translate3d(${selected.offsetLeft}px, 0, 0)`;
@@ -205,7 +207,7 @@ function positionCategoryIndicator(smooth = false) {
 }
 function centerActiveCategory(smooth = false) {
   const menu = $('#categories'), selected = $('#categories [aria-pressed="true"]');
-  if (!selected) return;
+  if (!selected || !menu.clientWidth) return;
   const left = selected.offsetLeft - (menu.clientWidth - selected.offsetWidth) / 2;
   menu.scrollTo({
     left: Math.max(0, Math.min(menu.scrollWidth - menu.clientWidth, left)),
@@ -305,7 +307,6 @@ function render(animateProducts = true) {
     <article class="product" style="--item-index:${Math.min(index, 7)}">
       <button class="product-open" data-product="${product.id}" aria-label="Открыть товар: ${escape(product.name)}">
         <div class="catalog-photo">${photo(product)}
-          <span class="product-badge">${escape(product.category)}</span>
           ${product.stock <= 0 ? '<span class="availability-badge">Нет в наличии</span>' : ''}
         </div>
         <div class="product-body">
@@ -340,6 +341,7 @@ async function load() {
     }
     reconcileCart();
     render();
+    if (activePage === 'cart') renderCart();
   } catch {
     $('#status').hidden = false;
     $('#status').innerHTML = 'Не удалось обновить каталог.<br><button class="retry" id="retry">Повторить</button>';
@@ -362,9 +364,10 @@ function openProduct(id) {
 }
 function updateProductAddButton() {
   const button = $('#product-add');
-  if (!button) return;
+  if (!button || !$('#details').open) return;
   $('#product-cart').hidden = cartSummary().count === 0;
   const product = data.products.find(item => item.id === Number(button.dataset.add));
+  if (!product) return;
   const quantity = cart.get(product.id) || 0;
   button.disabled = product.stock <= 0 || quantity >= maxQuantity(product);
   button.innerHTML = product.stock <= 0 ? 'Нет в наличии'
@@ -496,9 +499,9 @@ function renderProfile(tab = 'overview') {
     <div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-${tab}"><div class="profile-body" id="profile-body">${profileContent(tab)}</div></div>`, 'profile', false);
 }
 
-function renderCart(shouldAnimate = true) {
+function renderCart() {
   const items = cartItems(), { count, amount } = cartSummary();
-  show(`<div class="cart-heading"><span class="sheet-kicker">ВАШ ВЫБОР</span><h2>Корзина <span>${count}</span></h2></div>
+  $('#cart-content').innerHTML = `<div class="cart-heading"><span class="sheet-kicker">ВАШ ВЫБОР</span><h1>Корзина <span>${count}</span></h1></div>
     ${!data ? '<p>Сначала загрузите каталог, чтобы проверить наличие и цены.</p>' : items.length ? `
       <div class="cart-items">${items.map(({ product, quantity }) => `<div class="cart-item" data-cart-item="${product.id}">
         <button class="cart-item-photo" data-open-product="${product.id}" aria-label="Открыть: ${escape(product.name)}">${photo(product)}</button>
@@ -512,11 +515,44 @@ function renderCart(shouldAnimate = true) {
         <button class="remove-item" data-remove="${product.id}" aria-label="Удалить: ${escape(product.name)}">${icons.trash}</button>
       </div>`).join('')}</div>
       <div class="cart-total"><span>Итого</span><strong>${moneyMarkup(amount)}</strong></div>` : `<div class="cart-empty">${icons.bag}<h3>Корзина пока пуста</h3><p>Добавьте то, что вам понравилось.</p></div>`}
-    <button class="primary-button" data-continue>${items.length ? 'Продолжить покупки' : 'Перейти в каталог'}${icons.arrow}</button>`, 'cart', shouldAnimate);
+    <button class="primary-button" data-continue>${items.length ? 'Продолжить покупки' : 'Перейти в каталог'}${icons.arrow}</button>`;
+}
+async function navigateToPage(next, { toCatalog = false } = {}) {
+  if (!['home', 'cart'].includes(next)) return;
+  const version = ++pageSwitchVersion;
+  await closeDetails();
+  if (version !== pageSwitchVersion || $('#details').open) return;
+  if (next === activePage) {
+    if (next === 'cart') renderCart();
+    setNav(next === 'cart' ? 'cart' : 'catalog');
+    if (toCatalog) $('#catalog').scrollIntoView({ behavior: 'instant', block: 'start' });
+    return;
+  }
+  pageTransition?.cancel();
+  pageScroll[activePage] = window.scrollY;
+  stopCategorySlide();
+  const previous = $(`#${activePage}-page`), target = $(`#${next}-page`);
+  const transferFocus = previous.contains(document.activeElement);
+  if (next === 'cart') renderCart();
+  previous.hidden = true;
+  target.hidden = false;
+  activePage = next;
+  setNav(next === 'cart' ? 'cart' : 'catalog');
+  window.scrollTo({ top: pageScroll[next], behavior: 'instant' });
+  if (toCatalog) $('#catalog').scrollIntoView({ behavior: 'instant', block: 'start' });
+  if (next === 'home') positionCategoryIndicator();
+  if (transferFocus) target.focus({ preventScroll: true });
+  if (!target.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const animation = target.animate([
+    { opacity: 0, transform: `translateX(${next === 'cart' ? 18 : -18}px)` },
+    { opacity: 1, transform: 'translateX(0)' }
+  ], { duration: 240, easing: 'cubic-bezier(.22,.8,.25,1)' });
+  pageTransition = animation;
+  await animation.finished.catch(() => {});
+  if (pageTransition === animation) pageTransition = undefined;
 }
 async function continueShopping() {
-  await closeDetails();
-  $('#catalog').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+  await navigateToPage('home', { toCatalog: true });
 }
 
 const resizeCategoryPanel = () => {
@@ -528,8 +564,8 @@ else window.addEventListener('resize', resizeCategoryPanel);
 
 $('#refresh').onclick = load;
 $('#profile-button').onclick = () => renderProfile();
-$('#cart-tab').onclick = () => renderCart();
-$('#catalog-tab').onclick = continueShopping;
+$('#cart-tab').onclick = () => { void navigateToPage('cart'); };
+$('#catalog-tab').onclick = () => { void navigateToPage('home'); };
 $('#categories').onclick = event => {
   const button = event.target.closest('[data-category]');
   if (!button) return;
@@ -552,7 +588,7 @@ $('#details').onclick = event => {
     if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) void closeDetails();
   }
 };
-$('#detail-content').onclick = event => {
+function handleCartAction(event) {
   const add = event.target.closest('[data-add]');
   const quantity = event.target.closest('[data-cart-change]');
   const remove = event.target.closest('[data-remove]');
@@ -566,9 +602,11 @@ $('#detail-content').onclick = event => {
   } else if (product) openProduct(Number(product.dataset.openProduct));
   else if (tab) void switchProfileTab(tab.dataset.profileTab);
   else if (event.target.closest('[data-toggle-orders]')) void toggleRecentOrders(event.target.closest('[data-toggle-orders]'));
-  else if (event.target.closest('[data-open-cart]')) renderCart();
+  else if (event.target.closest('[data-open-cart]')) void navigateToPage('cart');
   else if (event.target.closest('[data-continue]')) void continueShopping();
-};
+}
+$('#detail-content').onclick = handleCartAction;
+$('#cart-content').onclick = handleCartAction;
 $('#detail-content').addEventListener('keydown', event => {
   if (!event.target.closest('[role="tablist"]') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1254 1254" width="1254" height="1254">
+ <defs>
+  <linearGradient id="base" x2="1" y2="1"><stop stop-color="#5c0003"/><stop offset=".5" stop-color="#310002"/><stop offset="1" stop-color="#780004"/></linearGradient>
+  <linearGradient id="red" x1="0" y1="1" x2=".8" y2="0"><stop stop-color="#d90008"/><stop offset=".55" stop-color="#a40005"/><stop offset="1" stop-color="#680003"/></linearGradient>
+  <linearGradient id="bright" x2=".7" y2="1"><stop stop-color="#f0000c"/><stop offset="1" stop-color="#9a0005"/></linearGradient>
+  <radialGradient id="glow"><stop stop-color="#f2000d" stop-opacity=".6"/><stop offset="1" stop-color="#a00000" stop-opacity="0"/></radialGradient>
+ </defs>
+ <rect width="1254" height="1254" fill="url(#base)"/>
+ <path d="M0 0h161c78 114 194 69 263 179 57 91-4 177 128 260 108 70 197-10 268 31 87 50 68 134 169 155 96 19 176-61 265-86v715H0Z" fill="url(#red)"/>
+ <ellipse cx="178" cy="699" rx="470" ry="540" fill="url(#glow)"/>
+ <path d="M0 502c157-1 236 112 232 267-4 204 130 223 281 330l189 155H0Z" fill="url(#bright)"/>
+ <path d="M1254 675c-143-26-259 60-342 159-81 98-112 201-213 268-68 44-160 57-241 85l97 67h699Z" fill="url(#bright)"/>
+ <path d="M911 183c65-37 130-1 181 44 54 48 79 103 61 145-16 37-56 46-84 16-32-34-29-59-77-69-29-7-92 8-116-31-32-50-8-82 35-105Z" fill="url(#bright)"/>
+ <ellipse cx="1098" cy="495" rx="31" ry="37" transform="rotate(20 1098 495)" fill="url(#bright)"/>
+ <g fill="none" stroke="#ff3040" stroke-width="2.6" opacity=".7">
+  <circle cx="-1" cy="500" r="123"/><circle cx="-1" cy="500" r="205"/><circle cx="-1" cy="500" r="286"/><circle cx="-1" cy="500" r="374"/>
+  <path d="M281 1206c54-142 132-269 244-282 80-10 102 6 147-58 80-113 152-38 235 15 126 80 194-51 347-34"/>
+  <path d="M399 1217c47-125 86-207 204-223 95-14 96-54 188-46 130 11 168 101 304 25 55-30 109-27 159-26"/>
+  <path d="M497 1225c48-95 100-160 220-167 153-9 202 73 343 23 80-28 128-65 194-60"/>
+ </g>
+ <path d="M0 1012c161-23 231 118 349 154 77 23 126-2 200 13 60 11 101 44 153 75H0Z" fill="url(#base)"/>
+</svg>

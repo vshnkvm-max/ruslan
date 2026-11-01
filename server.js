@@ -188,7 +188,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         fail(404,'Маршрут не найден.');
       }
       if(method!=='GET'&&method!=='HEAD') fail(405,'Метод не поддерживается.');
-      const files={'/miniapp/important.svg':'miniapp/important.svg','/miniapp/referral.svg':'miniapp/referral.svg','/miniapp/reviews.svg':'miniapp/reviews.svg','/miniapp':'miniapp.html','/miniapp/':'miniapp.html','/miniapp.js':'miniapp.js','/miniapp.css':'miniapp.css','/':'index.html','/app.js':'app.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};
+      const files={'/miniapp/background.svg':'miniapp/background.svg','/miniapp/important.svg':'miniapp/important.svg','/miniapp/referral.svg':'miniapp/referral.svg','/miniapp/reviews.svg':'miniapp/reviews.svg','/miniapp':'miniapp.html','/miniapp/':'miniapp.html','/miniapp.js':'miniapp.js','/miniapp.css':'miniapp.css','/':'index.html','/app.js':'app.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};
       const file=files[path];if(!file) fail(404,'Страница не найдена.');
       const content=await readFile(resolve(root,'public',file));
       const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};

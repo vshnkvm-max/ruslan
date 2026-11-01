@@ -35,6 +35,13 @@ try {
   const settle = () => page.waitForFunction(() => document.getAnimations().every(animation =>
     animation.effect.getComputedTiming().iterations === Infinity || animation.playState === 'finished'));
 
+  const home = async () => {
+    await page.locator('#catalog-tab').click();
+    await page.locator('#home-page').waitFor({ state: 'visible' });
+    await page.locator('#cart-page').waitFor({ state: 'hidden' });
+    await settle();
+  };
+
   const slideToCategory = async (name, direction, expectedCount) => {
     await settle();
     const state = await page.evaluate(async name => {
@@ -99,7 +106,7 @@ try {
   assert.equal(await page.locator('#shop-name').textContent(), 'GAS SHOP');
   assert.match(await page.locator('.category-bar').evaluate(element => getComputedStyle(element).backdropFilter), /blur/);
   await page.waitForFunction(() => [...document.querySelectorAll('.story img')].every(image => image.complete && image.naturalWidth > 0));
-  for (const asset of ['important', 'referral', 'reviews']) {
+  for (const asset of ['important', 'referral', 'reviews', 'background']) {
     const response = await fetch(`${base}/miniapp/${asset}.svg`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /image\/svg\+xml/);
@@ -133,8 +140,12 @@ try {
   await close();
   await page.locator('#cart-tab').click();
   await page.getByText('Корзина пока пуста', { exact: true }).waitFor();
+  assert.ok(await page.locator('#details').isHidden());
+  assert.ok(await page.locator('#cart-page').isVisible());
+  assert.ok(await page.locator('.bottom-nav').isVisible());
   await page.locator('[data-continue]').click();
-  await page.locator('dialog').waitFor({ state: 'hidden' });
+  await page.locator('#cart-page').waitFor({ state: 'hidden' });
+  await settle();
 
   insertTestFixtures(db);
   db.prepare('UPDATE products SET stock=2 WHERE id=2').run();
@@ -186,7 +197,11 @@ try {
   assert.ok(await page.locator('#product-add').isDisabled());
   assert.equal(db.prepare('SELECT views FROM products WHERE id=2').get().views, before + 1);
   await close();
+  await page.evaluate(() => window.scrollTo(0, 200));
+  const homeScroll = await page.evaluate(() => window.scrollY);
   await page.locator('#cart-tab').click();
+  await page.locator('#cart-page').waitFor({ state: 'visible' });
+  assert.ok(await page.locator('#details').isHidden());
   assert.equal(await page.locator('[data-cart-item]').count(), 1);
   assert.equal(await page.locator('.quantity-control output').textContent(), '2');
   assert.ok(await page.locator('[data-cart-change="1"]').isDisabled());
@@ -196,7 +211,9 @@ try {
   await page.locator('[data-cart-change="1"]').click();
   await settle();
   await page.screenshot({ path: '/tmp/gas-cart.png' });
-  await close();
+  await home();
+  assert.equal(await page.locator('#categories [aria-pressed="true"]').textContent(), 'Для дома');
+  assert.ok(Math.abs(await page.evaluate(() => window.scrollY) - homeScroll) < 1);
   await page.reload();
   await page.locator('.product').first().waitFor();
   assert.equal(await page.locator('#cart-badge').textContent(), '2');
@@ -208,10 +225,11 @@ try {
   await page.locator('[data-remove="2"]').click();
   await page.getByText('Корзина пока пуста', { exact: true }).waitFor();
   assert.ok(await page.locator('#cart-badge').isHidden());
-  await close();
+  await home();
 
   // Quick add works independently; opening by price still counts one view and allows adding again.
   assert.equal(await page.locator('#products [data-add]').count(), 12);
+  assert.equal(await page.locator('#products .product-badge').count(), 0);
   const views = db.prepare('SELECT views FROM products WHERE id=1').get().views;
   await page.locator('#products [data-add="1"]').click();
   assert.ok(await page.locator('#details').isHidden());
@@ -267,10 +285,22 @@ try {
     assert.ok(layout.dock);
     assert.ok(layout.matchingBannerRadius, `matching banner and story corners at ${width}px`);
     assert.ok(layout.cardContentFits, `card contents fit at ${width}px`);
+    await page.locator('#cart-tab').click();
+    await page.locator('#cart-page').waitFor({ state: 'visible' });
+    await settle();
+    assert.ok(await page.locator('#details').isHidden());
+    assert.equal(await page.locator('#cart-tab').getAttribute('aria-current'), 'page');
+    assert.ok(await page.evaluate(() => {
+      const button = document.querySelector('#catalog-tab'), bounds = button.getBoundingClientRect();
+      return document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)?.closest('#catalog-tab') === button
+        && document.documentElement.scrollWidth <= innerWidth;
+    }), `navigation remains usable on cart at ${width}px`);
     await page.locator('#profile-button').click();
     await settle();
     assert.ok(await page.locator('#details').evaluate(element => element.scrollWidth <= element.clientWidth));
     await close();
+    assert.equal(await page.locator('#cart-tab').getAttribute('aria-current'), 'page');
+    await home();
     if (width === 390) await page.screenshot({ path: '/tmp/gas-miniapp.png' });
   }
 
@@ -290,10 +320,10 @@ try {
   assert.equal(await page.locator('[data-cart-item]').count(), 1);
   assert.equal(await page.locator('.quantity-control output').textContent(), '1');
   assert.match(await page.locator('.cart-total strong').textContent(), /5\D?000/);
-  await close();
+  await home();
 
   // Both explicit motion and the reduced-motion preference are respected.
-  assert.ok(await page.evaluate(() => window.motionLog.includes('details')));
+  assert.ok(await page.evaluate(() => window.motionLog.includes('cart-page')));
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const motionCount = await page.evaluate(() => window.motionLog.length);
   await page.getByRole('button', { name: 'Для дома', exact: true }).click();
@@ -327,6 +357,8 @@ try {
   await guest.locator('[data-product="2"]').click();
   await guest.locator('#product-add').click();
   await guest.locator('#product-cart').click();
+  await guest.locator('#cart-page').waitFor({ state: 'visible' });
+  assert.ok(await guest.locator('#details').isHidden());
   assert.equal(await guest.locator('[data-cart-item]').count(), 1);
   await guest.close();
   console.log('Mini App passed: new icons, profile, local cart, stock limits, refreshed prices, persistence, bidirectional category slides, rapid switching, reduced motion, and layouts at 320/390/480/1280px.');

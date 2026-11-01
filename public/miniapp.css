@@ -1,7 +1,7 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   color: #282127;
-  background: #eae6e7;
+  background: #540006;
   --red: #e71935;
   --muted: #93888e;
   --page: #f6f3f3;
@@ -117,8 +117,8 @@ dialog[data-view="profile"] { background: #f9f5f8b8; backdrop-filter: blur(24px)
 .referral-summary { display: grid; gap: 10px; padding: 20px; border-radius: 16px; color: var(--red); background: #fff0f3; font-size: 12px; }
 .referral-summary strong { font-size: 28px; }
 .sheet-kicker { display: block; font-size: 9px; letter-spacing: 1.8px; color: var(--muted); }
-.cart-heading h2 { display: flex; align-items: center; gap: 10px; margin: 8px 0 22px; }
-.cart-heading h2 span { display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 7px; border-radius: 50%; color: var(--red); background: #fff0f3; font-size: 12px; }
+.cart-heading h1 { display: flex; align-items: center; gap: 10px; margin: 8px 0 22px; }
+.cart-heading h1 span { display: grid; place-items: center; min-width: 26px; height: 26px; padding: 0 7px; border-radius: 50%; color: var(--red); background: #fff0f3; font-size: 12px; }
 .cart-empty { display: grid; justify-items: center; padding: 28px 0 10px; text-align: center; }
 .cart-empty > svg { width: 62px; height: 62px; fill: none; stroke: #e594a6; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
 .cart-empty h3 { margin: 20px 0 0; font-size: 17px; }
@@ -192,7 +192,6 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 
 .catalog-photo { position: relative; flex: 0 0 auto; width: 100%; }
 .catalog-photo .photo { width: 100%; border-radius: 16px; background-color: #eeebdf; }
-.product-badge { position: absolute; right: 7px; bottom: 7px; max-width: calc(100% - 14px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: 16px; padding: 5px 7px; background: var(--red); color: #fff; font-size: 8px; font-weight: 750; text-transform: uppercase; line-height: 1; }
 .availability-badge { position: absolute; left: 7px; top: 7px; border-radius: 12px; padding: 5px 7px; color: #756970; background: #fffffff0; font-size: 8px; line-height: 1; }
 .product .price { color: #ed001b; font-size: 15px; font-weight: 750; letter-spacing: -.3px; }
 .product-chevron { display: grid; place-items: center; flex: 0 0 18px; color: #4b444a; }
@@ -202,7 +201,6 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
   .product-body { padding-right: 4px; padding-left: 4px; }
   .product h3 { font-size: 12px; }
   .product .price { font-size: 14px; }
-  .product-badge { font-size: 7px; }
 }
 
 .quick-add { position: absolute; top: 16px; right: 16px; z-index: 1; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; color: var(--red); background: #fff; box-shadow: 0 2px 8px #43203112; }
@@ -216,15 +214,15 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 .category-indicator[data-instant] { transition: none; }
 
 /* Liquid Glass surfaces keep the red and white palette over a soft ambient background. */
-.miniapp { background: radial-gradient(ellipse at 105% 7%, #f3cad950, transparent 42%), radial-gradient(ellipse at -20% 45%, #ffffffd9, transparent 65%), #f3eff2; }
+.miniapp { background: transparent; }
 .topbar, .category-bar, .bottom-nav, .profile-card, .profile-link, .profile-tabs, .profile-stats > div, .recent-orders {
   border: 1px solid #ffffffb8;
-  background: linear-gradient(145deg, #ffffffe0, #ffffff69);
+  background: linear-gradient(145deg, #fffffff0, #ffffffda);
   -webkit-backdrop-filter: blur(22px) saturate(160%);
   backdrop-filter: blur(22px) saturate(160%);
   box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #ffffff70, 0 6px 24px #563c4b0b;
 }
-.product { border: 1px solid #ffffffb8; background: linear-gradient(145deg, #e7e2ece6, #eee8f06e);  box-shadow: inset 0 1px 1px #fff, 0 5px 18px #4e35440a; }
+.product { border: 1px solid #ffffffb8; background: linear-gradient(145deg, #f1eaf5ef, #f4eff3dc);  box-shadow: inset 0 1px 1px #fff, 0 5px 18px #4e35440a; }
 dialog, dialog[data-view="profile"] { background: linear-gradient(145deg, #fffefef0, #f5ebf2bd); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); border-color: #ffffffce; box-shadow: inset 0 1px 0 #fff, 0 22px 90px #3f27352b; }
 .category-indicator { background: linear-gradient(145deg, #fff, #ffffffb8); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); box-shadow: inset 0 1px 0 #fff, 0 2px 7px #51364712; }
 .currency-symbol { font-weight: 400; }
@@ -245,3 +243,12 @@ dialog, dialog[data-view="profile"] { background: linear-gradient(145deg, #fffef
 .category-wind { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(90deg, transparent, #ffffffcf 48%, transparent 90%); -webkit-mask-image: repeating-linear-gradient(0deg, transparent 0 33px, #000 34px 36px, transparent 38px 81px); mask-image: repeating-linear-gradient(0deg, transparent 0 33px, #000 34px 36px, transparent 38px 81px); }
 
 dialog[data-profile-anchored] { --profile-y: clamp(12px, var(--profile-top), 50dvh); top: var(--profile-y); bottom: auto; margin-block: 0; max-height: min(760px, calc(100dvh - var(--profile-y) - 14px)); }
+
+.app-page { display: flow-root; }
+#cart-content { padding: 24px 20px; border: 1px solid #ffffffb8; border-radius: 26px; background: linear-gradient(145deg, #fffffff0, #ffffffda); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: inset 0 1px 0 #fff, 0 6px 24px #563c4b0b; }
+.cart-heading h1 { font-size: 26px; }
+#cart-page > #cart-content { min-height: 300px; }
+@media (max-width: 359px) { #cart-content { padding-right: 16px; padding-left: 16px; } }
+
+body { position: relative; isolation: isolate; background: #540006; }
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: #540006 url('/miniapp/background.svg') center / cover no-repeat; }
