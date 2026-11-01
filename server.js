@@ -70,9 +70,10 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   }
   const server=createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');
-    res.setHeader('X-Frame-Options','DENY');
+    const miniPage = ['/miniapp','/miniapp/'].includes(new URL(req.url,'http://localhost').pathname);
+    if(!miniPage) res.setHeader('X-Frame-Options','DENY');
     res.setHeader('Referrer-Policy','same-origin');
-    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self' ${miniPage ? 'https://telegram.org' : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors ${miniPage ? 'https://web.telegram.org https://*.telegram.org' : "'none'"}; base-uri 'self'; form-action 'self'`);
     try {
       const url=new URL(req.url,'http://localhost'); const path=url.pathname; const method=req.method;
       if(path.startsWith('/api/')) {
@@ -84,7 +85,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/health'&&method==='GET') return json(res,200,{ok:true});
         if(path==='/api/storefront'&&method==='GET') {
           const shop=getSettings('shop');
-          return json(res,200,{shop,products:products().filter(p=>p.active).map(({id,name,sku,category,price,stock,image,description,short_description})=>({id,name,sku,category,price,stock,image,description,short_description})),banners:db.prepare('SELECT * FROM banners WHERE active=1').all()});
+          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...products().filter(p=>p.active).map(p=>p.category)])],referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:products().filter(p=>p.active).map(({id,name,sku,category,price,stock,image,description,short_description})=>({id,name,sku,category,price,stock,image,description,short_description})),banners:db.prepare('SELECT * FROM banners WHERE active=1').all()});
         }
         const productView=path.match(/^\/api\/storefront\/products\/(\d+)\/view$/);
         if(productView&&method==='POST') {
@@ -187,7 +188,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         fail(404,'Маршрут не найден.');
       }
       if(method!=='GET'&&method!=='HEAD') fail(405,'Метод не поддерживается.');
-      const files={'/':'index.html','/app.js':'app.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};
+      const files={'/miniapp':'miniapp.html','/miniapp/':'miniapp.html','/miniapp.js':'miniapp.js','/miniapp.css':'miniapp.css','/':'index.html','/app.js':'app.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};
       const file=files[path];if(!file) fail(404,'Страница не найдена.');
       const content=await readFile(resolve(root,'public',file));
       const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
