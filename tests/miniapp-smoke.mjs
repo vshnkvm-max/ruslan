@@ -75,6 +75,8 @@ try {
   assert.equal(await page.getByText('Магазин в Telegram', { exact: true }).count(), 0);
   assert.equal(await page.locator('#profile-button svg').count(), 1);
   assert.equal(await page.locator('#shop-info').count(), 0);
+  assert.equal(await page.locator('.currency').count(), 0);
+  assert.equal(await page.locator('#shop-name').textContent(), 'GAS SHOP');
   await page.waitForFunction(() => [...document.querySelectorAll('.story img')].every(image => image.complete && image.naturalWidth > 0));
   for (const asset of ['important', 'referral', 'reviews']) {
     const response = await fetch(`${base}/miniapp/${asset}.svg`);
@@ -153,14 +155,20 @@ try {
   assert.ok(await page.locator('#cart-badge').isHidden());
   await close();
 
-  // The whole catalog card, including its price, opens details. Adding stays in the details sheet.
-  assert.equal(await page.locator('#products [data-add]').count(), 0);
+  // Quick add works independently; opening by price still counts one view and allows adding again.
+  assert.equal(await page.locator('#products [data-add]').count(), 12);
   const views = db.prepare('SELECT views FROM products WHERE id=1').get().views;
+  await page.locator('#products [data-add="1"]').click();
+  assert.ok(await page.locator('#details').isHidden());
+  assert.equal(await page.locator('#cart-badge').textContent(), '1');
+  assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views);
+  assert.ok(await page.locator('#products [data-add="6"]').isDisabled());
   const priceView = page.waitForResponse(response => response.url().endsWith('/products/1/view'));
   await page.locator('[data-product="1"] .price').click();
   await priceView;
   await page.locator('#product-add').click();
   assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views + 1);
+  assert.equal(await page.locator('#cart-badge').textContent(), '2');
   await close();
   assert.equal(await page.locator('[data-product="6"] .availability-badge').textContent(), 'Нет в наличии');
   await page.locator('[data-product="6"]').click();

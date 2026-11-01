@@ -255,6 +255,7 @@ function render(animateProducts = true) {
           <div class="product-bottom"><span class="price">${money(product.price)}</span><span class="product-chevron" aria-hidden="true">${icons.chevron}</span></div>
         </div>
       </button>
+      <button class="quick-add" data-add="${product.id}" aria-label="Добавить в корзину: ${escape(product.name)}" ${product.stock <= 0 ? 'disabled' : ''}>${icons.plus}</button>
     </article>`).join('');
   $('#status').hidden = Boolean(items.length);
   $('#status').textContent = data.products.length ? 'В этой категории пока нет товаров.' : 'Товары скоро появятся. Загляните чуть позже.';
@@ -272,8 +273,7 @@ async function load() {
     const response = await fetch('/api/storefront', { credentials: 'omit', cache: 'no-store' });
     if (!response.ok) throw Error();
     data = await response.json();
-    $('#shop-name').textContent = data.shop.name || 'GAS STORE';
-    document.title = `${data.shop.name || 'GAS'} — магазин`;
+    document.title = 'GAS SHOP — магазин';
     if (!data.categories.includes(category)) category = '';
     const banner = data.banners[0];
     $('#banner').hidden = !banner;
@@ -391,6 +391,8 @@ $('#categories').onclick = event => {
   void selectCategory(button.dataset.category);
 };
 $('#products').onclick = event => {
+  const add = event.target.closest('[data-add]');
+  if (add) { changeCart(Number(add.dataset.add), 1, add); return; }
   const button = event.target.closest('[data-product]');
   if (button) openProduct(Number(button.dataset.product));
 };
