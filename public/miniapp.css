@@ -7,6 +7,8 @@
   --page: #f6f3f3;
   --promo-radius: 18px;
   --app-width: 480px;
+  --panel-bg: #fffffff0;
+  --panel-border: #5f3a4814;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -49,12 +51,12 @@ main { padding: 0 22px 100px; }
 .product-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .price { font-size: 16px; font-weight: 850; letter-spacing: -.5px; }
 .catalog-status { padding: 36px 16px; color: var(--muted); text-align: center; font-size: 13px; line-height: 1.6; }
-.bottom-nav { position: fixed; z-index: 3; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; width: min(288px, calc(100% - 32px)); height: 60px; padding: 4px; border-radius: 30px; background: #e5dfe2e8; backdrop-filter: blur(16px); box-shadow: 0 4px 24px #44212a12; }
+.bottom-nav { position: fixed; z-index: 3; left: 50%; bottom: calc(12px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; width: min(288px, calc(100% - 32px)); height: 60px; padding: 4px; border-radius: 30px; background: #e5dfe2e8; box-shadow: 0 4px 24px #44212a12; }
 .bottom-tab { position: relative; display: grid; align-content: center; justify-items: center; gap: 3px; width: 50%; min-width: 0; border: 0; border-radius: 26px; padding: 5px 12px; text-decoration: none; text-transform: uppercase; font-size: 10px; line-height: 12px; font-weight: 700; color: #91818a; background: transparent; }
 .bottom-tab[aria-current="page"] { color: var(--red); }
 .bottom-tab svg { width: 21px; height: 21px; stroke-width: 1.4; }
 dialog { border: 1px solid #ffffffb3; border-radius: 26px; padding: 42px 24px 26px; max-width: 440px; width: calc(100% - 28px); max-height: min(85dvh, 760px); color: #282127; background: #fff; box-shadow: 0 20px 90px #3c11252b; }
-dialog::backdrop { background: #3b263c45; backdrop-filter: blur(12px); animation: backdrop-in .3s ease-out; }
+dialog::backdrop { background: #3b263c45; animation: backdrop-in .3s ease-out; }
 .close { position: absolute; right: 12px; top: 10px; display: grid; place-items: center; border: 0; background: #f5eff1; color: #8f6b79; border-radius: 50%; width: 32px; height: 32px; font-size: 24px; }
 dialog h2 { margin: 15px 0 20px; font-size: 22px; overflow-wrap: anywhere; }
 dialog p { line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
@@ -91,7 +93,6 @@ button:disabled { cursor: default; }
 .primary-button:disabled { color: #a4929b; background: #f1e9ed; box-shadow: none; }
 .primary-button svg { flex-shrink: 0; }
 .detail-stock { color: var(--muted); }
-dialog[data-view="profile"] { background: #f9f5f8b8; backdrop-filter: blur(24px); }
 .profile-card { padding: 20px; border: 1px solid #fff; border-radius: 20px; background: #ffffffed; }
 .profile-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }
 .profile-identity > div { min-width: 0; }
@@ -145,8 +146,8 @@ dialog[data-view="profile"] { background: #f9f5f8b8; backdrop-filter: blur(24px)
 .cart-flight { position: fixed; z-index: 20; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--red); color: #fff; box-shadow: 0 4px 12px #d6002433; pointer-events: none; }
 @keyframes rise-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
-@keyframes backdrop-out { to { background-color: transparent; backdrop-filter: blur(0); } }
-@keyframes backdrop-in { from { background-color: transparent; backdrop-filter: blur(0); } }
+@keyframes backdrop-out { to { background-color: transparent; } }
+@keyframes backdrop-in { from { background-color: transparent; } }
 @keyframes dock-in { from { opacity: 0; transform: translate(-50%, 18px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (prefers-reduced-motion: no-preference) {
   button, a { transition: color .2s, background-color .2s, transform .22s cubic-bezier(.2,.9,.3,1.25), box-shadow .2s; }
@@ -205,25 +206,22 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 .availability-badge { max-width: calc(100% - 52px); line-height: 1.25; }
 @media (hover: hover) { .quick-add:not(:disabled):hover { background: #fff0f3; } }
 
-.category-indicator { position: absolute; top: 0; left: 0; z-index: 1; height: 100%; border: 1px solid #ffffffa6; border-radius: 20px; background: transparent; box-shadow: 0 2px 4px #38202a0a; pointer-events: none; visibility: hidden; transition: transform .32s cubic-bezier(.22,.8,.25,1), width .32s cubic-bezier(.22,.8,.25,1); }
+.category-indicator { position: absolute; top: 0; left: 0; z-index: 1; height: 100%; border-radius: 20px; background: var(--red); pointer-events: none; visibility: hidden; transition: transform .32s cubic-bezier(.22,.8,.25,1), width .32s cubic-bezier(.22,.8,.25,1); }
 .category-indicator.is-positioned { visibility: visible; }
 .category-indicator[data-instant] { transition: none; }
 
-/* Liquid Glass surfaces keep the red and white palette over a soft ambient background. */
+/* Flat surfaces let a little of the pattern show through without glass effects. */
 .miniapp { background: transparent; }
-.topbar, .category-bar, .bottom-nav, .profile-card, .profile-link, .profile-tabs, .profile-stats > div, .recent-orders {
-  border: 1px solid #ffffffb8;
-  background: linear-gradient(145deg, #fffffff0, #ffffffda);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
-  backdrop-filter: blur(22px) saturate(160%);
-  box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #ffffff70, 0 6px 24px #563c4b0b;
+.topbar, .category-bar, .bottom-nav, .profile-card, .profile-link, .profile-tabs, .profile-stats > div, .recent-orders, #cart-content {
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  box-shadow: 0 3px 12px #44212a0a;
 }
-.product { border: 1px solid #ffffffb8; background: linear-gradient(145deg, #f1eaf5ef, #f4eff3dc);  box-shadow: inset 0 1px 1px #fff, 0 5px 18px #4e35440a; }
-dialog, dialog[data-view="profile"] { background: linear-gradient(145deg, #fffefef0, #f5ebf2bd); -webkit-backdrop-filter: blur(28px) saturate(170%); backdrop-filter: blur(28px) saturate(170%); border-color: #ffffffce; box-shadow: inset 0 1px 0 #fff, 0 22px 90px #3f27352b; }
-.category-indicator { background: linear-gradient(145deg, #cc0006, #ff0010 55%, #c90004); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: inset 0 1px 0 #ffffffb8, 0 2px 7px #7e000320; }
+.product { border: 1px solid var(--panel-border); background: #f1edf2f2; box-shadow: 0 3px 12px #44212a0a; }
+dialog { background: #fff9fbf5; border-color: var(--panel-border); box-shadow: 0 12px 40px #3f273526; }
 .currency-symbol { font-weight: 400; }
 .profile-tabs button { background: transparent; transition: color .25s ease; }
-.profile-tab-indicator { position: absolute; top: 4px; left: 4px; width: calc((100% - 15px) / 2); height: calc(100% - 8px); border: 1px solid #ffb3c0; border-radius: 13px; background: linear-gradient(140deg, #f34462ed, #df1536ed); box-shadow: inset 0 1px 0 #ff9eae, 0 4px 12px #e7193520; transition: transform .32s cubic-bezier(.22,.8,.25,1); pointer-events: none; }
+.profile-tab-indicator { position: absolute; top: 4px; left: 4px; width: calc((100% - 15px) / 2); height: calc(100% - 8px); border-radius: 13px; background: var(--red); transition: transform .32s cubic-bezier(.22,.8,.25,1); pointer-events: none; }
 .profile-tabs[data-active="referral"] .profile-tab-indicator { transform: translateX(calc(100% + 7px)); }
 .profile-panel { position: relative; overflow: hidden; padding: 0; }
 .profile-body { width: 100%; }
@@ -241,7 +239,7 @@ dialog, dialog[data-view="profile"] { background: linear-gradient(145deg, #fffef
 dialog[data-profile-anchored] { --profile-y: clamp(12px, var(--profile-top), 50dvh); top: var(--profile-y); bottom: auto; margin-block: 0; max-height: min(760px, calc(100dvh - var(--profile-y) - 14px)); }
 
 .app-page { display: flow-root; }
-#cart-content { padding: 24px 20px; border: 1px solid #ffffffb8; border-radius: 26px; background: linear-gradient(145deg, #fffffff0, #ffffffda); -webkit-backdrop-filter: blur(22px) saturate(160%); backdrop-filter: blur(22px) saturate(160%); box-shadow: inset 0 1px 0 #fff, 0 6px 24px #563c4b0b; }
+#cart-content { padding: 24px 20px; border-radius: 26px; }
 .cart-heading h1 { font-size: 26px; }
 #cart-page > #cart-content { min-height: 300px; }
 @media (max-width: 359px) { #cart-content { padding-right: 16px; padding-left: 16px; } }

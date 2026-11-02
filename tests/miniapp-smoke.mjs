@@ -104,7 +104,7 @@ try {
   assert.equal(await page.locator('#shop-info').count(), 0);
   assert.equal(await page.locator('.currency').count(), 0);
   assert.equal(await page.locator('#shop-name').textContent(), 'GAS SHOP');
-  assert.match(await page.locator('.category-bar').evaluate(element => getComputedStyle(element).backdropFilter), /blur/);
+  assert.equal(await page.locator('.category-bar').evaluate(element => getComputedStyle(element).backdropFilter), 'none');
   await page.waitForFunction(() => [...document.querySelectorAll('.story img')].every(image => image.complete && image.naturalWidth > 0));
   for (const asset of ['important', 'referral', 'reviews', 'background']) {
     const response = await fetch(`${base}/miniapp/${asset}.svg`);
