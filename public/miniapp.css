@@ -208,7 +208,7 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 .category-indicator[data-instant] { transition: none; }
 
 /* Lightly translucent, flat surfaces without glass effects. */
-.miniapp { background: #100002; }
+.miniapp { background: #100002 url('/miniapp/background.svg') center top / 520px 520px repeat; }
 .topbar, .category-bar, .bottom-nav, .profile-card, .profile-link, .profile-tabs, .profile-stats > div, .recent-orders, #cart-content {
   border: 1px solid var(--panel-border);
   background: var(--panel-bg);

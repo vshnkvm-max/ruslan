@@ -296,7 +296,7 @@ try {
     assert.ok(layout.shell <= 432);
     assert.equal(layout.outsideColor, 'rgb(0, 0, 0)');
     assert.equal(layout.shellColor, 'rgb(16, 0, 2)');
-    assert.equal(layout.shellImage, 'none');
+    assert.match(layout.shellImage, /\/miniapp\/background\.svg/);
     assert.ok(layout.twoColumns);
     assert.ok(layout.squareStories);
     assert.ok(layout.order);
