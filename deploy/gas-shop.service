@@ -1,0 +1,27 @@
+[Unit]
+Description=GAS SHOP administration and storefront
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=gas-shop
+Group=gas-shop
+WorkingDirectory=/opt/gas-shop
+ExecStart=/usr/bin/node /opt/gas-shop/server.js
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=3000
+Environment=DB_PATH=/var/lib/gas-shop/shop.db
+Environment=COOKIE_SECURE=true
+Restart=always
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gas-shop
+
+[Install]
+WantedBy=multi-user.target
