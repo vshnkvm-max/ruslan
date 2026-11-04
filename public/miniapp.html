@@ -14,7 +14,7 @@
   <div class="miniapp">
     <header class="topbar">
       <button class="profile-button" id="profile-button" aria-label="Открыть профиль" aria-haspopup="dialog">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>
+        <svg class="shop-mark" viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="21" r="19"/><text x="21" y="25" text-anchor="middle">GAS</text></svg>
       </button>
       <strong id="shop-name">GAS SHOP</strong>
     </header>
@@ -32,6 +32,7 @@
         <section class="catalog" id="catalog" aria-label="Каталог товаров">
           <div class="category-bar">
             <div id="categories" aria-label="Категории"></div>
+            <button class="category-next" id="next-category" aria-label="Следующая категория" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button>
           </div>
           <span id="count" class="sr-only" aria-live="polite"></span>
           <div class="catalog-viewport" id="catalog-viewport">

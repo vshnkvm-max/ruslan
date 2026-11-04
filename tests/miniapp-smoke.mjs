@@ -167,6 +167,21 @@ try {
   await page.reload();
   await page.getByRole('heading', { name: 'Баннер из админки', exact: true }).waitFor();
   await page.getByText('Условия из редактора магазина', { exact: true }).waitFor();
+  const bannerImage='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0a0AAAAASUVORK5CYII=';
+  db.prepare('UPDATE banners SET image=? WHERE id=?').run(bannerImage,banners[0].id);
+  await page.reload();
+  await page.locator('#banner img').waitFor();
+  assert.equal(await page.locator('#banner img').getAttribute('alt'),'Баннер из админки');
+  assert.equal(await page.locator('#banner a').getAttribute('href'),banners[0].link);
+  assert.equal(await page.locator('#banner h2').count(),0);
+  db.prepare("UPDATE banners SET image='' WHERE id=?").run(banners[0].id);
+  await page.reload();
+  await page.getByRole('heading', { name: 'Баннер из админки', exact: true }).waitFor();
+  await page.locator('#next-category').click();
+  await settle();
+  assert.equal(await page.locator('#categories [aria-pressed="true"]').textContent(),'Скоро');
+  await page.locator('[data-category=""]').click();
+  await settle();
   await slideToCategory('Для дома', 1, 5);
   assert.equal(await page.getByRole('searchbox').count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Поиск товаров' }).count(), 0);
@@ -227,18 +242,15 @@ try {
   assert.ok(await page.locator('#cart-badge').isHidden());
   await home();
 
-  // Quick add works independently; opening by price still counts one view and allows adding again.
-  assert.equal(await page.locator('#products [data-add]').count(), 12);
+  // Clean reference cards open details; adding remains available in the product sheet.
+  assert.equal(await page.locator('#products [data-add]').count(), 0);
   assert.equal(await page.locator('#products .product-badge').count(), 0);
   const views = db.prepare('SELECT views FROM products WHERE id=1').get().views;
-  await page.locator('#products [data-add="1"]').click();
-  assert.ok(await page.locator('#details').isHidden());
-  assert.equal(await page.locator('#cart-badge').textContent(), '1');
-  assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views);
-  assert.ok(await page.locator('#products [data-add="6"]').isDisabled());
   const priceView = page.waitForResponse(response => response.url().endsWith('/products/1/view'));
   await page.locator('[data-product="1"] .price').click();
   await priceView;
+  await page.locator('#product-add').click();
+  assert.equal(await page.locator('#cart-badge').textContent(), '1');
   await page.locator('#product-add').click();
   assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views + 1);
   assert.equal(await page.locator('#cart-badge').textContent(), '2');
@@ -269,11 +281,8 @@ try {
         squareStories: stories.every(rect => Math.abs(rect.width - rect.height) < 1),
         order: rect('.stories').bottom < rect('#banner').top && rect('#banner').bottom < rect('.category-bar').top,
         dock: rect('.bottom-nav').bottom <= innerHeight,
-        patternSize: getComputedStyle(document.querySelector('.miniapp'), '::before').backgroundSize,
-        patternRepeat: getComputedStyle(document.querySelector('.miniapp'), '::before').backgroundRepeat,
-        patternHeight: parseFloat(getComputedStyle(document.querySelector('.miniapp'), '::before').height),
-        pageHeight: rect('.miniapp').height,
-        patternWidth: parseFloat(getComputedStyle(document.querySelector('.miniapp'), '::before').width),
+        shellColor: getComputedStyle(document.querySelector('.miniapp')).backgroundColor,
+        shellImage: getComputedStyle(document.querySelector('.miniapp')).backgroundImage,
         outsideColor: getComputedStyle(document.body).backgroundColor,
         matchingBannerRadius: getComputedStyle(document.querySelector('#banner')).borderRadius === getComputedStyle(document.querySelector('.story')).borderRadius,
         cardContentFits: [...document.querySelectorAll('#products .product')].every(card => {
@@ -284,16 +293,14 @@ try {
       };
     });
     assert.equal(layout.overflow, false, `overflow at ${width}`);
-    assert.ok(layout.shell <= 480);
+    assert.ok(layout.shell <= 432);
     assert.equal(layout.outsideColor, 'rgb(0, 0, 0)');
-    assert.ok(layout.patternWidth <= layout.shell && layout.patternWidth >= layout.shell - 3, 'pattern stays inside the phone frame');
+    assert.equal(layout.shellColor, 'rgb(16, 0, 2)');
+    assert.equal(layout.shellImage, 'none');
     assert.ok(layout.twoColumns);
     assert.ok(layout.squareStories);
     assert.ok(layout.order);
     assert.ok(layout.dock);
-    assert.equal(layout.patternSize, '520px 520px', `pattern scale stays constant at ${width}px`);
-    assert.equal(layout.patternRepeat, 'repeat');
-    assert.ok(layout.patternHeight + .5 >= layout.pageHeight, `pattern covers the complete page: ${layout.patternHeight}px / ${layout.pageHeight}px`);
     assert.ok(layout.matchingBannerRadius, `matching banner and story corners at ${width}px`);
     assert.ok(layout.cardContentFits, `card contents fit at ${width}px`);
     await page.locator('#cart-tab').click();

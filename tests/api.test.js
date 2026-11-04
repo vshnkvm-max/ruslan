@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { createApp } from '../server.js';
 import { hashPassword } from '../lib/auth.js';
 import { insertTestFixtures } from './fixtures/store.js';
+import { openDatabase } from '../lib/database.js';
+import { DatabaseSync } from 'node:sqlite';
 
 let app,base,cookie,csrf;
 const temp=mkdtempSync(join(tmpdir(),'shop-test-'));
@@ -116,6 +118,40 @@ test('store information and banners appear in public API without private data',a
   assert.ok(!(await request('/storefront',{auth:false})).data.banners.some(b=>b.id===data.id));
   await request(`/banners/${data.id}`,{method:'DELETE'});
   assert.equal((await request(`/banners/${data.id}`,{method:'DELETE'})).res.status,404);
+});
+
+test('banner images validate formats, survive older clients, and can be removed',async()=>{
+ const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0a0AAAAASUVORK5CYII=';
+ const banner={title:'Image banner',subtitle:'Accessible description',color:'#ffffff',link:'/miniapp',active:true};
+ const created=await request('/banners',{method:'POST',body:{...banner,image}});
+ assert.equal(created.res.status,201);
+ const id=created.data.id;
+ const saved=()=>app.db.prepare('SELECT image FROM banners WHERE id=?').get(id).image;
+ assert.equal((await request('/storefront',{auth:false})).data.banners.find(b=>b.id===id).image,image);
+ for(const invalid of ['data:image/svg+xml;base64,PHN2Zz4=','data:image/png;base64,YWJj','https://example.com/image.jpg','lamp','x'.repeat(700001)]) {
+  assert.equal((await request(`/banners/${id}`,{method:'PATCH',body:{...banner,image:invalid}})).res.status,400);
+  assert.equal(saved(),image);
+ }
+ assert.equal((await request(`/banners/${id}`,{method:'PATCH',body:{...banner,title:'Edited by older client'}})).res.status,200);
+ assert.equal(saved(),image);
+ assert.equal((await request(`/banners/${id}`,{method:'PATCH',body:{...banner,image:''}})).res.status,200);
+ assert.equal(saved(),'');
+ await request(`/banners/${id}`,{method:'DELETE'});
+});
+
+test('banner image migration preserves existing banners and persists across restarts',()=>{
+ const path=join(temp,'legacy-banners.db');
+ const old=new DatabaseSync(path);
+ old.exec("CREATE TABLE banners (id INTEGER PRIMARY KEY, title TEXT NOT NULL, subtitle TEXT NOT NULL, color TEXT NOT NULL, link TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1); INSERT INTO banners VALUES (1,'Existing banner','Description','#ffffff','/miniapp',1)");
+ old.close();
+ const upgraded=openDatabase(path);
+ assert.equal(upgraded.prepare('SELECT title,image FROM banners WHERE id=1').get().title,'Existing banner');
+ assert.equal(upgraded.prepare('SELECT image FROM banners WHERE id=1').get().image,'');
+ upgraded.prepare('UPDATE banners SET image=? WHERE id=1').run('retained-image');
+ upgraded.close();
+ const reopened=openDatabase(path);
+ assert.equal(reopened.prepare('SELECT image FROM banners WHERE id=1').get().image,'retained-image');
+ reopened.close();
 });
 
 test('product photos validate formats, persist, appear on storefront and can be removed',async()=>{

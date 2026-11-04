@@ -131,12 +131,31 @@ try {
  await page.getByRole('button',{name:'Добавить баннер'}).click();
  await page.getByLabel('Заголовок',{exact:true}).fill('UI Banner');
  await page.getByLabel('Подзаголовок',{exact:true}).fill('Saved in database');
+ const bannerFile=Buffer.from(await page.evaluate(()=>{
+  const c=document.createElement('canvas');c.width=1200;c.height=380;
+  const ctx=c.getContext('2d'),pixels=ctx.createImageData(c.width,c.height);
+  let seed=1;
+  for(let i=0;i<pixels.data.length;i+=4){for(let j=0;j<3;j++){seed=(Math.imul(seed,1664525)+1013904223)>>>0;pixels.data[i+j]=seed>>>24;}pixels.data[i+3]=255;}
+  ctx.putImageData(pixels,0,0);return c.toDataURL('image/png').split(',')[1];
+ }),'base64');
+ await page.getByLabel('Изображение баннера',{exact:true}).setInputFiles({name:'banner.png',mimeType:'image/png',buffer:bannerFile});
+ await page.locator('#banner-photo-preview img').waitFor();
+ const bannerImage=await page.locator('#banner-form [name=image]').inputValue();
+ assert.ok(bannerImage.length>65536,'banner uploads exceed the default JSON limit');
  await page.locator('#banner-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.equal(await page.locator('.banner-card').count(),3);
+ await page.locator('.banner-card .banner-cover').waitFor();
+ assert.equal(db.prepare("SELECT image FROM banners WHERE title='UI Banner'").get().image,bannerImage);
+ await page.getByRole('button',{name:'Редактировать баннер'}).last().click();
+ assert.equal(await page.locator('#banner-form [name=image]').inputValue(),bannerImage);
+ await page.getByRole('button',{name:'Убрать изображение',exact:true}).click();
+ await page.locator('#banner-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ assert.equal(await page.locator('.banner-card .banner-cover').count(),0);
+ assert.equal(db.prepare("SELECT image FROM banners WHERE title='UI Banner'").get().image,'');
  await page.getByRole('button',{name:'Удалить баннер'}).last().click();
  await page.locator('[data-action=confirm-delete-banner]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.equal(await page.locator('.banner-card').count(),2);
- console.log('PASS: all sections, store information, banner create/delete');
+ console.log('PASS: all sections, store information, banner create/upload/reopen/remove/delete');
  await page.locator('nav a[href="#orders"]').click();
  await page.getByRole('button',{name:'#0001',exact:true}).click();
  await page.getByLabel('Статус заказа',{exact:true}).selectOption('accepted');

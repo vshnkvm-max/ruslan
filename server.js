@@ -28,8 +28,8 @@ const safeLink = v => {
 };
 const imageKeys = ['headphones','lamp','bag','speaker','cup','watch','organizer','tote'];
 
-function productImage(value) {
- if(value===''||imageKeys.includes(value))return value;
+function imageValue(value, allowLegacy=false) {
+ if(value===''||(allowLegacy&&imageKeys.includes(value)))return value;
  if(typeof value!=='string'||value.length>700000)fail(400,'Фото слишком большое.');
  const match=/^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
  if(!match)fail(400,'Используйте фото JPG, PNG или WebP.');
@@ -64,7 +64,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   async function body(req) {
     if(!req.headers['content-type']?.startsWith('application/json')) fail(415,'Ожидается JSON.');
     let size=0; const chunks=[];
-    for await(const chunk of req) { size+=chunk.length; if(size>(/^\/api\/products(?:\/\d+)?$/.test(req.url?.split('?')[0])?750000:65536)) fail(413,'Слишком большой запрос.');chunks.push(chunk); }
+    for await(const chunk of req) { size+=chunk.length; if(size>(/^\/api\/(?:products|banners)(?:\/\d+)?$/.test(req.url?.split('?')[0])?750000:65536)) fail(413,'Слишком большой запрос.');chunks.push(chunk); }
     try { const value=JSON.parse(Buffer.concat(chunks).toString()); if(!value||typeof value!=='object'||Array.isArray(value)) fail(400,'Неверный JSON.'); return value; }
     catch { fail(400,'Неверный JSON.'); }
   }
@@ -132,13 +132,16 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           }
           else if(table==='orders') db.prepare('UPDATE orders SET status=? WHERE id=?').run(choice(b.status,['new','accepted','completed','cancelled']),id);
           else if(table==='reviews') db.prepare('UPDATE reviews SET status=? WHERE id=?').run(choice(b.status,['pending','published','hidden']),id);
-          else if(table==='banners') db.prepare('UPDATE banners SET title=?,subtitle=?,color=?,link=?,active=? WHERE id=?').run(...validateBanner(b),id);
+          else if(table==='banners') {
+            b.image??=db.prepare('SELECT image FROM banners WHERE id=?').get(id).image;
+            db.prepare('UPDATE banners SET title=?,subtitle=?,color=?,link=?,active=?,image=? WHERE id=?').run(...validateBanner(b),id);
+          }
           return json(res,200,{ok:true});
         }
         if(path==='/api/categories'&&method==='POST') {const b=await body(req);const name=str(b.name,'Категория',80);saveSettings('categories',[...new Set([...getSettings('categories'),name])]);return json(res,201,{name});}
         if(path==='/api/customers'&&method==='POST') {const c=validateCustomer(await body(req));const result=db.prepare('INSERT INTO customers (name,username,phone,email,city,status,banned,joined,referral_code) VALUES (?,?,?,?,?,?,?,?,?)').run(...c,new Date().toISOString(),token().slice(0,12));return json(res,201,{id:Number(result.lastInsertRowid)});}
         if(path==='/api/products'&&method==='POST') {const b=await body(req);b.sku??=token().slice(0,32);const p=validateProduct(b);const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description,short_description) VALUES (?,?,?,?,?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
-        if(path==='/api/banners'&&method==='POST') {const p=validateBanner(await body(req));const r=db.prepare('INSERT INTO banners (title,subtitle,color,link,active) VALUES (?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
+        if(path==='/api/banners'&&method==='POST') {const p=validateBanner(await body(req));const r=db.prepare('INSERT INTO banners (title,subtitle,color,link,active,image) VALUES (?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
         const purchaseMatch=path.match(/^\/api\/purchases(?:\/(\d+))?$/);
         if(purchaseMatch&&['POST','PATCH'].includes(method)) {
           if((method==='POST')===Boolean(purchaseMatch[1])) fail(405,'Метод не поддерживается.');
@@ -215,11 +218,11 @@ function validateCustomer(b) {
 }
 
 function validateProduct(b) {
-  return [str(b.name,'Название'),str(b.sku,'Артикул',40),str(b.category,'Категория',80),num(b.price,'Цена'),num(b.cost,'Закупочная цена'),num(b.stock,'Остаток',1000000),bool(b.active),productImage(b.image),str(b.description,'Описание',2000,false),str(b.short_description??'','Краткое описание',2000,false)];
+  return [str(b.name,'Название'),str(b.sku,'Артикул',40),str(b.category,'Категория',80),num(b.price,'Цена'),num(b.cost,'Закупочная цена'),num(b.stock,'Остаток',1000000),bool(b.active),imageValue(b.image,true),str(b.description,'Описание',2000,false),str(b.short_description??'','Краткое описание',2000,false)];
 }
 function validateBanner(b) {
   if(!/^#[0-9a-f]{6}$/i.test(b.color)) fail(400,'Некорректный цвет.');
-  return [str(b.title,'Заголовок',120),str(b.subtitle,'Подзаголовок',240,false),b.color,safeLink(b.link),bool(b.active)];
+  return [str(b.title,'Заголовок',120),str(b.subtitle,'Подзаголовок',240,false),b.color,safeLink(b.link),bool(b.active),imageValue(b.image??'')];
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const host=process.env.HOST||'127.0.0.1'; const port=Number(process.env.PORT||3000);

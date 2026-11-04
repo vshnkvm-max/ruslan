@@ -227,6 +227,7 @@ function renderCategories(smooth = false) {
     smooth = false;
   }
   menu.querySelectorAll('[data-category]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.category === category)));
+  $('#next-category').disabled = entries.length < 2;
   positionCategoryIndicator(smooth);
 }
 
@@ -314,7 +315,6 @@ function render(animateProducts = true) {
           <div class="product-bottom"><span class="price">${moneyMarkup(product.price)}</span><span class="product-chevron" aria-hidden="true">${icons.chevron}</span></div>
         </div>
       </button>
-      <button class="quick-add" data-add="${product.id}" aria-label="Добавить в корзину: ${escape(product.name)}" ${product.stock <= 0 ? 'disabled' : ''}>${icons.plus}</button>
     </article>`).join('');
   $('#status').hidden = Boolean(items.length);
   $('#status').textContent = data.products.length ? 'В этой категории пока нет товаров.' : 'Товары скоро появятся. Загляните чуть позже.';
@@ -330,12 +330,19 @@ async function load() {
     document.title = 'GAS SHOP — магазин';
     if (!data.categories.includes(category)) category = '';
     const banner = data.banners[0];
+    const bannerImage = /^data:image\/(jpeg|png|webp);base64,/.test(banner?.image);
     $('#banner').hidden = !banner;
+    $('#banner').classList.toggle('has-image', bannerImage);
     $('#banner').replaceChildren();
     if (banner) {
       const safe = /^\/(?!\/)|^https:\/\//i.test(banner.link);
-      $('#banner').innerHTML = `<div class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></div>
-        ${safe ? `<a class="banner-link" href="${escape(banner.link)}" target="_blank" rel="noopener noreferrer" aria-label="Подробнее: ${escape(banner.title)}">${icons.arrow}</a>` : ''}`;
+      if (bannerImage) {
+        const image = `<img class="banner-image" src="${escape(banner.image)}" alt="${escape(banner.title)}">`;
+        $('#banner').innerHTML = safe ? `<a class="banner-image-link" href="${escape(banner.link)}" target="_blank" rel="noopener noreferrer">${image}</a>` : image;
+      } else {
+        $('#banner').innerHTML = `<div class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></div>
+          ${safe ? `<a class="banner-link" href="${escape(banner.link)}" target="_blank" rel="noopener noreferrer" aria-label="Подробнее: ${escape(banner.title)}">${icons.arrow}</a>` : ''}`;
+      }
     }
     reconcileCart();
     render();
@@ -566,9 +573,12 @@ $('#categories').onclick = event => {
   if (!button) return;
   void selectCategory(button.dataset.category);
 };
+$('#next-category').onclick = () => {
+  const buttons = [...document.querySelectorAll('#categories [data-category]')];
+  const current = buttons.findIndex(button => button.getAttribute('aria-pressed') === 'true');
+  buttons[(current + 1) % buttons.length]?.click();
+};
 $('#products').onclick = event => {
-  const add = event.target.closest('[data-add]');
-  if (add) { changeCart(Number(add.dataset.add), 1, add); return; }
   const button = event.target.closest('[data-product]');
   if (button) openProduct(Number(button.dataset.product));
 };
