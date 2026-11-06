@@ -8,6 +8,24 @@ function configureTelegram() {
 }
 configureTelegram();
 
+function signalReadyWithoutSdk() {
+  if (telegram) return;
+  // The loading placeholder must not depend on the external SDK download.
+  // Use Telegram's bridge event; the SDK still initializes identity when it arrives.
+  const event = { eventType: 'web_app_ready', eventData: {} };
+  try {
+    if (typeof window.TelegramWebviewProxy?.postEvent === 'function') {
+      window.TelegramWebviewProxy.postEvent(event.eventType, JSON.stringify(event.eventData));
+    } else if (typeof window.external?.notify === 'function') {
+      window.external.notify(JSON.stringify(event));
+    } else if (window.parent !== window) {
+      window.parent.postMessage(JSON.stringify(event), 'https://web.telegram.org');
+    }
+  } catch {
+    // Ordinary browsers may not expose a usable Telegram bridge.
+  }
+}
+
 const $ = selector => document.querySelector(selector);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -641,3 +659,4 @@ $('#telegram-sdk').addEventListener('load', () => {
   if ($('#details').open && $('#details').dataset.view === 'profile') renderProfile(profileTab);
 });
 load();
+signalReadyWithoutSdk();

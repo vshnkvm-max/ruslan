@@ -392,6 +392,8 @@ try {
   });
   try {
     await lateContext.addInitScript(() => {
+      window.bridgeEvents=[];
+      window.TelegramWebviewProxy={postEvent(type,data){window.bridgeEvents.push({type,data});}};
       localStorage.setItem('gas-cart:v1:guest','[]');
       localStorage.setItem('gas-cart:v1:909','[[2,1]]');
     });
@@ -399,6 +401,7 @@ try {
     await late.goto(base+'/miniapp',{waitUntil:'domcontentloaded',timeout:5000});
     await late.locator('.product').first().waitFor({timeout:5000});
     assert.equal(await late.evaluate(() => Boolean(window.Telegram)),false);
+    assert.deepEqual(await late.evaluate(() => window.bridgeEvents),[{type:'web_app_ready',data:'{}'}]);
     await late.locator('#profile-button').click();
     await late.getByRole('heading',{name:'Гость',exact:true}).waitFor();
     releaseSdk();
@@ -410,6 +413,27 @@ try {
   } finally {
     releaseSdk();
     await lateContext.close();
+  }
+  // Telegram Web receives readiness across origins even when the SDK is unavailable.
+  const webContext=await browser.newContext();
+  try {
+    await webContext.route('https://telegram.org/**',route=>route.abort());
+    await webContext.route('https://shop.example/**',async route=>{
+      const url=new URL(route.request().url());
+      const response=await route.fetch({url:base+url.pathname+url.search});
+      await route.fulfill({response});
+    });
+    await webContext.route('https://web.telegram.org/**',route=>route.fulfill({
+      contentType:'text/html',
+      body:`<script>window.readyEvents=[];addEventListener('message',e=>{if(e.origin==='https://shop.example'){const data=JSON.parse(e.data);if(data.eventType==='web_app_ready')readyEvents.push(data);}});</script><iframe src="https://shop.example/miniapp"></iframe>`
+    }));
+    const embedded=await webContext.newPage();
+    await embedded.goto('https://web.telegram.org/test-miniapp');
+    await embedded.waitForFunction(()=>window.readyEvents.length===1,{},{timeout:5000});
+    await embedded.frameLocator('iframe').locator('.product').first().waitFor({timeout:5000});
+    assert.deepEqual(await embedded.evaluate(()=>window.readyEvents),[{eventType:'web_app_ready',eventData:{}}]);
+  } finally {
+    await webContext.close();
   }
   console.log('Mini App passed: new icons, profile, local cart, stock limits, refreshed prices, persistence, bidirectional category slides, rapid switching, reduced motion, and layouts at 320/390/480/1280px.');
 } finally {
