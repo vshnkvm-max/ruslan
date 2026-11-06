@@ -380,6 +380,35 @@ try {
   assert.ok(await guest.locator('#details').isHidden());
   assert.equal(await guest.locator('[data-cart-item]').count(), 1);
   await guest.close();
+  // A hanging external SDK must not delay the catalog; late identity restores its own cart.
+  const lateContext = await browser.newContext();
+  let releaseSdk;
+  const sdkGate = new Promise(resolve => { releaseSdk = resolve; });
+  await lateContext.route('https://telegram.org/**', async route => {
+    await sdkGate;
+    await route.fulfill({contentType:'text/javascript',body:'window.Telegram={WebApp:{ready(){},expand(){},initDataUnsafe:{user:{id:909,first_name:"Поздний SDK"}}}};'});
+  });
+  try {
+    await lateContext.addInitScript(() => {
+      localStorage.setItem('gas-cart:v1:guest','[]');
+      localStorage.setItem('gas-cart:v1:909','[[2,1]]');
+    });
+    const late = await lateContext.newPage();
+    await late.goto(base+'/miniapp',{waitUntil:'domcontentloaded',timeout:5000});
+    await late.locator('.product').first().waitFor({timeout:5000});
+    assert.equal(await late.evaluate(() => Boolean(window.Telegram)),false);
+    await late.locator('#profile-button').click();
+    await late.getByRole('heading',{name:'Гость',exact:true}).waitFor();
+    releaseSdk();
+    await late.getByRole('heading',{name:'Поздний SDK',exact:true}).waitFor();
+    await late.locator('[data-open-cart]').click();
+    await late.locator('[data-cart-item="2"]').waitFor();
+    assert.equal(await late.locator('#cart-badge').textContent(),'1');
+    assert.equal(await late.evaluate(() => localStorage.getItem('gas-cart:v1:guest')),'[]');
+  } finally {
+    releaseSdk();
+    await lateContext.close();
+  }
   console.log('Mini App passed: new icons, profile, local cart, stock limits, refreshed prices, persistence, bidirectional category slides, rapid switching, reduced motion, and layouts at 320/390/480/1280px.');
 } finally {
   await browser.close();

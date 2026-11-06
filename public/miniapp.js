@@ -1,10 +1,12 @@
-const telegram = window.Telegram?.WebApp;
-if (telegram) {
+let telegram = window.Telegram?.WebApp;
+function configureTelegram() {
+  if (!telegram) return;
   telegram.ready();
   telegram.expand();
   telegram.setHeaderColor?.('#100002');
   telegram.setBackgroundColor?.('#100002');
 }
+configureTelegram();
 
 const $ = selector => document.querySelector(selector);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -28,8 +30,9 @@ const money = value => new Intl.NumberFormat('ru-RU', {
 const moneyMarkup = value => money(value).replace('₽', '<span class="currency-symbol">₽</span>');
 // Telegram's display data is used only for presentation and local cart separation.
 // It never authorizes access to customers, orders or any other private API.
-const user = telegram?.initDataUnsafe?.user;
-const cartKey = `gas-cart:v1:${Number.isSafeInteger(user?.id) && user.id > 0 ? user.id : 'guest'}`;
+let user = telegram?.initDataUnsafe?.user;
+const cartKeyFor = user => `gas-cart:v1:${Number.isSafeInteger(user?.id) && user.id > 0 ? user.id : 'guest'}`;
+let cartKey = cartKeyFor(user);
 const maxQuantity = product => Math.min(product.stock, 999);
 let data, category = '', loading = false, modalVersion = 0, toastTimer;
 let cart = readCart();
@@ -620,4 +623,21 @@ $('#detail-content').addEventListener('keydown', event => {
   void switchProfileTab(tab);
 });
 document.addEventListener('click', event => { if (event.target.id === 'retry') load(); });
+$('#telegram-sdk').addEventListener('load', () => {
+  telegram = window.Telegram?.WebApp;
+  configureTelegram();
+  user = telegram?.initDataUnsafe?.user;
+  const nextKey = cartKeyFor(user);
+  if (nextKey !== cartKey) {
+    // Keep guest and Telegram carts separate even when the SDK arrives late.
+    cartKey = nextKey;
+    cart = readCart();
+    if (data) {
+      reconcileCart();
+      if (activePage === 'cart') renderCart();
+      updateProductAddButton();
+    }
+  }
+  if ($('#details').open && $('#details').dataset.view === 'profile') renderProfile(profileTab);
+});
 load();
