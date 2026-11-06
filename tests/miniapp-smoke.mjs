@@ -284,6 +284,7 @@ try {
         shellColor: getComputedStyle(document.querySelector('.miniapp')).backgroundColor,
         shellImage: getComputedStyle(document.querySelector('.miniapp')).backgroundImage,
         outsideColor: getComputedStyle(document.body).backgroundColor,
+        outsideImage: getComputedStyle(document.body).backgroundImage,
         matchingBannerRadius: getComputedStyle(document.querySelector('#banner')).borderRadius === getComputedStyle(document.querySelector('.story')).borderRadius,
         cardContentFits: [...document.querySelectorAll('#products .product')].every(card => {
           const bounds = card.getBoundingClientRect();
@@ -294,9 +295,10 @@ try {
     });
     assert.equal(layout.overflow, false, `overflow at ${width}`);
     assert.ok(layout.shell <= 432);
-    assert.equal(layout.outsideColor, 'rgb(0, 0, 0)');
-    assert.equal(layout.shellColor, 'rgb(16, 0, 2)');
-    assert.match(layout.shellImage, /\/miniapp\/background\.svg/);
+    assert.equal(layout.outsideColor, 'rgb(16, 0, 2)');
+    assert.match(layout.outsideImage, /\/miniapp\/background\.svg/);
+    assert.equal(layout.shellColor, 'rgba(0, 0, 0, 0)');
+    assert.equal(layout.shellImage, 'none');
     assert.ok(layout.twoColumns);
     assert.ok(layout.squareStories);
     assert.ok(layout.order);

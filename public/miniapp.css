@@ -1,7 +1,7 @@
 :root {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   color: #111;
-  background: #000;
+  background: #100002;
   --red: #f5001c;
   --muted: #929197;
   --page: #f6f3f3;
@@ -208,7 +208,7 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 .category-indicator[data-instant] { transition: none; }
 
 /* Lightly translucent, flat surfaces without glass effects. */
-.miniapp { background: #100002 url('/miniapp/background.svg') center top / 520px 520px repeat; }
+.miniapp { background: transparent; }
 .topbar, .category-bar, .bottom-nav, .profile-card, .profile-link, .profile-tabs, .profile-stats > div, .recent-orders, #cart-content {
   border: 1px solid var(--panel-border);
   background: var(--panel-bg);
@@ -241,11 +241,9 @@ dialog[data-profile-anchored] { --profile-y: clamp(12px, var(--profile-top), 50d
 #cart-page > #cart-content { min-height: 300px; }
 @media (max-width: 359px) { #cart-content { padding-right: 16px; padding-left: 16px; } }
 
-body { position: relative; isolation: isolate; background: #000; }
+body { position: relative; isolation: isolate; min-height: 100dvh; background: #100002 url('/miniapp/background.svg') center top / 520px 520px repeat; }
 
-.miniapp { position: relative; isolation: isolate; border-inline: 1px solid #2c1119; }
-
-dialog::backdrop { clip-path: inset(0 max(0px, calc((100% - var(--app-width)) / 2))); }
+.miniapp { position: relative; isolation: isolate; }
 
 .category-next { flex: 0 0 24px; height: 36px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 18px; background: transparent; color: #111; }
 .category-next svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
