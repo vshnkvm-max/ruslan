@@ -237,7 +237,7 @@ test('storefront views count only explicit openings and persist across database 
 
 test('purchase documents validate lines, preserve drafts and post stock and payment exactly once',async()=>{
   const id=Number(app.db.prepare("INSERT INTO products (name,sku,category,price,cost,stock,image) VALUES ('Purchase item','BUY-TEST','Test',500,100,2,'')").run().lastInsertRowid);
-  const payload={supplier:'Поставщик',store:'Мой магазин',comment:'Проверка',posted:false,paid:100,request_key:'test-purchase',items:[{product_id:id,quantity:3,cost:120}]};
+  const payload={supplier:'Поставщик',comment:'Проверка',posted:false,paid:100,request_key:'test-purchase',items:[{product_id:id,quantity:3,cost:120}]};
   const product=()=>app.db.prepare('SELECT stock,cost FROM products WHERE id=?').get(id);
   for(const invalid of [{items:[]},{items:[{product_id:id,quantity:0,cost:120}]},{items:[...payload.items,...payload.items]},{paid:361},{items:[{product_id:999999,quantity:1,cost:10}]},{items:[{product_id:id,quantity:3,cost:1.5}]}]){
     assert.equal((await request('/purchases',{method:'POST',body:{...payload,...invalid}})).res.status,400);
@@ -246,8 +246,11 @@ test('purchase documents validate lines, preserve drafts and post stock and paym
   const created=await request('/purchases',{method:'POST',body:payload});assert.equal(created.res.status,201);const purchaseId=created.data.id;
   assert.equal(product().stock,2);assert.equal(product().cost,100);
   const draft=(await request('/bootstrap')).data.purchases.find(p=>p.id===purchaseId);assert.equal(draft.total,360);assert.equal(draft.comment,'Проверка');assert.equal(draft.items[0].name,'Purchase item');
+  assert.equal(draft.store,'');
+  app.db.prepare('UPDATE purchases SET store=? WHERE id=?').run('Старое значение магазина',purchaseId);
   assert.equal(app.db.prepare("SELECT COUNT(*) AS n FROM transactions WHERE description LIKE ?").get(`Закупка #${purchaseId} · %`).n,0);
   const posted=await request(`/purchases/${purchaseId}`,{method:'PATCH',body:{...payload,posted:true}});assert.equal(posted.res.status,200);
+  assert.equal(app.db.prepare('SELECT store FROM purchases WHERE id=?').get(purchaseId).store,'Старое значение магазина');
   assert.equal(product().stock,5);assert.equal(product().cost,120);
   assert.equal((await request(`/purchases/${purchaseId}`,{method:'PATCH',body:{...payload,posted:true}})).res.status,409);
   assert.equal((await request('/purchases',{method:'POST',body:{...payload,posted:true}})).data.id,purchaseId);

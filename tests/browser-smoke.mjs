@@ -193,13 +193,14 @@ try {
  await page.waitForFunction(()=>document.querySelectorAll('.products-table tbody tr').length===0);
  await page.locator('nav a[href="#customers"]').click();await page.locator('.customers-table').waitFor();
  await page.getByRole('button',{name:'Добавить клиента',exact:true}).click();
- await page.getByLabel('Имя клиента',{exact:true}).fill('UI customer');await page.getByLabel('Телефон',{exact:true}).fill('+7 999 111-22-33');
+ await page.getByLabel('Имя клиента',{exact:true}).fill('UI customer');assert.equal(await page.locator('#customer-form [name=phone]').count(),0);
  assert.equal(await page.getByLabel('Email',{exact:true}).count(),0);await page.getByLabel('Статус клиента',{exact:true}).selectOption('pending');
  await page.locator('#customer-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
- await page.getByRole('searchbox').fill('111-22-33');assert.equal(await page.locator('.customers-table tbody tr').count(),1);
+ await page.getByRole('searchbox').fill('UI customer');assert.equal(await page.locator('.customers-table tbody tr').count(),1);
  assert.match(await page.locator('.customers-table tbody').innerText(),/В ожидании/);
  await page.getByRole('button',{name:'Редактировать клиента UI customer',exact:true}).click();
- await page.getByLabel('Имя клиента',{exact:true}).fill('UI changed');await page.locator('#customer-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ await page.getByLabel('Имя клиента',{exact:true}).fill('UI changed');await page.getByLabel('Телефон',{exact:true}).fill('+7 999 111-22-33');await page.locator('#customer-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
+ await page.getByRole('searchbox').fill('111-22-33');assert.equal(await page.locator('.customers-table tbody tr').count(),1);
  await page.locator('#customer-status-filter').selectOption('active');assert.equal(await page.locator('.customers-table tbody tr').count(),0);
  await page.locator('#customer-status-filter').selectOption('pending');assert.equal(await page.locator('.customers-table tbody tr').count(),1);
  await page.getByRole('button',{name:'Фильтры',exact:true}).click();await page.getByLabel('Количество заказов от',{exact:true}).fill('1');
@@ -212,6 +213,7 @@ try {
  // Purchase document: draft, posting, saved lines, stock and payment.
  await page.getByRole('button',{name:'Создать документ',exact:true}).click();await page.getByRole('button',{name:'Закупка',exact:true}).click();
  await page.locator('#purchase-form').waitFor();
+ assert.equal(await page.locator('#purchase-form [name=store]').count(),0);
  const purchaseProduct=await page.locator('[data-action=purchase-add]').first().getAttribute('data-id');
  const stockBefore=db.prepare('SELECT stock FROM products WHERE id=?').get(Number(purchaseProduct)).stock;
  await page.locator('[data-action=purchase-add]').first().click();

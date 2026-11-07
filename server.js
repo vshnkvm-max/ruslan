@@ -146,10 +146,11 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(purchaseMatch&&['POST','PATCH'].includes(method)) {
           if((method==='POST')===Boolean(purchaseMatch[1])) fail(405,'Метод не поддерживается.');
           const b=await body(req),posted=bool(b.posted),paid=num(b.paid,'Оплачено');
-          const supplier=str(b.supplier,'Поставщик'),store=str(b.store,'Магазин'),comment=str(b.comment??'','Комментарий',2000,false);
+          const supplier=str(b.supplier,'Поставщик'),comment=str(b.comment??'','Комментарий',2000,false);
           const requestKey=str(b.request_key,'Ключ документа',80);
           const previous=purchaseMatch[1]?db.prepare('SELECT * FROM purchases WHERE id=?').get(Number(purchaseMatch[1])):null;
           if(purchaseMatch[1]&&!previous) fail(404,'Закупка не найдена.');
+          const store=str(b.store??previous?.store??'','Магазин',200,false);
           if(previous?.posted) fail(409,'Проведённая закупка доступна только для просмотра.');
           if(method==='POST') {const existing=db.prepare('SELECT id FROM purchases WHERE request_key=?').get(requestKey);if(existing)return json(res,200,{id:existing.id});}
           if(!Array.isArray(b.items)||!b.items.length||b.items.length>100) fail(400,'Добавьте от 1 до 100 товаров.');
