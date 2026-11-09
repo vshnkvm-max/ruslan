@@ -32,7 +32,9 @@ test('static assets compress and revalidate the correct representation',async()=
  for(const path of ['/','/app.js','/styles.css','/miniapp','/miniapp.js','/miniapp.css']){
   const plain=await raw(path,{'Accept-Encoding':'identity'}),compressed=await raw(path,{'Accept-Encoding':'gzip'});
   assert.equal(plain.status,200);assert.equal(compressed.status,200);assert.equal(compressed.headers['content-encoding'],'gzip');
-  assert.deepEqual(gunzipSync(compressed.body),plain.body);assert.ok(compressed.body.length<plain.body.length*0.6);
+  assert.deepEqual(gunzipSync(compressed.body),plain.body);
+  const maxRatio=plain.headers['content-type'].startsWith('text/html')?1:0.6;
+  assert.ok(compressed.body.length<plain.body.length*maxRatio,`${path} compressed transfer size`);
   assert.equal(compressed.headers.vary,'Accept-Encoding');assert.notEqual(plain.headers.etag,compressed.headers.etag);
   const cached=await raw(path,{'Accept-Encoding':'gzip','If-None-Match':compressed.headers.etag});
   assert.equal(cached.status,304);assert.equal(cached.body.length,0);
@@ -46,6 +48,14 @@ test('malformed request URL returns 400 without stopping subsequent requests',as
  assert.equal((await raw('http://[')).status,400);
  assert.equal((await fetch(base+'/api/health')).status,200);
  assert.equal((await fetch(base+'/miniapp')).status,200);
+});
+test('HTML uses content-versioned scripts and styles to prevent stale Telegram assets',async()=>{
+ for(const page of ['/','/miniapp']){
+  const response=await raw(page);assert.equal(response.headers['cache-control'],'no-store');
+  const references=[...response.body.toString().matchAll(/(?:src|href)="(\/[^"?]+\.(?:js|css)\?v=[a-f0-9]{16})"/g)].map(match=>match[1]);
+  assert.equal(references.length,2);
+  for(const reference of references){const asset=await raw(reference);assert.equal(asset.status,200);assert.ok(asset.body.length>0);}
+ }
 });
 test('banner photographs do not inflate bootstrap and storefront; image edits change URLs and privacy is preserved',async()=>{
  // Seed a large existing image to exercise old databases without an upload or migration.

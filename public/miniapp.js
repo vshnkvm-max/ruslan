@@ -1,15 +1,15 @@
 let telegram = window.Telegram?.WebApp;
+let telegramReady=false;
 function configureTelegram() {
   if (!telegram) return;
-  telegram.ready();
-  telegram.expand();
-  telegram.setHeaderColor?.('#100002');
-  telegram.setBackgroundColor?.('#100002');
+  for(const [method,args] of [['ready',[]],['expand',[]],['setHeaderColor',['#100002']],['setBackgroundColor',['#100002']]]) {
+    try {if(typeof telegram[method]==='function'){telegram[method](...args);if(method==='ready')telegramReady=true;}}
+    catch {console.warn(`Telegram WebApp: ${method} недоступен.`);}
+  }
 }
-configureTelegram();
 
 function signalReadyWithoutSdk() {
-  if (telegram) return;
+  if (telegramReady) return;
   // The loading placeholder must not depend on the external SDK download.
   // Use Telegram's bridge event; the SDK still initializes identity when it arrives.
   const event = { eventType: 'web_app_ready', eventData: {} };
@@ -357,10 +357,15 @@ async function load() {
   if (loading) return;
   loading = true;
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+  let stage='network';
   try {
     const response = await fetch('/api/storefront', { credentials: 'omit', cache: 'no-store', signal:controller.signal });
-    if (!response.ok) throw Error();
-    data = await response.json();
+    if (!response.ok) {const error=new Error();error.httpStatus=response.status;throw error;}
+    stage='data';
+    const payload=await response.json();
+    if(!payload||!Array.isArray(payload.products))throw new Error('Некорректный каталог.');
+    data={...payload,categories:Array.isArray(payload.categories)?payload.categories:[...new Set(payload.products.map(product=>product.category).filter(Boolean))],banners:Array.isArray(payload.banners)?payload.banners:[],reviews:Array.isArray(payload.reviews)?payload.reviews:[]};
+    stage='render';
     document.title = 'GAS SHOP — магазин';
     if (!data.categories.includes(category)) category = '';
     const banner = data.banners[0];
@@ -381,9 +386,11 @@ async function load() {
     reconcileCart();
     render();
     if (activePage === 'cart') renderCart();
-  } catch {
+  } catch(error) {
+    const reason=error.name==='AbortError'?'Сервер не ответил за 15 секунд.':error.httpStatus?`Сервер вернул HTTP ${error.httpStatus}.`:stage==='network'?'Нет соединения с сервером.':stage==='data'?'Сервер вернул некорректные данные каталога.':'Ошибка отображения каталога.';
+    console.error(`Каталог: ${reason}`,error);
     $('#status').hidden = false;
-    $('#status').innerHTML = 'Не удалось обновить каталог.<br><button class="retry" id="retry">Повторить</button>';
+    $('#status').innerHTML = `Не удалось обновить каталог.<br>${escape(reason)}<br><button class="retry" id="retry">Повторить</button>`;
   } finally {
     clearTimeout(timer);
     loading = false;
@@ -653,7 +660,7 @@ $('#detail-content').addEventListener('keydown', event => {
   void switchProfileTab(tab);
 });
 document.addEventListener('click', event => { if (event.target.id === 'retry') load(); });
-$('#telegram-sdk').addEventListener('load', () => {
+$('#telegram-sdk')?.addEventListener('load', () => {
   telegram = window.Telegram?.WebApp;
   configureTelegram();
   user = telegram?.initDataUnsafe?.user;
@@ -671,4 +678,5 @@ $('#telegram-sdk').addEventListener('load', () => {
   if ($('#details').open && $('#details').dataset.view === 'profile') renderProfile(profileTab);
 });
 load();
+configureTelegram();
 signalReadyWithoutSdk();

@@ -435,7 +435,24 @@ try {
   } finally {
     await webContext.close();
   }
-  console.log('Mini App passed: new icons, profile, local cart, stock limits, refreshed prices, persistence, bidirectional category slides, rapid switching, reduced motion, and layouts at 320/390/480/1280px.');
+  // Broken optional Telegram methods and stale unversioned scripts cannot block catalog startup.
+  const recoveryContext=await browser.newContext();
+  try {
+    await recoveryContext.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:'window.Telegram={WebApp:{ready(){throw Error("bridge failure")},expand(){throw Error("bridge failure")},setHeaderColor(){throw Error("unsupported")},setBackgroundColor(){throw Error("unsupported")}}};'}));
+    await recoveryContext.route('**/miniapp.js',route=>route.fulfill({contentType:'text/javascript',body:'throw Error("stale fullscreen script")'}));
+    let attempts=0;
+    await recoveryContext.route('**/api/storefront',route=>++attempts===1?route.fulfill({status:503,json:{error:'Temporary outage'}}):route.fulfill({json:{products:[{id:1,name:'Recovered catalog',price:100,stock:1,category:'Category',image:'',description:''}]}}));
+    const recovery=await recoveryContext.newPage(),failures=[];
+    recovery.on('pageerror',error=>failures.push(error.message));
+    await recovery.goto(base+'/miniapp');
+    await recovery.locator('#status').filter({hasText:'HTTP 503'}).waitFor();
+    assert.match(await recovery.locator('script[src*="miniapp.js"]').getAttribute('src'),/\?v=[a-f0-9]{16}$/);
+    await recovery.locator('#retry').click();
+    await recovery.getByRole('heading',{name:'Recovered catalog',exact:true}).waitFor();
+    assert.equal(attempts,2);assert.deepEqual(failures,[]);
+    assert.ok(await recovery.locator('[data-category="Category"]').isVisible());
+  } finally {await recoveryContext.close();}
+  console.log('Mini App passed: catalog recovery, stale-cache protection, unavailable Telegram methods, profile, local cart, stock limits, refreshed prices, persistence, category slides, reduced motion, and layouts at 320/390/480/1280px.');
 } finally {
   await browser.close();
   await new Promise(resolve => server.close(resolve));
