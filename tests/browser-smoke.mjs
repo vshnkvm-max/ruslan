@@ -121,7 +121,7 @@ try {
  console.log('PASS: login, product search, create, edit, selection, hiding');
  for (const section of ['statistics','customers','orders','finance','reviews','referrals','content']) {
   await page.locator(`nav a[href="#${section}"]`).click();
-  await page.waitForFunction(key=>location.hash==='#'+key,section);
+  await page.locator(`nav a[href="#${section}"][aria-current="page"]`).waitFor();
   assert.ok(await page.locator('#main-content h1').innerText());if(!['statistics','customers','referrals'].includes(section))assert.equal(await page.locator('.metrics-grid').count(),0);if(section==='customers'&&screenshots)await page.screenshot({path:join(screenshots,'customers.png'),fullPage:true});
  }
  await page.getByLabel('Название магазина').fill('UI store');

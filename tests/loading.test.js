@@ -57,6 +57,20 @@ test('HTML uses content-versioned scripts and styles to prevent stale Telegram a
   for(const reference of references){const asset=await raw(reference);assert.equal(asset.status,200);assert.ok(asset.body.length>0);}
  }
 });
+test('large API responses compress asynchronously without changing data or private caching rules',async()=>{
+ const id=Number(app.db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,image,description) VALUES (?,?,?,?,?,?,?,?)').run('Compressed product','GZIP-TEST','',100,0,1,'','Description '.repeat(150)).lastInsertRowid);
+ try {
+  for(const path of ['/api/bootstrap','/api/storefront']){
+   const plain=await raw(path,{Cookie:cookie,'Accept-Encoding':'identity'});
+   const compressed=await raw(path,{Cookie:cookie,'Accept-Encoding':'gzip'});
+   assert.equal(compressed.status,200);assert.equal(compressed.headers['content-encoding'],'gzip');
+   assert.equal(compressed.headers['cache-control'],'no-store');assert.equal(compressed.headers.vary,'Accept-Encoding');
+   assert.deepEqual(JSON.parse(gunzipSync(compressed.body)),JSON.parse(plain.body));
+   assert.ok(compressed.body.length<plain.body.length*0.6);
+   assert.equal((await raw(path,{Cookie:cookie,'Accept-Encoding':'gzip;q=0'})).headers['content-encoding'],undefined);
+  }
+ }finally {app.db.prepare('DELETE FROM products WHERE id=?').run(id);}
+});
 test('banner photographs do not inflate bootstrap and storefront; image edits change URLs and privacy is preserved',async()=>{
  // Seed a large existing image to exercise old databases without an upload or migration.
  const large='data:image/jpeg;base64,'+Buffer.concat([Buffer.from([255,216,255]),Buffer.alloc(450000,77)]).toString('base64');

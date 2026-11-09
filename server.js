@@ -5,6 +5,8 @@ import { openDatabase } from './lib/database.js';
 import { token, digest, verifyPasswordAsync, hashPassword, hashPasswordAsync } from './lib/auth.js';
 import { createProductImages, legacyImages } from './lib/product-images.js';
 import { createStaticAssets } from './lib/static-assets.js';
+import { loadOrderHistory } from './lib/order-history.js';
+import { sendJson } from './lib/http-response.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const sessionDuration = 12 * 60 * 60 * 1000;
@@ -61,22 +63,13 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const bannerPath=row=>row.image?`/api/banner-images/${row.id}?v=${digest(row.image)}`:'';
   const serializeBanner=row=>({...row,image:bannerPath(row)});
   const categories=()=>[...new Set([...getSettings('categories'),...db.prepare("SELECT DISTINCT category FROM products WHERE deleted=0 AND category!=''").all().map(p=>p.category)])].filter(Boolean);
-  const customers=()=>db.prepare(`SELECT c.*, COUNT(o.id) AS orders_count, COALESCE(SUM(CASE WHEN o.status='completed' THEN (SELECT SUM(price*quantity) FROM order_items WHERE order_id=o.id) ELSE 0 END),0) AS spent, COALESCE(SUM(CASE WHEN o.status!='cancelled' THEN (SELECT SUM(price*quantity) FROM order_items WHERE order_id=o.id) ELSE 0 END),0) AS order_total, MAX(o.created_at) AS last_order FROM customers c LEFT JOIN orders o ON o.customer_id=c.id WHERE c.deleted=0 GROUP BY c.id ORDER BY c.id`).all();
-  const orders=()=>db.prepare(`SELECT o.*,c.name AS customer_name,c.username,COALESCE(SUM(i.price*i.quantity),0) AS total,COALESCE(SUM(i.quantity),0) AS quantity FROM orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN order_items i ON i.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC`).all().map(o=>({...o,items:db.prepare('SELECT * FROM order_items WHERE order_id=?').all(o.id)}));
-  const ledger=()=>[
-    ...db.prepare('SELECT * FROM transactions').all().map(t=>({...t,id:`t${t.id}`})),
-    ...db.prepare(`SELECT o.id,o.created_at,SUM(i.price*i.quantity) AS amount FROM orders o JOIN order_items i ON i.order_id=o.id WHERE o.status='completed' GROUP BY o.id`).all().map(o=>({...o,id:`o${o.id}`,type:'income',category:'Продажи',description:`Заказ #${String(o.id).padStart(4,'0')}`}))
-  ].sort((a,b)=>b.created_at.localeCompare(a.created_at));
   const bootstrap=()=>({
-    products:products(),customers:customers(),orders:orders(),categories:categories(),
+    products:products(),...loadOrderHistory(db),categories:categories(),
     reviews:db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all(),
     purchases:db.prepare('SELECT * FROM purchases ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
-    transactions:ledger(),referrals:db.prepare('SELECT r.*,c.name AS inviter_name,c.referral_code,i.name AS invitee_name FROM referrals r JOIN customers c ON c.id=r.inviter_id JOIN customers i ON i.id=r.invitee_id ORDER BY r.created_at DESC').all(),
+    referrals:db.prepare('SELECT r.*,c.name AS inviter_name,c.referral_code,i.name AS invitee_name FROM referrals r JOIN customers c ON c.id=r.inviter_id JOIN customers i ON i.id=r.invitee_id ORDER BY r.created_at DESC').all(),
     banners:db.prepare('SELECT * FROM banners ORDER BY id').all().map(serializeBanner),shop:getSettings('shop'),referral:getSettings('referral')
   });
-  function json(res,status,data,headers={}) {
-    res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(data));
-  }
   async function body(req) {
     if(!req.headers['content-type']?.startsWith('application/json')) fail(415,'Ожидается JSON.');
     let size=0; const chunks=[];
@@ -85,6 +78,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
     catch { fail(400,'Неверный JSON.'); }
   }
   const server=createServer(async(req,res)=>{
+    const json=(response,status,data,headers)=>sendJson(req,response,status,data,headers);
     res.setHeader('X-Content-Type-Options','nosniff');
     res.setHeader('Referrer-Policy','same-origin');
     try {
