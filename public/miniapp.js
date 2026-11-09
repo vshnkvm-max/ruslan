@@ -1,30 +1,10 @@
 let telegram = window.Telegram?.WebApp;
-let fullscreenRequested=false;
-function canFullscreen(){return typeof telegram?.requestFullscreen==='function'&&telegram.isVersionAtLeast?.('8.0');}
-function updateTelegramInsets(){
- const safe=telegram?.safeAreaInset||{},content=telegram?.contentSafeAreaInset||{};
- document.documentElement.style.setProperty('--telegram-safe-top',`${Math.max(0,Number(safe.top)||0)+Math.max(0,Number(content.top)||0)}px`);
- document.documentElement.style.setProperty('--telegram-safe-bottom',`${Math.max(0,Number(safe.bottom)||0)+Math.max(0,Number(content.bottom)||0)}px`);
- const button=document.getElementById('fullscreen-button');
- if(button)button.hidden=!canFullscreen()||Boolean(telegram.isFullscreen);
-}
-function requestTelegramFullscreen(automatic=false){
- if(!canFullscreen()||telegram.isFullscreen||(automatic&&fullscreenRequested))return;
- fullscreenRequested=true;
- try {telegram.requestFullscreen();}catch {updateTelegramInsets();}
-}
 function configureTelegram() {
   if (!telegram) return;
   telegram.ready();
   telegram.expand();
   telegram.setHeaderColor?.('#100002');
   telegram.setBackgroundColor?.('#100002');
-  updateTelegramInsets();
-  requestTelegramFullscreen(true);
-  telegram.onEvent?.('safeAreaChanged',updateTelegramInsets);
-  telegram.onEvent?.('contentSafeAreaChanged',updateTelegramInsets);
-  telegram.onEvent?.('fullscreenChanged',updateTelegramInsets);
-  telegram.onEvent?.('fullscreenFailed',()=>{updateTelegramInsets();notify('Полный экран недоступен в этом клиенте Telegram.');});
 }
 configureTelegram();
 
@@ -622,7 +602,6 @@ if (window.ResizeObserver) new ResizeObserver(resizeCategoryPanel).observe($('#c
 else window.addEventListener('resize', resizeCategoryPanel);
 
 $('#profile-button').onclick = () => renderProfile();
-$('#fullscreen-button').onclick = () => requestTelegramFullscreen();
 $('#cart-tab').onclick = () => { void navigateToPage('cart'); };
 $('#catalog-tab').onclick = () => { void navigateToPage('home'); };
 $('#categories').onclick = event => {

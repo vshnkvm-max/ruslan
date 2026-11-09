@@ -16,7 +16,7 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'
 try {
  const context=await browser.newContext({viewport:{width:1280,height:900}});
  await context.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:`
- window.fullscreenCalls=0;window.telegramEvents={};window.Telegram={WebApp:{ready(){},expand(){},isVersionAtLeast(){return true;},isFullscreen:false,requestFullscreen(){fullscreenCalls++;},safeAreaInset:{top:10,bottom:5},contentSafeAreaInset:{top:30,bottom:15},onEvent(name,fn){telegramEvents[name]=fn;}}};`}));
+ window.fullscreenCalls=0;window.expandCalls=0;window.telegramEvents={};window.Telegram={WebApp:{ready(){},expand(){expandCalls++;},isVersionAtLeast(){return true;},isFullscreen:false,requestFullscreen(){fullscreenCalls++;},safeAreaInset:{top:10,bottom:5},contentSafeAreaInset:{top:30,bottom:15},onEvent(name,fn){telegramEvents[name]=fn;}}};`}));
  const page=await context.newPage(),errors=[];
  page.on('pageerror',error=>errors.push(error.message));
  await page.goto(base);
@@ -105,12 +105,9 @@ try {
  await mini.goto(base+'/miniapp');
  await mini.locator(`[data-product="${product.id}"]`).waitFor();
  assert.equal(await mini.locator('#next-category').count(),0);
- assert.equal(await mini.evaluate(()=>fullscreenCalls),1);
- assert.ok(await mini.locator('.miniapp').evaluate(element=>parseFloat(getComputedStyle(element).paddingTop)>=40));
- await mini.getByRole('button',{name:'На весь экран',exact:true}).click();
- assert.equal(await mini.evaluate(()=>fullscreenCalls),2);
- await mini.evaluate(()=>{Telegram.WebApp.isFullscreen=true;telegramEvents.fullscreenChanged();});
- assert.ok(await mini.locator('#fullscreen-button').isHidden());
+ assert.equal(await mini.evaluate(()=>fullscreenCalls),0);
+ assert.equal(await mini.evaluate(()=>expandCalls),1);
+ assert.equal(await mini.locator('#fullscreen-button').count(),0);
  await mini.waitForFunction(()=>{const image=document.querySelector('#banner img');return image?.complete&&image.naturalWidth>0;});
  const ratio=await mini.locator('#banner img').evaluate(image=>{
   const rect=image.getBoundingClientRect();return {rendered:rect.width/rect.height,natural:image.naturalWidth/image.naturalHeight};
@@ -187,7 +184,7 @@ try {
  await recovering.close();
  console.log('PASS: stuck Mini App request times out and retries; admin recovers from HTTP 503 with one startup request');
  assert.deepEqual(errors,[]);
- console.log('PASS: multiple photos, primary photo, recoverable save errors, double-submit protection, category deletion, category-first purchasing, zero initial stock, fullscreen request, banner proportions, gallery navigation and product deletion');
+ console.log('PASS: multiple photos, primary photo, recoverable save errors, double-submit protection, category deletion, category-first purchasing, zero initial stock, ordinary expanded Telegram window, banner proportions, gallery navigation and product deletion');
 } finally {
  await browser.close();
  await new Promise(resolve=>server.close(resolve));
