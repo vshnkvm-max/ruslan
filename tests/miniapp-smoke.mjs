@@ -177,7 +177,7 @@ try {
   db.prepare("UPDATE banners SET image='' WHERE id=?").run(banners[0].id);
   await page.reload();
   await page.getByRole('heading', { name: 'Баннер из админки', exact: true }).waitFor();
-  await page.locator('#next-category').click();
+  assert.equal(await page.locator('#next-category').count(),0);await page.locator('[data-category="Скоро"]').click();
   await settle();
   assert.equal(await page.locator('#categories [aria-pressed="true"]').textContent(),'Скоро');
   await page.locator('[data-category=""]').click();

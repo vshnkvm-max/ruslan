@@ -1,10 +1,30 @@
 let telegram = window.Telegram?.WebApp;
+let fullscreenRequested=false;
+function canFullscreen(){return typeof telegram?.requestFullscreen==='function'&&telegram.isVersionAtLeast?.('8.0');}
+function updateTelegramInsets(){
+ const safe=telegram?.safeAreaInset||{},content=telegram?.contentSafeAreaInset||{};
+ document.documentElement.style.setProperty('--telegram-safe-top',`${Math.max(0,Number(safe.top)||0)+Math.max(0,Number(content.top)||0)}px`);
+ document.documentElement.style.setProperty('--telegram-safe-bottom',`${Math.max(0,Number(safe.bottom)||0)+Math.max(0,Number(content.bottom)||0)}px`);
+ const button=document.getElementById('fullscreen-button');
+ if(button)button.hidden=!canFullscreen()||Boolean(telegram.isFullscreen);
+}
+function requestTelegramFullscreen(automatic=false){
+ if(!canFullscreen()||telegram.isFullscreen||(automatic&&fullscreenRequested))return;
+ fullscreenRequested=true;
+ try {telegram.requestFullscreen();}catch {updateTelegramInsets();}
+}
 function configureTelegram() {
   if (!telegram) return;
   telegram.ready();
   telegram.expand();
   telegram.setHeaderColor?.('#100002');
   telegram.setBackgroundColor?.('#100002');
+  updateTelegramInsets();
+  requestTelegramFullscreen(true);
+  telegram.onEvent?.('safeAreaChanged',updateTelegramInsets);
+  telegram.onEvent?.('contentSafeAreaChanged',updateTelegramInsets);
+  telegram.onEvent?.('fullscreenChanged',updateTelegramInsets);
+  telegram.onEvent?.('fullscreenFailed',()=>{updateTelegramInsets();notify('Полный экран недоступен в этом клиенте Telegram.');});
 }
 configureTelegram();
 
@@ -155,9 +175,22 @@ function changeCart(id, delta, source) {
   updateProductAddButton();
 }
 
-const photo = product => /^data:image\/(jpeg|png|webp);base64,/.test(product.image)
-  ? `<div class="photo"><img src="${escape(product.image)}" alt="${escape(product.name)}"></div>`
+const isPhoto=value=>/^data:image\/(jpeg|png|webp);base64,/.test(value)||/^\/api\/images\/[a-f0-9-]{36}$/.test(value);
+const photo = product => isPhoto(product.image)
+  ? `<div class="photo"><img src="${escape(product.image)}" alt="${escape(product.name)}" loading="lazy" decoding="async"></div>`
   : `<div class="photo photo-empty">${icons.bag}<small>Фото скоро появится</small></div>`;
+function productGallery(product){
+ const images=product.images?.length?product.images:(isPhoto(product.image)?[product.image]:[]);
+ if(images.length<2)return photo(product);
+ return `<div class="product-gallery"><div class="gallery-track" id="gallery-track" aria-label="Фотографии товара">${images.map((image,index)=>`<div class="gallery-slide">${photo({...product,image,name:`${product.name} — фото ${index+1}`})}</div>`).join('')}</div><div class="gallery-controls"><button type="button" data-gallery-step="-1" aria-label="Предыдущее фото" disabled>‹</button><span id="gallery-counter" aria-live="polite">1 / ${images.length}</span><button type="button" data-gallery-step="1" aria-label="Следующее фото">›</button></div></div>`;
+}
+function updateGallery(){
+ const track=$('#gallery-track');if(!track)return;
+ const index=Math.round(track.scrollLeft/Math.max(1,track.clientWidth)),count=track.children.length;
+ $('#gallery-counter').textContent=`${index+1} / ${count}`;
+ $('[data-gallery-step="-1"]').disabled=index===0;
+ $('[data-gallery-step="1"]').disabled=index>=count-1;
+}
 function formatted(value) {
   return escape(value).split('\n').map(line => {
     const text = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -248,7 +281,6 @@ function renderCategories(smooth = false) {
     smooth = false;
   }
   menu.querySelectorAll('[data-category]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.category === category)));
-  $('#next-category').disabled = entries.length < 2;
   positionCategoryIndicator(smooth);
 }
 
@@ -379,10 +411,11 @@ function openProduct(id) {
   const product = data?.products.find(item => item.id === id);
   if (!product) return;
   $('#details').dataset.productId = id;
-  show(`${photo(product)}<h2>${escape(product.name)}</h2><strong class="price">${moneyMarkup(product.price)}</strong>
+  show(`${productGallery(product)}<h2>${escape(product.name)}</h2><strong class="price">${moneyMarkup(product.price)}</strong>
     <p class="detail-stock">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</p>
     ${formatted(product.short_description)}${formatted(product.description)}
     <button class="primary-button" id="product-add" data-add="${product.id}"></button><button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>`, 'product');
+  $('#gallery-track')?.addEventListener('scroll',updateGallery,{passive:true});
   updateProductAddButton();
   fetch(`/api/storefront/products/${product.id}/view`, { method: 'POST', credentials: 'omit' }).catch(() => {});
 }
@@ -587,17 +620,13 @@ if (window.ResizeObserver) new ResizeObserver(resizeCategoryPanel).observe($('#c
 else window.addEventListener('resize', resizeCategoryPanel);
 
 $('#profile-button').onclick = () => renderProfile();
+$('#fullscreen-button').onclick = () => requestTelegramFullscreen();
 $('#cart-tab').onclick = () => { void navigateToPage('cart'); };
 $('#catalog-tab').onclick = () => { void navigateToPage('home'); };
 $('#categories').onclick = event => {
   const button = event.target.closest('[data-category]');
   if (!button) return;
   void selectCategory(button.dataset.category);
-};
-$('#next-category').onclick = () => {
-  const buttons = [...document.querySelectorAll('#categories [data-category]')];
-  const current = buttons.findIndex(button => button.getAttribute('aria-pressed') === 'true');
-  buttons[(current + 1) % buttons.length]?.click();
 };
 $('#products').onclick = event => {
   const button = event.target.closest('[data-product]');
@@ -615,6 +644,8 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ const step=event.target.closest('[data-gallery-step]');
+ if(step){const track=$('#gallery-track');const index=Math.round(track.scrollLeft/Math.max(1,track.clientWidth));track.scrollTo({left:Math.max(0,Math.min(track.children.length-1,index+Number(step.dataset.galleryStep)))*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});return;}
   const add = event.target.closest('[data-add]');
   const quantity = event.target.closest('[data-cart-change]');
   const remove = event.target.closest('[data-remove]');

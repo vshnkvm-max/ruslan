@@ -93,7 +93,7 @@ try {
  await page.locator('[data-description-color=product-description]').fill('#ff0000');
  assert.equal(await page.locator('.description-preview h2 span').evaluate(el=>getComputedStyle(el).color),'rgb(255, 0, 0)');
  await page.getByLabel('Цена, ₽',{exact:true}).fill('1200');
- await page.getByLabel('Остаток, шт.',{exact:true}).fill('8');
+ assert.equal(await page.locator('#product-form [name=stock]').count(),0);assert.equal(await page.getByLabel('Сортировка',{exact:true}).inputValue(),'100');
  await page.getByLabel('Фото товара',{exact:true}).setInputFiles({name:'photo.png',mimeType:'image/png',buffer:Buffer.from(await page.evaluate(()=>{const c=document.createElement('canvas');c.width=32;c.height=32;const ctx=c.getContext('2d');ctx.fillStyle='#087fff';ctx.fillRect(0,0,32,32);return c.toDataURL('image/png').split(',')[1];}),'base64')});
  await page.locator('#product-photo-preview img').waitFor();
  await page.locator('#product-form button[type=submit]').click();
@@ -109,11 +109,11 @@ try {
  await page.locator('#product-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.match(await page.locator('.products-table tbody').innerText(),/1\s500/);
  await page.reload();await page.locator('.products-table').waitFor();await page.getByRole('searchbox').fill('Browser test lamp');
- assert.ok(await page.locator('.products-table img').evaluate(img=>img.complete&&img.naturalWidth>0));assert.equal(await page.locator('.products-table img').evaluate(img=>getComputedStyle(img).objectFit),'cover');
+ assert.ok(await page.locator('.products-table img').evaluate(img=>img.complete&&img.naturalWidth>0));assert.equal(await page.locator('.products-table img').evaluate(img=>getComputedStyle(img).objectFit),'contain');
  const savedPhoto=await page.evaluate(async()=>{const d=await(await fetch('/api/storefront')).json();return d.products.find(p=>p.name==='Browser test lamp').image;});
- assert.match(savedPhoto,/^data:image\/jpeg;base64,/);
+ assert.match(savedPhoto,/^\/api\/images\//);
  await page.getByRole('button',{name:'Browser test lamp Для дома'}).click();
- await page.getByRole('button',{name:'Убрать фото',exact:true}).click();
+ await page.getByRole('button',{name:'Удалить фото 1',exact:true}).click();
  await page.locator('#product-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.equal(await page.locator('.products-table img').count(),0);
  await page.locator('[data-select]').check();await page.getByRole('button',{name:'В архив (1)'}).click();
@@ -216,6 +216,8 @@ try {
  await page.getByRole('button',{name:'Создать документ',exact:true}).click();await page.getByRole('button',{name:'Закупка',exact:true}).click();
  await page.locator('#purchase-form').waitFor();
  assert.equal(await page.locator('#purchase-form [name=store]').count(),0);
+ assert.equal(await page.locator('[data-action=purchase-add]').count(),0);
+ await page.locator('[data-action=purchase-category][data-value="Для дома"]').click();
  const purchaseProduct=await page.locator('[data-action=purchase-add]').first().getAttribute('data-id');
  const stockBefore=db.prepare('SELECT stock FROM products WHERE id=?').get(Number(purchaseProduct)).stock;
  await page.locator('[data-action=purchase-add]').first().click();

@@ -10,6 +10,7 @@
     "admin:create": "node scripts/create-admin.js",
     "test": "node --test tests/*.test.js",
     "test:browser": "node tests/browser-smoke.mjs",
-    "check": "node --check server.js && node --check lib/database.js && node --check public/app.js"
+    "test:workflows": "node tests/workflows-smoke.mjs",
+    "check": "node --check server.js && node --check lib/database.js && node --check lib/product-images.js && node --check public/app.js && node --check public/miniapp.js"
   }
 }

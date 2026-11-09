@@ -64,7 +64,7 @@ test('writes require CSRF and reject requests from another origin',async()=>{
   assert.equal((await request('/settings/referral',{method:'PATCH',body,headers:{Origin:'https://untrusted.example'}})).res.status,403);
 });
 test('product creation, validation, duplicate SKU, editing and public visibility',async()=>{
-  const body={name:'Test product',sku:'TEST-001',category:'Для дома',price:2490,cost:1200,stock:3,active:true,image:'cup',description:'Test description'};
+  const body={name:'Test product',sku:'TEST-001',category:'Для дома',price:2490,cost:1200,stock:0,active:true,image:'cup',description:'Test description'};
   assert.equal((await request('/products',{method:'POST',body:{...body,price:-1}})).res.status,400);
   assert.equal((await request('/products',{method:'POST',body:{...body,stock:1.5}})).res.status,400);
   const created=await request('/products',{method:'POST',body});assert.equal(created.res.status,201);
@@ -74,7 +74,7 @@ test('product creation, validation, duplicate SKU, editing and public visibility
   const product=storefront.products.find(p=>p.id===id);assert.equal(product.price,2490);assert.equal(product.cost,undefined);
   assert.equal((await request(`/products/${id}`,{method:'PATCH',body:{...body,name:'Updated product',active:false}})).res.status,200);
   storefront=(await request('/storefront',{auth:false})).data;assert.ok(!storefront.products.some(p=>p.id===id));
-  const saved=(await request('/bootstrap')).data.products.find(p=>p.id===id);assert.equal(saved.name,'Updated product');assert.equal(saved.stock,3);
+  const saved=(await request('/bootstrap')).data.products.find(p=>p.id===id);assert.equal(saved.name,'Updated product');assert.equal(saved.stock,0);
 });
 test('customer blocking changes status and preserves order history',async()=>{
   assert.equal((await request('/customers/1',{method:'PATCH',body:{banned:true}})).res.status,200);
@@ -156,13 +156,81 @@ test('banner image migration preserves existing banners and persists across rest
 
 test('product photos validate formats, persist, appear on storefront and can be removed',async()=>{
  const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0a0AAAAASUVORK5CYII=';
- const product={name:'Photo product',sku:'PHOTO-1',category:'Test',price:10,cost:5,stock:1,active:true,image,description:''};
+ const product={name:'Photo product',sku:'PHOTO-1',category:'Test',price:10,cost:5,stock:0,active:true,image,description:''};
  const created=await request('/products',{method:'POST',body:product});assert.equal(created.res.status,201);
  const productId=created.data.id;
- assert.equal((await request('/storefront',{auth:false})).data.products.find(p=>p.id===productId).image,image);
+ const savedPhoto=(await request('/storefront',{auth:false})).data.products.find(p=>p.id===productId);
+ assert.match(savedPhoto.image,/^\/api\/images\//);assert.deepEqual(savedPhoto.images,[savedPhoto.image]);
+ const photoResponse=await fetch(base+savedPhoto.image);assert.equal(photoResponse.status,200);assert.equal(photoResponse.headers.get('content-type'),'image/png');
+ assert.deepEqual(Buffer.from(await photoResponse.arrayBuffer()),Buffer.from(image.split(',')[1],'base64'));
  for(const invalid of ['data:image/svg+xml;base64,PHN2Zz4=', 'data:image/png;base64,YWJj', 'https://example.com/image.jpg','x'.repeat(700001)])assert.equal((await request(`/products/${productId}`,{method:'PATCH',body:{...product,image:invalid}})).res.status,400);
  assert.equal((await request(`/products/${productId}`,{method:'PATCH',body:{...product,image:''}})).res.status,200);
  assert.equal((await request('/bootstrap')).data.products.find(p=>p.id===productId).image,'');
+});
+
+test('gallery uploads, ordering, privacy and creation retries preserve one product',async()=>{
+ const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0a0AAAAASUVORK5CYII=';
+ assert.equal((await request('/images',{method:'POST',auth:false,body:{image}})).res.status,401);
+ const first=(await request('/images',{method:'POST',body:{image}})).data.image;
+ const second=(await request('/images',{method:'POST',body:{image}})).data.image;
+ assert.equal((await fetch(base+first)).status,404);
+ assert.equal((await fetch(base+first,{headers:{Cookie:cookie}})).status,200);
+ const body={name:'Gallery product',category:'Gallery',price:500,cost:100,active:true,description:'',images:[first,second],request_key:'gallery-create'};
+ assert.equal((await request('/products',{method:'POST',body:{...body,stock:1}})).res.status,400);
+ const created=await request('/products',{method:'POST',body});assert.equal(created.res.status,201);
+ const id=created.data.id;
+ assert.equal((await request('/products',{method:'POST',body})).data.id,id);
+ assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM products WHERE create_key=?').get('gallery-create').n,1);
+ let product=(await request('/bootstrap')).data.products.find(p=>p.id===id);
+ assert.equal(product.stock,0);assert.equal(product.sort_order,100);assert.deepEqual(product.images,[first,second]);
+ assert.ok(!JSON.stringify(product).includes('base64'));
+ const publicImage=await fetch(base+first);assert.equal(publicImage.status,200);
+ assert.equal((await fetch(base+first,{headers:{'If-None-Match':publicImage.headers.get('etag')}})).status,304);
+ const other=await request('/products',{method:'POST',body:{...body,request_key:'other-gallery',images:[]}});
+ assert.equal((await request(`/products/${other.data.id}`,{method:'PATCH',body:{...body,images:[first]}})).res.status,400);
+ assert.equal((await request(`/products/${id}`,{method:'PATCH',body:{...body,images:[second,first]}})).res.status,200);
+ product=(await request('/bootstrap')).data.products.find(p=>p.id===id);assert.equal(product.image,second);assert.deepEqual(product.images,[second,first]);
+ assert.equal((await request(`/products/${id}`,{method:'PATCH',body:{...body,images:[second]}})).res.status,200);
+ assert.equal((await fetch(base+first)).status,404);
+ assert.equal((await request(`/products/${id}`,{method:'PATCH',body:{...body,active:false,images:[second]}})).res.status,200);
+ assert.equal((await fetch(base+second)).status,404);
+ assert.equal((await fetch(base+second,{headers:{Cookie:cookie}})).status,200);
+ await request(`/products/${id}`,{method:'DELETE'});await request(`/products/${other.data.id}`,{method:'DELETE'});
+});
+
+test('legacy inline product photographs migrate without changing stock or sorting',async()=>{
+ const path=join(temp,'legacy-photo.db'),db=openDatabase(path);
+ const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0a0AAAAASUVORK5CYII=';
+ const id=Number(db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,image,sort_order) VALUES (?,?,?,?,?,?,?,?)').run('Old photo','OLD-PHOTO','Old',100,20,7,image,17).lastInsertRowid);
+ db.close();
+ const migrated=createApp({dbPath:path});await new Promise(resolve=>migrated.server.listen(0,'127.0.0.1',resolve));
+ const address=`http://127.0.0.1:${migrated.server.address().port}`;
+ let url;
+ try {
+  const data=await(await fetch(address+'/api/storefront')).json(),product=data.products.find(p=>p.id===id);
+  assert.equal(product.stock,7);assert.equal(migrated.db.prepare('SELECT sort_order FROM products WHERE id=?').get(id).sort_order,17);
+  url=product.image;assert.match(url,/^\/api\/images\//);
+  assert.deepEqual(Buffer.from(await(await fetch(address+url)).arrayBuffer()),Buffer.from(image.split(',')[1],'base64'));
+ } finally {await new Promise(resolve=>migrated.server.close(resolve));}
+ const reopened=createApp({dbPath:path});
+ assert.equal(reopened.db.prepare('SELECT COUNT(*) AS n FROM product_images WHERE product_id=?').get(id).n,1);
+ assert.equal(reopened.db.prepare('SELECT image FROM products WHERE id=?').get(id).image,url);
+ reopened.db.close();
+});
+
+test('category deletion leaves products and order history intact without recreating the category',async()=>{
+ const name='Disposable category';await request('/categories',{method:'POST',body:{name}});
+ const created=await request('/products',{method:'POST',body:{name:'Uncategorized after deletion',category:name,price:100,cost:0,active:true,image:'',description:''}});
+ assert.equal(created.res.status,201);
+ assert.equal((await request('/categories',{method:'DELETE',body:{name}})).res.status,200);
+ let data=(await request('/bootstrap')).data;
+ assert.ok(!data.categories.includes(name));assert.equal(data.products.find(p=>p.id===created.data.id).category,'');
+ assert.ok(!(await request('/storefront',{auth:false})).data.categories.includes(name));
+ assert.equal((await request('/categories',{method:'DELETE',body:{name}})).res.status,404);
+ const orderItems=app.db.prepare('SELECT COUNT(*) AS n FROM order_items').get().n;
+ await request(`/products/${created.data.id}`,{method:'DELETE'});
+ assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM order_items').get().n,orderItems);
+ data=(await request('/bootstrap')).data;assert.ok(!data.products.some(p=>p.id===created.data.id));
 });
 
 test('customer CRUD preserves order history and validates contact fields',async()=>{
@@ -195,7 +263,7 @@ test('product categories, sorting, review aggregates and deletion retain history
  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM reviews WHERE product_id=?').get(p.id).n,count);
 });
 test('products can be created and edited without a SKU',async()=>{
- const product={name:'Без артикула',category:'Тест',price:100,cost:50,stock:2,active:true,image:'',description:''};
+ const product={name:'Без артикула',category:'Тест',price:100,cost:50,stock:0,active:true,image:'',description:''};
  const first=await request('/products',{method:'POST',body:product}),second=await request('/products',{method:'POST',body:product});
  assert.equal(first.res.status,201);assert.equal(second.res.status,201);
  const before=(await request('/bootstrap')).data.products.find(p=>p.id===first.data.id);
