@@ -376,14 +376,15 @@ function render(animateProducts = true) {
 async function load() {
   if (loading) return;
   loading = true;
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
   try {
-    const response = await fetch('/api/storefront', { credentials: 'omit', cache: 'no-store' });
+    const response = await fetch('/api/storefront', { credentials: 'omit', cache: 'no-store', signal:controller.signal });
     if (!response.ok) throw Error();
     data = await response.json();
     document.title = 'GAS SHOP — магазин';
     if (!data.categories.includes(category)) category = '';
     const banner = data.banners[0];
-    const bannerImage = /^data:image\/(jpeg|png|webp);base64,/.test(banner?.image);
+    const bannerImage = /^data:image\/(jpeg|png|webp);base64,/.test(banner?.image)||/^\/api\/banner-images\/\d+\?v=[a-f0-9]{64}$/.test(banner?.image);
     $('#banner').hidden = !banner;
     $('#banner').classList.toggle('has-image', bannerImage);
     $('#banner').replaceChildren();
@@ -404,6 +405,7 @@ async function load() {
     $('#status').hidden = false;
     $('#status').innerHTML = 'Не удалось обновить каталог.<br><button class="retry" id="retry">Повторить</button>';
   } finally {
+    clearTimeout(timer);
     loading = false;
   }
 }

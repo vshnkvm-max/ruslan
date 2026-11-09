@@ -147,7 +147,7 @@ try {
  await page.locator('.banner-card .banner-cover').waitFor();
  assert.equal(db.prepare("SELECT image FROM banners WHERE title='UI Banner'").get().image,bannerImage);
  await page.getByRole('button',{name:'Редактировать баннер'}).last().click();
- assert.equal(await page.locator('#banner-form [name=image]').inputValue(),bannerImage);
+ assert.match(await page.locator('#banner-form [name=image]').inputValue(),/^\/api\/banner-images\/\d+\?v=[a-f0-9]{64}$/);
  await page.getByRole('button',{name:'Убрать изображение',exact:true}).click();
  await page.locator('#banner-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.equal(await page.locator('.banner-card .banner-cover').count(),0);

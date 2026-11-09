@@ -58,7 +58,7 @@ async function api(path,options={}) {
   const res=await fetch('/api'+path,{...options,signal:controller.signal,headers:{'Content-Type':'application/json',...(state.user?{'X-CSRF-Token':state.user.csrf}:{}),...options.headers},body:options.body?JSON.stringify(options.body):undefined});
   const text=await res.text();let data;
   try {data=JSON.parse(text);}catch {throw new Error(`Сервер вернул ошибку HTTP ${res.status}. Повторите запрос.`);}
-  if(!res.ok) {if(res.status===401&&state.user){state.user=null;closeModal();renderLogin();}throw new Error(data.error||`Ошибка HTTP ${res.status}`);}return data;
+  if(!res.ok) {if(res.status===401&&state.user){state.user=null;closeModal();renderLogin();}const error=new Error(data.error||`Ошибка HTTP ${res.status}`);error.status=res.status;throw error;}return data;
  } catch(error) {
   if(error.name==='AbortError')throw new Error('Ответ сервера не получен за 20 секунд. Проверьте соединение и повторите сохранение.');
   if(error instanceof TypeError)throw new Error('Нет соединения с сервером. Проверьте интернет и повторите запрос.');
@@ -376,8 +376,8 @@ document.addEventListener('keydown',event=>{
 });
 async function init(){
  state.page=location.hash.slice(1)||'products';if(!nav.some(n=>n[0]===state.page))state.page='products';
- try{state.user=await api('/auth/me');await refresh();}
- catch(error){if(state.user){$('#app').innerHTML=`<div class="initial-loading"><h2>Не удалось загрузить магазин</h2><p>${e(error.message)}</p><button class="button primary" data-action="reload">Повторить</button></div>`;}else renderLogin();}
+ try{state.data=await api('/bootstrap');state.user=state.data.user;renderShell();}
+ catch(error){if(error.status===401)renderLogin();else $('#app').innerHTML=`<div class="initial-loading"><h2>Не удалось загрузить магазин</h2><p>${e(error.message)}</p><button class="button primary" data-action="reload">Повторить</button></div>`;}
 }
 document.addEventListener('click',event=>{if(event.target.closest('[data-action=reload]'))init();});
 init();

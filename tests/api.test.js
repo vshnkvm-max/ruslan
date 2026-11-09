@@ -127,7 +127,12 @@ test('banner images validate formats, survive older clients, and can be removed'
  assert.equal(created.res.status,201);
  const id=created.data.id;
  const saved=()=>app.db.prepare('SELECT image FROM banners WHERE id=?').get(id).image;
- assert.equal((await request('/storefront',{auth:false})).data.banners.find(b=>b.id===id).image,image);
+ const imageUrl=(await request('/storefront',{auth:false})).data.banners.find(b=>b.id===id).image;
+ assert.match(imageUrl,/^\/api\/banner-images\/\d+\?v=[a-f0-9]{64}$/);
+ const response=await fetch(base+imageUrl);assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'image/png');
+ assert.deepEqual(Buffer.from(await response.arrayBuffer()),Buffer.from(image.split(',')[1],'base64'));
+ assert.equal((await request(`/banners/${id}`,{method:'PATCH',body:{...banner,image:imageUrl}})).res.status,200);
+ assert.equal(saved(),image);
  for(const invalid of ['data:image/svg+xml;base64,PHN2Zz4=','data:image/png;base64,YWJj','https://example.com/image.jpg','lamp','x'.repeat(700001)]) {
   assert.equal((await request(`/banners/${id}`,{method:'PATCH',body:{...banner,image:invalid}})).res.status,400);
   assert.equal(saved(),image);

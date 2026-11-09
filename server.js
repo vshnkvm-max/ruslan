@@ -1,10 +1,10 @@
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { resolve, extname, dirname } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDatabase } from './lib/database.js';
-import { token, digest, verifyPassword, hashPassword } from './lib/auth.js';
+import { token, digest, verifyPasswordAsync, hashPassword, hashPasswordAsync } from './lib/auth.js';
 import { createProductImages, legacyImages } from './lib/product-images.js';
+import { createStaticAssets } from './lib/static-assets.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const sessionDuration = 12 * 60 * 60 * 1000;
@@ -43,14 +43,23 @@ function imageValue(value, allowLegacy=false) {
 export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/shop.db'), secureCookie=process.env.COOKIE_SECURE==='true'}={}) {
   const db=openDatabase(dbPath);
   const productImages=createProductImages(db,imageValue,fail);
+  const serveStatic=createStaticAssets(root);
   const attempts=new Map();
+  let activePasswordWork=0;
+  async function passwordWork(work) {
+    if(activePasswordWork>=2)fail(429,'Сервер обрабатывает вход. Повторите через несколько секунд.');
+    activePasswordWork++;
+    try {return await work();}finally {activePasswordWork--;}
+  }
   const getSession=req=>{
     const cookie=req.headers.cookie?.match(/(?:^|;\s*)session=([a-f0-9]{64})(?:;|$)/)?.[1];
     return cookie?db.prepare('SELECT s.*,a.username FROM sessions s JOIN admins a ON a.id=s.admin_id WHERE s.token=? AND s.expires>?').get(digest(cookie),Date.now()):null;
   };
   const getSettings=key => JSON.parse(db.prepare('SELECT value FROM settings WHERE key=?').get(key).value);
   const saveSettings=(key,value)=> db.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify(value),key);
-  const products=()=>db.prepare(`SELECT p.*, (SELECT AVG(rating) FROM reviews WHERE product_id=p.id AND status='published') AS rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id AND status='published') AS review_count FROM products p WHERE p.deleted=0 ORDER BY p.sort_order,p.id DESC`).all().map(productImages.serialize);
+  const products=()=>productImages.serializeAll(db.prepare(`SELECT p.*, (SELECT AVG(rating) FROM reviews WHERE product_id=p.id AND status='published') AS rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id AND status='published') AS review_count FROM products p WHERE p.deleted=0 ORDER BY p.sort_order,p.id DESC`).all());
+  const bannerPath=row=>row.image?`/api/banner-images/${row.id}?v=${digest(row.image)}`:'';
+  const serializeBanner=row=>({...row,image:bannerPath(row)});
   const categories=()=>[...new Set([...getSettings('categories'),...db.prepare("SELECT DISTINCT category FROM products WHERE deleted=0 AND category!=''").all().map(p=>p.category)])].filter(Boolean);
   const customers=()=>db.prepare(`SELECT c.*, COUNT(o.id) AS orders_count, COALESCE(SUM(CASE WHEN o.status='completed' THEN (SELECT SUM(price*quantity) FROM order_items WHERE order_id=o.id) ELSE 0 END),0) AS spent, COALESCE(SUM(CASE WHEN o.status!='cancelled' THEN (SELECT SUM(price*quantity) FROM order_items WHERE order_id=o.id) ELSE 0 END),0) AS order_total, MAX(o.created_at) AS last_order FROM customers c LEFT JOIN orders o ON o.customer_id=c.id WHERE c.deleted=0 GROUP BY c.id ORDER BY c.id`).all();
   const orders=()=>db.prepare(`SELECT o.*,c.name AS customer_name,c.username,COALESCE(SUM(i.price*i.quantity),0) AS total,COALESCE(SUM(i.quantity),0) AS quantity FROM orders o JOIN customers c ON c.id=o.customer_id LEFT JOIN order_items i ON i.order_id=o.id GROUP BY o.id ORDER BY o.created_at DESC`).all().map(o=>({...o,items:db.prepare('SELECT * FROM order_items WHERE order_id=?').all(o.id)}));
@@ -63,7 +72,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
     reviews:db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all(),
     purchases:db.prepare('SELECT * FROM purchases ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
     transactions:ledger(),referrals:db.prepare('SELECT r.*,c.name AS inviter_name,c.referral_code,i.name AS invitee_name FROM referrals r JOIN customers c ON c.id=r.inviter_id JOIN customers i ON i.id=r.invitee_id ORDER BY r.created_at DESC').all(),
-    banners:db.prepare('SELECT * FROM banners ORDER BY id').all(),shop:getSettings('shop'),referral:getSettings('referral')
+    banners:db.prepare('SELECT * FROM banners ORDER BY id').all().map(serializeBanner),shop:getSettings('shop'),referral:getSettings('referral')
   });
   function json(res,status,data,headers={}) {
     res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});res.end(JSON.stringify(data));
@@ -77,12 +86,29 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   }
   const server=createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');
-    const miniPage = ['/miniapp','/miniapp/'].includes(new URL(req.url,'http://localhost').pathname);
-    if(!miniPage) res.setHeader('X-Frame-Options','DENY');
     res.setHeader('Referrer-Policy','same-origin');
-    res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self' ${miniPage ? 'https://telegram.org' : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors ${miniPage ? 'https://web.telegram.org https://*.telegram.org' : "'none'"}; base-uri 'self'; form-action 'self'`);
     try {
-      const url=new URL(req.url,'http://localhost'); const path=url.pathname; const method=req.method;
+      let url;try {url=new URL(req.url,'http://localhost');}catch {fail(400,'Некорректный адрес запроса.');}
+      const path=url.pathname,method=req.method;
+      const miniPage=['/miniapp','/miniapp/'].includes(path);
+      if(!miniPage)res.setHeader('X-Frame-Options','DENY');
+      res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self' ${miniPage ? 'https://telegram.org' : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors ${miniPage ? 'https://web.telegram.org https://*.telegram.org' : "'none'"}; base-uri 'self'; form-action 'self'`);
+      const bannerMatch=path.match(/^\/api\/banner-images\/(\d+)$/);
+      if(bannerMatch) {
+        if(!['GET','HEAD'].includes(method))fail(405,'Метод не поддерживается.');
+        const banner=db.prepare('SELECT id,image,active FROM banners WHERE id=?').get(Number(bannerMatch[1]));
+        if(!banner?.image||(!banner.active&&!getSession(req)))fail(404,'Баннер не найден.');
+        const hash=digest(banner.image);
+        if(url.searchParams.get('v')!==hash)fail(404,'Изображение баннера изменилось.');
+        const match=/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(banner.image);
+        if(!match)fail(404,'Изображение не найдено.');
+        const etag=`"${hash}"`;
+        res.setHeader('Cache-Control',banner.active?'public, max-age=86400, immutable':'private, no-store');
+        res.setHeader('ETag',etag);
+        if(req.headers['if-none-match']===etag){res.writeHead(304);res.end();return;}
+        const content=Buffer.from(match[2],'base64');
+        res.writeHead(200,{'Content-Type':match[1],'Content-Length':content.length});res.end(method==='HEAD'?undefined:content);return;
+      }
       const imageMatch=path.match(/^\/api\/images\/([a-f0-9-]{36})$/);
       if(imageMatch) {
         if(!['GET','HEAD'].includes(method))fail(405,'Метод не поддерживается.');
@@ -108,8 +134,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/health'&&method==='GET') return json(res,200,{ok:true});
         if(path==='/api/storefront'&&method==='GET') {
           const shop=getSettings('shop');
-          const catalog=products().filter(p=>p.active);
-          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description})=>({id,name,sku,category,price,stock,image,images,description,short_description})),banners:db.prepare('SELECT * FROM banners WHERE active=1').all()});
+          const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description FROM products WHERE active=1 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
+          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description})=>({id,name,sku,category,price,stock,image,images,description,short_description})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
         const productView=path.match(/^\/api\/storefront\/products\/(\d+)\/view$/);
         if(productView&&method==='POST') {
@@ -120,12 +146,18 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/auth/login'&&method==='POST') {
           const key=req.socket.remoteAddress; const now=Date.now();
           for(const [ip,entry] of attempts) if(now-entry.started>900000) attempts.delete(ip);
-          const attempt=attempts.get(key)||{count:0,started:now};
-          if(attempt.count>=10) fail(429,'Слишком много попыток. Повторите через 15 минут.');
+          if((attempts.get(key)?.count||0)>=10)fail(429,'Слишком много попыток. Повторите через 15 минут.');
           const b=await body(req); const username=str(b.username,'Логин',80); const password=passwordValue(b.password);
+          const attempt=attempts.get(key)||{count:0,started:Date.now()};
+          if(attempt.count>=10)fail(429,'Слишком много попыток. Повторите через 15 минут.');
           const admin=db.prepare('SELECT * FROM admins WHERE username=?').get(username);
-          const valid=verifyPassword(password,admin?.password||dummyPassword);
-          if(!admin||!valid) {attempt.count++;attempts.set(key,attempt);fail(401,'Неверный логин или пароль.');}
+          const valid=await passwordWork(async()=>{
+            // Reserve this attempt before yielding so concurrent requests share the limit.
+            attempt.count++;attempts.set(key,attempt);
+            return verifyPasswordAsync(password,admin?.password||dummyPassword);
+          });
+          if(!admin||!valid)fail(401,'Неверный логин или пароль.');
+          if(db.prepare('SELECT password FROM admins WHERE id=?').get(admin.id)?.password!==admin.password)fail(401,'Пароль изменён. Войдите заново.');
           attempts.delete(key);
           db.prepare('DELETE FROM sessions WHERE expires<?').run(now);
           const sessionToken=token(),csrf=token();
@@ -137,7 +169,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(method!=='GET'&&req.headers['x-csrf-token']!==session.csrf) fail(403,'Сессия запроса недействительна. Обновите страницу.');
         if(path==='/api/auth/me'&&method==='GET') return json(res,200,{username:session.username,csrf:session.csrf});
         if(path==='/api/auth/logout'&&method==='POST') {db.prepare('DELETE FROM sessions WHERE token=?').run(session.token);return json(res,200,{ok:true},{'Set-Cookie':`session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie?'; Secure':''}`});}
-        if(path==='/api/bootstrap'&&method==='GET') return json(res,200,bootstrap());
+        if(path==='/api/bootstrap'&&method==='GET') return json(res,200,{...bootstrap(),user:{username:session.username,csrf:session.csrf}});
         if(path==='/api/images'&&method==='POST') return json(res,201,{image:productImages.upload((await body(req)).image)});
         const match=path.match(/^\/api\/(products|customers|orders|reviews|banners)\/(\d+)$/);
         if(match) {
@@ -165,7 +197,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           else if(table==='orders') db.prepare('UPDATE orders SET status=? WHERE id=?').run(choice(b.status,['new','accepted','completed','cancelled']),id);
           else if(table==='reviews') db.prepare('UPDATE reviews SET status=? WHERE id=?').run(choice(b.status,['pending','published','hidden']),id);
           else if(table==='banners') {
-            b.image??=db.prepare('SELECT image FROM banners WHERE id=?').get(id).image;
+            const saved=db.prepare('SELECT id,image FROM banners WHERE id=?').get(id);
+            if(b.image===undefined||b.image===bannerPath(saved))b.image=saved.image;
             db.prepare('UPDATE banners SET title=?,subtitle=?,color=?,link=?,active=?,image=? WHERE id=?').run(...validateBanner(b),id);
           }
           return json(res,200,{ok:true});
@@ -243,18 +276,18 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const b=await body(req);const current=passwordValue(b.current);const next=passwordValue(b.password);
           if(next.length<12) fail(400,'Новый пароль должен содержать не менее 12 символов.');
           const admin=db.prepare('SELECT * FROM admins WHERE id=?').get(session.admin_id);
-          if(!verifyPassword(current,admin.password)) fail(400,'Текущий пароль неверен.');
-          db.prepare('UPDATE admins SET password=? WHERE id=?').run(hashPassword(next),admin.id);
+          const replacement=await passwordWork(async()=>{
+            if(!await verifyPasswordAsync(current,admin.password))fail(400,'Текущий пароль неверен.');
+            return hashPasswordAsync(next);
+          });
+          if(!getSession(req))fail(401,'Войдите в аккаунт администратора.');
+          if(!db.prepare('UPDATE admins SET password=? WHERE id=? AND password=?').run(replacement,admin.id,admin.password).changes)fail(409,'Пароль уже изменён. Повторите вход.');
           db.prepare('DELETE FROM sessions WHERE admin_id=? AND token!=?').run(admin.id,session.token);return json(res,200,{ok:true});
         }
         fail(404,'Маршрут не найден.');
       }
       if(method!=='GET'&&method!=='HEAD') fail(405,'Метод не поддерживается.');
-      const files={'/miniapp/background.svg':'miniapp/background.svg','/miniapp/important.svg':'miniapp/important.svg','/miniapp/referral.svg':'miniapp/referral.svg','/miniapp/reviews.svg':'miniapp/reviews.svg','/miniapp':'miniapp.html','/miniapp/':'miniapp.html','/miniapp.js':'miniapp.js','/miniapp.css':'miniapp.css','/':'index.html','/app.js':'app.js','/styles.css':'styles.css','/favicon.svg':'favicon.svg'};
-      const file=files[path];if(!file) fail(404,'Страница не найдена.');
-      const content=await readFile(resolve(root,'public',file));
-      const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.svg':'image/svg+xml'};
-      res.writeHead(200,{'Content-Type':types[extname(file)],'Cache-Control':'no-cache'});res.end(method==='HEAD'?undefined:content);
+      if(!serveStatic(req,res,path))fail(404,'Страница не найдена.');
     }catch(error) {
       if(res.headersSent) {res.end();return;}
       const conflict=error.code?.includes('CONSTRAINT_UNIQUE')||error.message?.includes('UNIQUE constraint');
@@ -263,6 +296,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
       json(res,status,{error:conflict?'Этот артикул уже используется.':status===500?'Ошибка сервера. Повторите попытку.':error.message});
     }
   });
+  server.requestTimeout=20000;
+  server.headersTimeout=20000;
   server.on('close',()=>db.close());
   return {server,db};
 }

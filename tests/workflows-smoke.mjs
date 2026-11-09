@@ -163,6 +163,29 @@ try {
  });
  assert.equal(metrics.status,200);assert.equal(metrics.products,50);assert.equal(metrics.inline,false);assert.ok(metrics.bytes<100000);
  console.log('50-photo catalog metadata:',JSON.stringify(metrics),'photo storage bytes:',largePhoto.length*50);
+ // A stuck storefront request must leave the loading state and allow a real retry.
+ const stalled=await context.newPage();await stalled.clock.install();
+ let release,seen,requests=0;
+ const blocked=new Promise(resolve=>{release=resolve;}),started=new Promise(resolve=>{seen=resolve;});
+ await stalled.route('**/api/storefront',async route=>{
+  if(++requests===1){seen();await blocked;await route.abort().catch(()=>{});}else await route.continue();
+ });
+ try {
+  await stalled.goto(base+'/miniapp',{waitUntil:'domcontentloaded'});await started;
+  await stalled.clock.runFor(15001);await stalled.locator('#retry').waitFor();
+  await stalled.locator('#retry').click();await stalled.locator('.product').first().waitFor();assert.equal(requests,2);
+ }finally {release();await stalled.close();}
+ // Network failures must not masquerade as an expired login; startup needs one API call.
+ const recovering=await context.newPage();let bootstrapRequests=0,sessionRequests=0;
+ recovering.on('request',request=>{if(request.url().endsWith('/api/auth/me'))sessionRequests++;});
+ await recovering.route('**/api/bootstrap',route=>++bootstrapRequests===1?route.fulfill({status:503,json:{error:'Temporary outage'}}):route.continue());
+ await recovering.goto(base);
+ await recovering.getByRole('heading',{name:'Не удалось загрузить магазин',exact:true}).waitFor();
+ assert.equal(await recovering.locator('#login-form').count(),0);
+ await recovering.getByRole('button',{name:'Повторить',exact:true}).click();
+ await recovering.locator('.products-table').waitFor();assert.equal(bootstrapRequests,2);assert.equal(sessionRequests,0);
+ await recovering.close();
+ console.log('PASS: stuck Mini App request times out and retries; admin recovers from HTTP 503 with one startup request');
  assert.deepEqual(errors,[]);
  console.log('PASS: multiple photos, primary photo, recoverable save errors, double-submit protection, category deletion, category-first purchasing, zero initial stock, fullscreen request, banner proportions, gallery navigation and product deletion');
 } finally {
