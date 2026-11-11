@@ -105,9 +105,9 @@ try {
  await mini.goto(base+'/miniapp');
  await mini.locator(`[data-product="${product.id}"]`).waitFor();
  assert.equal(await mini.locator('#next-category').count(),0);
- assert.equal(await mini.evaluate(()=>fullscreenCalls),0);
+ assert.equal(await mini.evaluate(()=>fullscreenCalls),1);
  assert.equal(await mini.evaluate(()=>expandCalls),1);
- assert.equal(await mini.locator('#fullscreen-button').count(),0);
+ assert.equal(await mini.locator('#fullscreen-button').count(),1);
  await mini.waitForFunction(()=>{const image=document.querySelector('#banner img');return image?.complete&&image.naturalWidth>0;});
  const ratio=await mini.locator('#banner img').evaluate(image=>{
   const rect=image.getBoundingClientRect();return {rendered:rect.width/rect.height,natural:image.naturalWidth/image.naturalHeight};
@@ -184,7 +184,7 @@ try {
  await recovering.close();
  console.log('PASS: stuck Mini App request times out and retries; admin recovers from HTTP 503 with one startup request');
  assert.deepEqual(errors,[]);
- console.log('PASS: multiple photos, primary photo, recoverable save errors, double-submit protection, category deletion, category-first purchasing, zero initial stock, ordinary expanded Telegram window, banner proportions, gallery navigation and product deletion');
+ console.log('PASS: multiple photos, primary photo, recoverable save errors, double-submit protection, category deletion, category-first purchasing, zero initial stock, fullscreen Telegram window, banner proportions, gallery navigation and product deletion');
 } finally {
  await browser.close();
  await new Promise(resolve=>server.close(resolve));

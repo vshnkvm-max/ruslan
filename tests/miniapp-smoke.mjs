@@ -172,7 +172,10 @@ try {
   await page.reload();
   await page.locator('#banner img').waitFor();
   assert.equal(await page.locator('#banner img').getAttribute('alt'),'Баннер из админки');
-  assert.equal(await page.locator('#banner a').getAttribute('href'),banners[0].link);
+  assert.equal(await page.locator('#banner a').count(),0);
+  await page.locator('#banner button').click();
+  await page.locator('#details h2').filter({hasText:'Баннер из админки'}).waitFor();
+  await close();
   assert.equal(await page.locator('#banner h2').count(),0);
   db.prepare("UPDATE banners SET image='' WHERE id=?").run(banners[0].id);
   await page.reload();
@@ -401,7 +404,8 @@ try {
     await late.goto(base+'/miniapp',{waitUntil:'domcontentloaded',timeout:5000});
     await late.locator('.product').first().waitFor({timeout:5000});
     assert.equal(await late.evaluate(() => Boolean(window.Telegram)),false);
-    assert.deepEqual(await late.evaluate(() => window.bridgeEvents),[{type:'web_app_ready',data:'{}'}]);
+    assert.deepEqual(await late.evaluate(() => window.bridgeEvents.filter(event=>event.type==='web_app_ready')),[{type:'web_app_ready',data:'{}'}]);
+    assert.ok(await late.evaluate(()=>window.bridgeEvents.some(event=>event.type==='web_app_set_bottom_bar_color'&&JSON.parse(event.data).color==='#100002')));
     await late.locator('#profile-button').click();
     await late.getByRole('heading',{name:'Гость',exact:true}).waitFor();
     releaseSdk();

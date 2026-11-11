@@ -238,6 +238,41 @@ test('category deletion leaves products and order history intact without recreat
  data=(await request('/bootstrap')).data;assert.ok(!data.products.some(p=>p.id===created.data.id));
 });
 
+test('category ordering persists, validates the full list and controls storefront order',async()=>{
+ for(const name of ['Sort category A','Sort category B'])await request('/categories',{method:'POST',body:{name}});
+ const names=[...(await request('/bootstrap')).data.categories].reverse();
+ assert.equal((await request('/categories/order',{method:'PATCH',body:{names},auth:false})).res.status,401);
+ assert.equal((await request('/categories/order',{method:'PATCH',body:{names}})).res.status,200);
+ assert.deepEqual((await request('/bootstrap')).data.categories,names);
+ assert.deepEqual((await request('/storefront',{auth:false})).data.categories,names);
+ assert.equal((await request('/categories/order',{method:'PATCH',body:{names:[...names,names[0]]}})).res.status,409);
+ assert.equal((await request('/categories/order',{method:'PATCH',body:{names:names.slice(1)}})).res.status,409);
+ for(const name of ['Sort category A','Sort category B'])await request('/categories',{method:'DELETE',body:{name}});
+});
+test('product edits preserve stock and reject direct stock changes',async()=>{
+ const body={name:'Purchase-only stock',category:'',price:10,cost:0,active:true,description:''};
+ const created=await request('/products',{method:'POST',body}),id=created.data.id;
+ app.db.prepare('UPDATE products SET stock=7 WHERE id=?').run(id);
+ assert.equal((await request(`/products/${id}`,{method:'PATCH',body:{...body,name:'Edited without stock'}})).res.status,200);
+ assert.equal(app.db.prepare('SELECT stock FROM products WHERE id=?').get(id).stock,7);
+ assert.equal((await request(`/products/${id}`,{method:'PATCH',body:{active:false}})).res.status,200);
+ assert.equal(app.db.prepare('SELECT stock FROM products WHERE id=?').get(id).stock,7);
+ assert.equal((await request(`/products/${id}`,{method:'PATCH',body:{...body,stock:4}})).res.status,400);
+ assert.equal(app.db.prepare('SELECT stock FROM products WHERE id=?').get(id).stock,7);
+ await request(`/products/${id}`,{method:'DELETE'});
+});
+test('promotion descriptions persist and older clients preserve descriptions and legacy links',async()=>{
+ const body={title:'Promotion detail',subtitle:'Summary',description:'Full terms\nSecond paragraph',link:'https://example.com/old',color:'#ff0000',active:true};
+ const created=await request('/banners',{method:'POST',body}),id=created.data.id;
+ assert.equal(created.res.status,201);
+ assert.equal((await request('/storefront',{auth:false})).data.banners.find(row=>row.id===id).description,body.description);
+ const {description,link,...old}=body;
+ assert.equal((await request(`/banners/${id}`,{method:'PATCH',body:{...old,title:'Updated title'}})).res.status,200);
+ const saved=app.db.prepare('SELECT * FROM banners WHERE id=?').get(id);assert.equal(saved.description,description);assert.equal(saved.link,link);
+ assert.equal((await request(`/banners/${id}`,{method:'PATCH',body:{...body,description:'x'.repeat(10001)}})).res.status,400);
+ await request(`/banners/${id}`,{method:'DELETE'});
+});
+
 test('customer CRUD preserves order history and validates contact fields',async()=>{
  const customer={name:'Новый клиент',username:'test-client',phone:'+7 999 123-45-67',email:'client@example.com',city:'Москва',status:'pending'};
  assert.equal((await request('/customers',{method:'POST',body:{...customer,email:'bad'}})).res.status,400);

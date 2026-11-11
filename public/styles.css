@@ -106,3 +106,10 @@ h1,h2,h3{letter-spacing:-.025em}button:focus-visible,a:focus-visible{outline-col
 .category-manager span { color: #8494a6; font-size: 12px; }
 .purchase-back { margin: 10px 0; }
 #purchase-catalog-list h3 { font-size: 14px; margin: 12px 0; overflow-wrap: anywhere; }
+
+.category-manager [draggable=true] { cursor: grab; }
+.category-manager [draggable=true]:active { cursor: grabbing; }
+.category-handle { flex: 0 0 20px; font-size: 20px; color: #8494a6; }
+.category-manager strong { min-width: 0; }
+.operations-table td { white-space: normal; }
+.operations-table td:first-child { white-space: nowrap; }

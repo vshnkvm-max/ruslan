@@ -1,30 +1,40 @@
 let telegram = window.Telegram?.WebApp;
-let telegramReady=false;
-function configureTelegram() {
-  if (!telegram) return;
-  for(const [method,args] of [['ready',[]],['expand',[]],['setHeaderColor',['#100002']],['setBackgroundColor',['#100002']]]) {
-    try {if(typeof telegram[method]==='function'){telegram[method](...args);if(method==='ready')telegramReady=true;}}
-    catch {console.warn(`Telegram WebApp: ${method} недоступен.`);}
-  }
+let telegramReady=false,fullscreenRequested=false,configuredTelegram=null;
+const chromeColor='#100002';
+function postTelegramEvent(eventType,eventData={}){
+ try {
+  if(typeof window.TelegramWebviewProxy?.postEvent==='function')window.TelegramWebviewProxy.postEvent(eventType,JSON.stringify(eventData));
+  else if(typeof window.external?.notify==='function')window.external.notify(JSON.stringify({eventType,eventData}));
+  else if(window.parent!==window)window.parent.postMessage(JSON.stringify({eventType,eventData}),'https://web.telegram.org');
+ }catch { /* The browser may not expose a native Telegram bridge. */ }
 }
-
-function signalReadyWithoutSdk() {
-  if (telegramReady) return;
-  // The loading placeholder must not depend on the external SDK download.
-  // Use Telegram's bridge event; the SDK still initializes identity when it arrives.
-  const event = { eventType: 'web_app_ready', eventData: {} };
-  try {
-    if (typeof window.TelegramWebviewProxy?.postEvent === 'function') {
-      window.TelegramWebviewProxy.postEvent(event.eventType, JSON.stringify(event.eventData));
-    } else if (typeof window.external?.notify === 'function') {
-      window.external.notify(JSON.stringify(event));
-    } else if (window.parent !== window) {
-      window.parent.postMessage(JSON.stringify(event), 'https://web.telegram.org');
-    }
-  } catch {
-    // Ordinary browsers may not expose a usable Telegram bridge.
-  }
+function canFullscreen(){return typeof telegram?.requestFullscreen==='function'&&telegram.isVersionAtLeast?.('8.0');}
+function updateTelegramInsets(){
+ const safe=telegram?.safeAreaInset||{},content=telegram?.contentSafeAreaInset||{};
+ document.documentElement.style.setProperty('--telegram-safe-top',`${Math.max(0,Number(safe.top)||0)+Math.max(0,Number(content.top)||0)}px`);
+ document.documentElement.style.setProperty('--telegram-safe-bottom',`${Math.max(0,Number(safe.bottom)||0)+Math.max(0,Number(content.bottom)||0)}px`);
+ const button=document.getElementById('fullscreen-button');if(button)button.hidden=!canFullscreen()||Boolean(telegram.isFullscreen);
 }
+function requestTelegramFullscreen(automatic=false){
+ if(!canFullscreen()||telegram.isFullscreen||(automatic&&fullscreenRequested))return;
+ fullscreenRequested=true;try{telegram.requestFullscreen();}catch{updateTelegramInsets();}
+}
+function configureTelegram(){
+ for(const [method,event] of [['setHeaderColor','web_app_set_header_color'],['setBackgroundColor','web_app_set_background_color'],['setBottomBarColor','web_app_set_bottom_bar_color']]){
+  try{if(typeof telegram?.[method]==='function')telegram[method](chromeColor);else postTelegramEvent(event,{color:chromeColor});}
+  catch{postTelegramEvent(event,{color:chromeColor});}
+ }
+ if(!telegram)return;
+ for(const method of ['ready','expand']){try{if(typeof telegram[method]==='function'){telegram[method]();if(method==='ready')telegramReady=true;}}catch{console.warn(`Telegram WebApp: ${method} недоступен.`);}}
+ updateTelegramInsets();
+ if(configuredTelegram!==telegram){
+  configuredTelegram=telegram;
+  for(const event of ['safeAreaChanged','contentSafeAreaChanged','fullscreenChanged'])telegram.onEvent?.(event,updateTelegramInsets);
+  telegram.onEvent?.('fullscreenFailed',()=>{updateTelegramInsets();notify('Этот клиент Telegram не поддерживает полный экран.');});
+ }
+ requestTelegramFullscreen(true);
+}
+function signalReadyWithoutSdk(){if(!telegramReady)postTelegramEvent('web_app_ready');}
 
 const $ = selector => document.querySelector(selector);
 const escape = value => String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -207,7 +217,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   if (!wasOpen) {
     dialog.showModal();
     document.body.style.overflow = 'hidden';
-    void animate(dialog, [{ opacity: 0, transform: 'translateY(32px) scale(.97)' }, { opacity: 1, transform: 'translateY(0) scale(1)' }], { duration: 320 });
+    void animate(dialog, view==='product'?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
   } else if (shouldAnimate) {
     void animate(content, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180 });
   }
@@ -218,7 +228,7 @@ async function closeDetails() {
   if (!dialog.open) return;
   const version = ++modalVersion;
   dialog.dataset.closing = 'true';
-  await animate(dialog, [{ opacity: 1, transform: 'translateY(0) scale(1)' }, { opacity: 0, transform: 'translateY(22px) scale(.98)' }], { duration: 170 });
+  await animate(dialog,dialog.dataset.view==='product'?[{transform:'translateY(0)'},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
   if (version !== modalVersion) return;
   dialog.close();
 }
@@ -374,14 +384,7 @@ async function load() {
     $('#banner').classList.toggle('has-image', bannerImage);
     $('#banner').replaceChildren();
     if (banner) {
-      const safe = /^\/(?!\/)|^https:\/\//i.test(banner.link);
-      if (bannerImage) {
-        const image = `<img class="banner-image" src="${escape(banner.image)}" alt="${escape(banner.title)}">`;
-        $('#banner').innerHTML = safe ? `<a class="banner-image-link" href="${escape(banner.link)}" target="_blank" rel="noopener noreferrer">${image}</a>` : image;
-      } else {
-        $('#banner').innerHTML = `<div class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></div>
-          ${safe ? `<a class="banner-link" href="${escape(banner.link)}" target="_blank" rel="noopener noreferrer" aria-label="Подробнее: ${escape(banner.title)}">${icons.arrow}</a>` : ''}`;
-      }
+      $('#banner').innerHTML=bannerImage?`<button type="button" class="banner-open" aria-label="Подробнее об акции: ${escape(banner.title)}"><img class="banner-image" src="${escape(banner.image)}" alt="${escape(banner.title)}"></button>`:`<button type="button" class="banner-open" aria-label="Подробнее об акции: ${escape(banner.title)}"><span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span></button>`;
     }
     reconcileCart();
     render();
@@ -395,6 +398,11 @@ async function load() {
     clearTimeout(timer);
     loading = false;
   }
+}
+function openBanner(){
+ const banner=data?.banners[0];if(!banner)return;
+ const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image)?`<img class="promotion-image" src="${escape(banner.image)}" alt="${escape(banner.title)}">`:'';
+ show(`${image}<h2>${escape(banner.title)}</h2>${banner.subtitle?`<p>${escape(banner.subtitle)}</p>`:''}${formatted(banner.description)}${!banner.description&&!banner.subtitle?'<p>Подробности акции скоро появятся.</p>':''}`,'promotion');
 }
 function openProduct(id) {
   const product = data?.products.find(item => item.id === id);
@@ -527,6 +535,10 @@ async function toggleRecentOrders(button) {
   animation.cancel();
   ordersTransition = undefined;
 }
+function userPhotoUrl(){try{const value=typeof user?.photo_url==='string'?user.photo_url:'';const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:'';}catch{return '';}}
+function avatarPhoto(){const src=userPhotoUrl();return src?`<img class="client-avatar-photo" src="${escape(src)}" alt="Аватар клиента" referrerpolicy="no-referrer" decoding="async">`:'';}
+function bindAvatarFallbacks(root=document){root.querySelectorAll('.client-avatar-photo').forEach(image=>image.addEventListener('error',()=>image.remove(),{once:true}));}
+function updateClientAvatar(){const button=$('#profile-button');button.querySelector('.client-avatar-photo')?.remove();button.insertAdjacentHTML('beforeend',avatarPhoto());bindAvatarFallbacks(button);}
 function renderProfile(tab = 'overview') {
   const text = key => typeof user?.[key] === 'string' ? user[key].slice(0, 80) : '';
   const name = [text('first_name'), text('last_name')].filter(Boolean).join(' ') || text('username') || 'Гость';
@@ -534,7 +546,7 @@ function renderProfile(tab = 'overview') {
   const { count, amount } = cartSummary();
   profileTab = tab;
   show(`<div class="profile-card">
-      <div class="profile-identity"><span class="profile-avatar">${initials ? escape(initials) : icons.user}</span><div><h2>${escape(name)}</h2>${text('username') ? `<span class="profile-username">@${escape(text('username'))}</span>` : ''}</div></div>
+      <div class="profile-identity"><span class="profile-avatar">${initials ? escape(initials) : icons.user}${avatarPhoto()}</span><div><h2>${escape(name)}</h2>${text('username') ? `<span class="profile-username">@${escape(text('username'))}</span>` : ''}</div></div>
       <div class="profile-stats"><div><span>В КОРЗИНЕ</span><strong>${count}</strong></div><div><span>СУММА</span><strong>${moneyMarkup(amount)}</strong></div></div>
     </div>
     <div class="profile-tabs" role="tablist" aria-label="Разделы профиля" data-active="${tab}">
@@ -543,6 +555,7 @@ function renderProfile(tab = 'overview') {
       <button role="tab" id="profile-referral" aria-controls="profile-panel" aria-selected="${tab === 'referral'}" tabindex="${tab === 'referral' ? 0 : -1}" data-profile-tab="referral">Реферальная программа</button>
     </div>
     <div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-${tab}"><div class="profile-body" id="profile-body">${profileContent(tab)}</div></div>`, 'profile', false);
+  bindAvatarFallbacks($('#detail-content'));
 }
 
 function renderCart() {
@@ -609,6 +622,8 @@ if (window.ResizeObserver) new ResizeObserver(resizeCategoryPanel).observe($('#c
 else window.addEventListener('resize', resizeCategoryPanel);
 
 $('#profile-button').onclick = () => renderProfile();
+$('#fullscreen-button')?.addEventListener('click',()=>requestTelegramFullscreen());
+$('#banner').onclick=openBanner;
 $('#cart-tab').onclick = () => { void navigateToPage('cart'); };
 $('#catalog-tab').onclick = () => { void navigateToPage('home'); };
 $('#categories').onclick = event => {
@@ -664,6 +679,7 @@ $('#telegram-sdk')?.addEventListener('load', () => {
   telegram = window.Telegram?.WebApp;
   configureTelegram();
   user = telegram?.initDataUnsafe?.user;
+  updateClientAvatar();
   const nextKey = cartKeyFor(user);
   if (nextKey !== cartKey) {
     // Keep guest and Telegram carts separate even when the SDK arrives late.
@@ -677,6 +693,7 @@ $('#telegram-sdk')?.addEventListener('load', () => {
   }
   if ($('#details').open && $('#details').dataset.view === 'profile') renderProfile(profileTab);
 });
+updateClientAvatar();
 load();
 configureTelegram();
 signalReadyWithoutSdk();

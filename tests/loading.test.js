@@ -112,3 +112,23 @@ test('a damaged legacy photograph does not prevent the entire app from starting'
   assert.equal(recovered.db.prepare('SELECT image FROM products').get().image,'data:image/png;base64,bad');
  }finally {await new Promise(resolve=>recovered.server.close(resolve));}
 });
+test('purchase payment links migrate without changing amounts, stock or ambiguous records',()=>{
+ const path=join(directory,'purchase-links.db'),legacy=openDatabase(path);
+ legacy.prepare('INSERT INTO products(name,sku,category,price,cost,stock,image) VALUES (?,?,?,?,?,?,?)').run('Existing','LINK-STOCK','',100,50,5,'');
+ const insertPurchase=legacy.prepare('INSERT INTO purchases(supplier,store,posted,paid,total,comment,items,created_at,request_key) VALUES (?,?,?,?,?,?,?,?,?)');
+ insertPurchase.run('Supplier A','',1,100,100,'','[{"product_id":1,"quantity":2,"cost":50}]','2026-11-01','link-a');
+ insertPurchase.run('Supplier B','',1,50,50,'','[{"product_id":1,"quantity":1,"cost":50}]','2026-11-01','link-b');
+ const insertPayment=legacy.prepare('INSERT INTO transactions(type,category,description,amount,created_at) VALUES (?,?,?,?,?)');
+ const payment=Number(insertPayment.run('expense','Закупка','Закупка #1 · Supplier A',100,'2026-11-01').lastInsertRowid);
+ for(let i=0;i<2;i++)insertPayment.run('expense','Закупка','Закупка #2 · Supplier B',50,'2026-11-01');
+ const payments=legacy.prepare('SELECT * FROM transactions ORDER BY id').all();legacy.close();
+ for(let i=0;i<2;i++){
+  const upgraded=openDatabase(path);
+  try{
+   assert.equal(upgraded.prepare('SELECT transaction_id FROM purchases WHERE id=1').get().transaction_id,payment);
+   assert.equal(upgraded.prepare('SELECT transaction_id FROM purchases WHERE id=2').get().transaction_id,null);
+   assert.equal(upgraded.prepare('SELECT stock FROM products WHERE id=1').get().stock,5);
+   assert.deepEqual(upgraded.prepare('SELECT * FROM transactions ORDER BY id').all(),payments);
+  }finally {upgraded.close();}
+ }
+});

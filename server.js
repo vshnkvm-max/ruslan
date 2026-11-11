@@ -86,7 +86,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
       const path=url.pathname,method=req.method;
       const miniPage=['/miniapp','/miniapp/'].includes(path);
       if(!miniPage)res.setHeader('X-Frame-Options','DENY');
-      res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self' ${miniPage ? 'https://telegram.org' : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors ${miniPage ? 'https://web.telegram.org https://*.telegram.org' : "'none'"}; base-uri 'self'; form-action 'self'`);
+      res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self' ${miniPage ? 'https://telegram.org' : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data: ${miniPage?'https:':''}; connect-src 'self'; frame-ancestors ${miniPage ? 'https://web.telegram.org https://*.telegram.org' : "'none'"}; base-uri 'self'; form-action 'self'`);
       const bannerMatch=path.match(/^\/api\/banner-images\/(\d+)$/);
       if(bannerMatch) {
         if(!['GET','HEAD'].includes(method))fail(405,'Метод не поддерживается.');
@@ -175,7 +175,9 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const b=await body(req);
           if(table==='products') {
             if(Object.keys(b).length===1&&'sort_order' in b){db.prepare('UPDATE products SET sort_order=? WHERE id=?').run(num(b.sort_order,'Сортировка',1000000),id);return json(res,200,{ok:true});}
+            if(Object.keys(b).length===1&&'active' in b){db.prepare('UPDATE products SET active=? WHERE id=?').run(bool(b.active),id);return json(res,200,{ok:true});}
             const saved=db.prepare('SELECT * FROM products WHERE id=?').get(id);
+            if(b.stock!==undefined&&b.stock!==saved.stock)fail(400,'Остатки изменяются через документы закупки.');
             b.sku??=saved.sku;b.short_description??=saved.short_description;b.stock??=saved.stock;
             const p=validateProduct(b),sort=num(b.sort_order??saved.sort_order,'Сортировка',1000000);
             db.exec('BEGIN IMMEDIATE');
@@ -191,13 +193,19 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           else if(table==='orders') db.prepare('UPDATE orders SET status=? WHERE id=?').run(choice(b.status,['new','accepted','completed','cancelled']),id);
           else if(table==='reviews') db.prepare('UPDATE reviews SET status=? WHERE id=?').run(choice(b.status,['pending','published','hidden']),id);
           else if(table==='banners') {
-            const saved=db.prepare('SELECT id,image FROM banners WHERE id=?').get(id);
+            const saved=db.prepare('SELECT id,image,description,link FROM banners WHERE id=?').get(id);
             if(b.image===undefined||b.image===bannerPath(saved))b.image=saved.image;
-            db.prepare('UPDATE banners SET title=?,subtitle=?,color=?,link=?,active=?,image=? WHERE id=?').run(...validateBanner(b),id);
+            b.description??=saved.description;b.link??=saved.link;
+            db.prepare('UPDATE banners SET title=?,subtitle=?,color=?,link=?,active=?,image=?,description=? WHERE id=?').run(...validateBanner(b),id);
           }
           return json(res,200,{ok:true});
         }
         if(path==='/api/categories'&&method==='POST') {const b=await body(req);const name=str(b.name,'Категория',80);saveSettings('categories',[...new Set([...getSettings('categories'),name])]);return json(res,201,{name});}
+        if(path==='/api/categories/order'&&method==='PATCH') {
+          const names=(await body(req)).names,current=categories();
+          if(!Array.isArray(names)||names.length!==current.length||new Set(names).size!==names.length||names.some(name=>typeof name!=='string'||!current.includes(name)))fail(409,'Список категорий изменился. Обновите панель и повторите сортировку.');
+          saveSettings('categories',names);return json(res,200,{categories:names});
+        }
         if(path==='/api/categories'&&method==='DELETE') {
           const name=str((await body(req)).name,'Категория',80);
           if(!categories().includes(name))fail(404,'Категория не найдена.');
@@ -226,7 +234,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
             db.exec('COMMIT');return json(res,201,{id});
           } catch(error){db.exec('ROLLBACK');throw error;}
         }
-        if(path==='/api/banners'&&method==='POST') {const p=validateBanner(await body(req));const r=db.prepare('INSERT INTO banners (title,subtitle,color,link,active,image) VALUES (?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
+        if(path==='/api/banners'&&method==='POST') {const p=validateBanner(await body(req));const r=db.prepare('INSERT INTO banners (title,subtitle,color,link,active,image,description) VALUES (?,?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
         const purchaseMatch=path.match(/^\/api\/purchases(?:\/(\d+))?$/);
         if(purchaseMatch&&['POST','PATCH'].includes(method)) {
           if((method==='POST')===Boolean(purchaseMatch[1])) fail(405,'Метод не поддерживается.');
@@ -255,7 +263,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
             if(previous){id=previous.id;db.prepare('UPDATE purchases SET supplier=?,store=?,posted=?,paid=?,total=?,comment=?,items=? WHERE id=?').run(supplier,store,posted,paid,total,comment,JSON.stringify(items),id);}
             else {id=Number(db.prepare('INSERT INTO purchases (supplier,store,posted,paid,total,comment,items,created_at,request_key) VALUES (?,?,?,?,?,?,?,?,?)').run(supplier,store,posted,paid,total,comment,JSON.stringify(items),new Date().toISOString(),requestKey).lastInsertRowid);}
             if(posted){for(const item of items)db.prepare('UPDATE products SET stock=stock+?,cost=? WHERE id=?').run(item.quantity,item.cost,item.product_id);
-              if(paid)db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run('expense','Закупка',`Закупка #${id} · ${supplier}`,paid,new Date().toISOString());}
+              if(paid){const payment=db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run('expense','Закупка',`Закупка #${id} · ${supplier}`,paid,new Date().toISOString());db.prepare('UPDATE purchases SET transaction_id=? WHERE id=?').run(Number(payment.lastInsertRowid),id);}}
             db.exec('COMMIT');
           }catch(error){db.exec('ROLLBACK');throw error;}
           return json(res,previous?200:201,{id});
@@ -310,7 +318,7 @@ function validateProduct(b) {
 }
 function validateBanner(b) {
   if(!/^#[0-9a-f]{6}$/i.test(b.color)) fail(400,'Некорректный цвет.');
-  return [str(b.title,'Заголовок',120),str(b.subtitle,'Подзаголовок',240,false),b.color,safeLink(b.link),bool(b.active),imageValue(b.image??'')];
+  return [str(b.title,'Заголовок',120),str(b.subtitle,'Подзаголовок',240,false),b.color,safeLink(b.link??''),bool(b.active),imageValue(b.image??''),str(b.description??'','Описание акции',10000,false)];
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const host=process.env.HOST||'127.0.0.1'; const port=Number(process.env.PORT||3000);
