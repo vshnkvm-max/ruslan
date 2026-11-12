@@ -23,6 +23,8 @@ try {
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
  await context.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:`window.Telegram={WebApp:{ready(){},expand(){},isVerticalSwipesEnabled:true,disableVerticalSwipes(){this.isVerticalSwipesEnabled=false},enableVerticalSwipes(){this.isVerticalSwipesEnabled=true}}};`}));
  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+ const wideBanner=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=380;const ctx=canvas.getContext('2d');ctx.fillStyle='#337788';ctx.fillRect(0,0,1200,380);return canvas.toDataURL('image/png');});
+ db.prepare('UPDATE banners SET image=? WHERE title=?').run(wideBanner,'Image promotion');
  await page.goto(base+'/miniapp');await page.locator('.product').first().waitFor();
  const cdp=await context.newCDPSession(page);
  const touch=async(type,x,y)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,id:0,radiusX:4,radiusY:4}]});
@@ -50,7 +52,7 @@ try {
  await page.locator('[data-banner-dot="0"][aria-pressed="true"]').waitFor();
  await swipe(bannerRect.x+bannerRect.width-25,y,bannerRect.x+25,y);
  await page.locator('[data-banner-dot="1"][aria-pressed="true"]').waitFor();
- // A square source image must use the same frame as text and landscape banners.
+ // A different source aspect ratio must use the same fixed frame.
  const beforeDrag=await page.locator('#banner-track').evaluate(track=>({left:track.scrollLeft,height:track.clientHeight}));
  const touchY=(await page.locator('#banner-track').boundingBox()).y+25;
  await touch('touchStart',bannerRect.x+bannerRect.width-20,touchY);
@@ -72,6 +74,14 @@ try {
  const sizing=await page.locator('#banner-track').evaluate(track=>({track:track.getBoundingClientRect().height,image:track.querySelector('.banner-slide[aria-hidden="false"] img').getBoundingClientRect().height}));
  assert.ok(Math.abs(sizing.track-sizing.image)<1,'image fills the uniform banner frame');
  assert.ok(Math.abs(sizing.track-beforeDrag.height)<1,'switching source aspect ratios must not change banner height');
+ const frame=await page.locator('#banner-track').evaluate(track=>{
+  track.scrollTop=100;
+  const height=track.clientHeight;
+  return {overflow:track.scrollHeight-height,top:track.scrollTop,slides:[...track.children].map(slide=>({slide:slide.getBoundingClientRect().height,button:slide.querySelector('button').getBoundingClientRect().height})),height};
+ });
+ assert.ok(frame.overflow<=1,'banner contents must not create a vertical scroll area');assert.equal(frame.top,0);
+ for(const slide of frame.slides){assert.ok(Math.abs(slide.slide-frame.height)<1);assert.ok(Math.abs(slide.button-frame.height)<1);}
+
  await page.locator('.banner-slide[aria-hidden="false"] .banner-open').tap();await page.getByText('Image promotion details',{exact:true}).waitFor();await close();
  await page.getByRole('button',{name:'Показать баннер 1',exact:true}).tap();
  await page.locator('[data-banner-dot="0"][aria-pressed="true"]').waitFor();
