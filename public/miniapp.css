@@ -262,7 +262,7 @@ body { position: relative; isolation: isolate; min-height: 100dvh; background: #
 .gallery-controls { display: flex; justify-content: center; align-items: center; gap: 16px; margin-top: 10px; }
 .gallery-controls button { width: 36px; height: 36px; border: 0; border-radius: 50%; background: #f4e9ed; color: var(--red); font-size: 24px; }
 .gallery-controls button:disabled { opacity: .35; }
-#gallery-counter { min-width: 45px; text-align: center; font-size: 12px; color: var(--muted); }
+
 
 /* Native Telegram chrome and the web page use the same background. */
 html { background-color: #100002; overscroll-behavior-y: none; color-scheme: light; }
@@ -302,15 +302,17 @@ dialog[data-view="product"] > .sheet-handle::before { content: ''; position: abs
 dialog[data-dragging] { user-select: none; cursor: grabbing; }
 
 .gallery-stage { position: relative; }
-.gallery-arrow { position: absolute; z-index: 1; top: calc(50% - 22px); width: 44px; height: 44px; padding: 0; border: 1px solid #fff; border-radius: 50%; color: #fff; background: #171116c9; box-shadow: 0 2px 9px #0003; font-size: 30px; }
+.gallery-arrow { position: absolute; z-index: 1; top: calc(50% - 16px); display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; color: #4c4147; background: #ffffffe0; box-shadow: 0 1px 5px #0002; }
+.gallery-arrow svg, .banner-navigation > button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.banner-navigation > button { display: grid; place-items: center; }
 .gallery-prev { left: 8px; }.gallery-next { right: 8px; }
 .gallery-arrow:disabled { opacity: .25; }
 @media (hover: hover) and (pointer: fine) { .gallery-arrow { opacity: 0; transition: opacity .15s; }.gallery-stage:hover .gallery-arrow,.gallery-stage:focus-within .gallery-arrow { opacity: 1; }.gallery-stage:hover .gallery-arrow:disabled { opacity: .25; } }
-@media (hover: none), (pointer: coarse) { .gallery-arrow { display: none; } }
+html[data-device="mobile"] .gallery-arrow, html[data-device="mobile"] [data-banner-step] { display: none; }
 .gallery-dots { display: flex; justify-content: center; gap: 0; }
 .gallery-dots button { display: grid; place-items: center; width: 26px; height: 28px; border: 0; padding: 0; background: transparent; }
-.gallery-dots button::before { content: ''; width: 8px; height: 8px; border: 1px solid #fff; border-radius: 50%; background: #292126; box-shadow: 0 0 0 1px #292126; }
-.gallery-dots button[aria-pressed=true]::before { background: #f5001c; box-shadow: 0 0 0 2px #f5001c; }
+.gallery-dots button::before { content: ''; width: 6px; height: 6px; border: 0; border-radius: 50%; background: #8d7d8780; }
+.gallery-dots button[aria-pressed=true]::before { background: #4c4147; }
 .product-title-row { display: flex; align-items: flex-start; gap: 10px; margin: 16px 0 12px; }
 .product-title-row h2 { flex: 1; min-width: 0; margin: 0; }
 .product-title-actions { flex: 0 0 auto; display: flex; gap: 4px; }

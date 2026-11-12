@@ -38,6 +38,7 @@ try {
  const open=async()=>{await page.locator('[data-product="1"]').tap();await settle();assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),false);};
  assert.equal(await page.locator('.banner-slide').count(),3);
  assert.equal(await page.locator('[data-banner-dot]').count(),3);
+ assert.equal(await page.locator('[data-banner-step="1"]').isHidden(),true);
  const bannerRect=await page.locator('#banner-track').boundingBox();
  const y=bannerRect.y+Math.min(50,bannerRect.height/2);
  await swipe(bannerRect.x+bannerRect.width-25,y,bannerRect.x+25,y);
@@ -74,14 +75,16 @@ try {
  await page.locator('.banner-slide[aria-hidden="false"] .banner-open').tap();await page.getByText('Image promotion details',{exact:true}).waitFor();await close();
  await page.getByRole('button',{name:'Показать баннер 1',exact:true}).tap();
  await page.locator('[data-banner-dot="0"][aria-pressed="true"]').waitFor();
- await page.getByRole('button',{name:'Следующий баннер',exact:true}).focus();await page.keyboard.press('ArrowRight');
+ await page.getByRole('button',{name:'Показать баннер 1',exact:true}).focus();await page.keyboard.press('ArrowRight');
  await page.locator('[data-banner-dot="1"][aria-pressed="true"]').waitFor();
  await page.setViewportSize({width:480,height:844});await page.locator('[data-banner-dot="1"][aria-pressed="true"]').waitFor();
  await page.setViewportSize({width:390,height:844});
  await open();
+ assert.equal(await page.locator('.gallery-next').isHidden(),true);
+ assert.equal(await page.locator('#gallery-counter').count(),0);
  const imageRect=await page.locator('#gallery-track').boundingBox(),imageY=imageRect.y+imageRect.height/2;
  await swipe(imageRect.x+imageRect.width-25,imageY,imageRect.x+25,imageY);
- await page.locator('#gallery-counter').filter({hasText:'2 / 2'}).waitFor();
+ await page.locator('[data-gallery-dot="1"][aria-pressed=true]').waitFor();
  assert.ok(await page.locator('dialog').evaluate(element=>element.open),'gallery swipe keeps the sheet open');
  await swipe(190,430,190,170);
  await page.waitForFunction(()=>document.querySelector('dialog').scrollTop>80);

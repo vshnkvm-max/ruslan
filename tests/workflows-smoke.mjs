@@ -16,7 +16,7 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'
 try {
  const context=await browser.newContext({viewport:{width:1280,height:900}});
  await context.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:`
- window.fullscreenCalls=0;window.expandCalls=0;window.telegramEvents={};window.Telegram={WebApp:{ready(){},expand(){expandCalls++;},isVersionAtLeast(){return true;},isFullscreen:false,requestFullscreen(){fullscreenCalls++;},safeAreaInset:{top:10,bottom:5},contentSafeAreaInset:{top:30,bottom:15},onEvent(name,fn){telegramEvents[name]=fn;}}};`}));
+ window.fullscreenCalls=0;window.fullscreenExitCalls=0;window.expandCalls=0;window.telegramEvents={};window.Telegram={WebApp:{platform:'tdesktop',ready(){},expand(){expandCalls++;},isVersionAtLeast(){return true;},isFullscreen:true,exitFullscreen(){fullscreenExitCalls++;this.isFullscreen=false;},requestFullscreen(){fullscreenCalls++;},safeAreaInset:{top:10,bottom:5},contentSafeAreaInset:{top:30,bottom:15},onEvent(name,fn){telegramEvents[name]=fn;}}};`}));
  const page=await context.newPage(),errors=[];
  page.on('pageerror',error=>errors.push(error.message));
  await page.goto(base);
@@ -105,9 +105,10 @@ try {
  await mini.goto(base+'/miniapp');
  await mini.locator(`[data-product="${product.id}"]`).waitFor();
  assert.equal(await mini.locator('#next-category').count(),0);
- assert.equal(await mini.evaluate(()=>fullscreenCalls),1);
+ assert.equal(await mini.evaluate(()=>fullscreenCalls),0);
+ assert.equal(await mini.evaluate(()=>fullscreenExitCalls),1);
  assert.equal(await mini.evaluate(()=>expandCalls),1);
- assert.equal(await mini.locator('#fullscreen-button').count(),1);
+ assert.equal(await mini.locator('#fullscreen-button').isHidden(),true);
  await mini.waitForFunction(()=>{const image=document.querySelector('#banner img');return image?.complete&&image.naturalWidth>0;});
  const ratio=await mini.locator('#banner img').evaluate(image=>{
   const rect=image.getBoundingClientRect();return {rendered:rect.width/rect.height,natural:image.naturalWidth/image.naturalHeight,fit:getComputedStyle(image).objectFit};
@@ -120,9 +121,9 @@ try {
  assert.equal(await mini.locator('#gallery-track img').first().evaluate(image=>getComputedStyle(image).objectFit),'contain');
  assert.equal(await mini.locator('#gallery-track img').first().evaluate(image=>getComputedStyle(image).objectPosition),'50% 50%');
  await mini.getByRole('button',{name:'Следующее фото',exact:true}).click();
- await mini.locator('#gallery-counter').filter({hasText:'2 / 2'}).waitFor();
+ await mini.locator('[data-gallery-dot="1"][aria-pressed=true]').waitFor();
  await mini.getByRole('button',{name:'Предыдущее фото',exact:true}).click();
- await mini.locator('#gallery-counter').filter({hasText:'1 / 2'}).waitFor();
+ await mini.locator('[data-gallery-dot="0"][aria-pressed=true]').waitFor();
  await mini.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').click();
  await mini.screenshot({path:'/tmp/shop-workflows-miniapp.png',fullPage:false});
  await mini.close();

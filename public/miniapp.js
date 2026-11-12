@@ -8,7 +8,13 @@ function postTelegramEvent(eventType,eventData={}){
   else if(window.parent!==window)window.parent.postMessage(JSON.stringify({eventType,eventData}),'https://web.telegram.org');
  }catch { /* The browser may not expose a native Telegram bridge. */ }
 }
-function canFullscreen(){return typeof telegram?.requestFullscreen==='function'&&telegram.isVersionAtLeast?.('8.0');}
+function isMobileClient(){
+ const platform=telegram?.platform;
+ if(['ios','android','android_x'].includes(platform))return true;
+ if(['tdesktop','macos','unigram'].includes(platform))return false;
+ return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)||matchMedia('(pointer: coarse)').matches;
+}
+function canFullscreen(){return isMobileClient()&&typeof telegram?.requestFullscreen==='function'&&telegram.isVersionAtLeast?.('8.0');}
 function updateTelegramInsets(){
  const safe=telegram?.safeAreaInset||{},content=telegram?.contentSafeAreaInset||{};
  document.documentElement.style.setProperty('--telegram-safe-top',`${Math.max(0,Number(safe.top)||0)+Math.max(0,Number(content.top)||0)}px`);
@@ -20,6 +26,7 @@ function requestTelegramFullscreen(automatic=false){
  fullscreenRequested=true;try{telegram.requestFullscreen();}catch{updateTelegramInsets();}
 }
 function configureTelegram(){
+ document.documentElement.dataset.device=isMobileClient()?'mobile':'desktop';
  for(const [method,event] of [['setHeaderColor','web_app_set_header_color'],['setBackgroundColor','web_app_set_background_color'],['setBottomBarColor','web_app_set_bottom_bar_color']]){
   try{if(typeof telegram?.[method]==='function')telegram[method](chromeColor);else postTelegramEvent(event,{color:chromeColor});}
   catch{postTelegramEvent(event,{color:chromeColor});}
@@ -29,6 +36,7 @@ function configureTelegram(){
  updateTelegramInsets();
  if(configuredTelegram!==telegram){
   configuredTelegram=telegram;
+  if(!isMobileClient()&&telegram.isFullscreen){try{telegram.exitFullscreen?.();}catch{/* Keep the desktop window usable on older clients. */}}
   for(const event of ['safeAreaChanged','contentSafeAreaChanged','fullscreenChanged'])telegram.onEvent?.(event,updateTelegramInsets);
   telegram.onEvent?.('fullscreenFailed',()=>{updateTelegramInsets();notify('Этот клиент Telegram не поддерживает полный экран.');});
  }
@@ -49,6 +57,8 @@ const icons = {
   bag: icon('<path d="M4 7h16l-1 14H5ZM8 8V6a4 4 0 0 1 8 0v2"/>'),
   package: icon('<path d="m12 3 9 5v9l-9 5-9-5V8ZM3 8l9 5 9-5M12 13v9M8 5l9 5"/>'),
   trash: icon('<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'),
+  previousPhoto: icon('<path d="m14 6-6 6 6 6"/>'),
+  nextPhoto: icon('<path d="m10 6 6 6-6 6"/>'),
   chevron: icon('<path d="m9 5 7 7-7 7"/>'),
   check: icon('<path d="m5 12 4 4L19 6"/>')
 };
@@ -172,12 +182,11 @@ const photo = product => isPhoto(product.image)
 function productGallery(product){
  const images=product.images?.length?product.images:(isPhoto(product.image)?[product.image]:[]);
  if(images.length<2)return photo(product);
- return `<div class="product-gallery"><div class="gallery-stage"><div class="gallery-track" id="gallery-track" aria-label="Фотографии товара">${images.map((image,index)=>`<div class="gallery-slide">${photo({...product,image,name:`${product.name} — фото ${index+1}`})}</div>`).join('')}</div><button type="button" class="gallery-arrow gallery-prev" data-gallery-step="-1" aria-label="Предыдущее фото" disabled>‹</button><button type="button" class="gallery-arrow gallery-next" data-gallery-step="1" aria-label="Следующее фото">›</button></div><div class="gallery-controls"><div class="gallery-dots">${images.map((_,index)=>`<button type="button" data-gallery-dot="${index}" aria-label="Фото ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><span id="gallery-counter" aria-live="polite">1 / ${images.length}</span></div></div>`;
+ return `<div class="product-gallery"><div class="gallery-stage"><div class="gallery-track" id="gallery-track" aria-label="Фотографии товара">${images.map((image,index)=>`<div class="gallery-slide">${photo({...product,image,name:`${product.name} — фото ${index+1}`})}</div>`).join('')}</div><button type="button" class="gallery-arrow gallery-prev" data-gallery-step="-1" aria-label="Предыдущее фото" disabled>${icons.previousPhoto}</button><button type="button" class="gallery-arrow gallery-next" data-gallery-step="1" aria-label="Следующее фото">${icons.nextPhoto}</button></div><div class="gallery-controls"><div class="gallery-dots">${images.map((_,index)=>`<button type="button" data-gallery-dot="${index}" aria-label="Фото ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div></div></div>`;
 }
 function updateGallery(){
  const track=$('#gallery-track');if(!track)return;
  const index=Math.round(track.scrollLeft/Math.max(1,track.clientWidth)),count=track.children.length;
- $('#gallery-counter').textContent=`${index+1} / ${count}`;
  $('[data-gallery-step="-1"]').disabled=index===0;$('[data-gallery-step="1"]').disabled=index>=count-1;
  document.querySelectorAll('[data-gallery-dot]').forEach((dot,i)=>dot.setAttribute('aria-pressed',String(i===index)));
 }
@@ -484,7 +493,7 @@ function renderBanners(){
  root.innerHTML=`<div class="banner-track" id="banner-track" role="group" aria-roledescription="карусель" aria-label="Акции магазина">${banners.map((banner,index)=>{
   const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image);
   return `<div class="banner-slide ${image?'has-image':''}" role="group" aria-label="Акция ${index+1} из ${banners.length}"><button type="button" class="banner-open ${image?'':'banner-text'}" data-banner="${banner.id}" aria-label="Подробнее об акции: ${escape(banner.title)}">${image?`<img class="banner-image" draggable="false" src="${escape(banner.image)}" alt="${escape(banner.title)}" decoding="async" loading="${index===0?'eager':'lazy'}">`:`<span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span>`}</button></div>`;
- }).join('')}</div>${banners.length>1?`<div class="banner-navigation" aria-label="Листание акций"><button type="button" data-banner-step="-1" aria-label="Предыдущий баннер">‹</button><div class="banner-dots">${banners.map((_,index)=>`<button type="button" data-banner-dot="${index}" aria-label="Показать баннер ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" data-banner-step="1" aria-label="Следующий баннер">›</button></div>`:''}`;
+ }).join('')}</div>${banners.length>1?`<div class="banner-navigation" aria-label="Листание акций"><button type="button" data-banner-step="-1" aria-label="Предыдущий баннер">${icons.previousPhoto}</button><div class="banner-dots">${banners.map((_,index)=>`<button type="button" data-banner-dot="${index}" aria-label="Показать баннер ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" data-banner-step="1" aria-label="Следующий баннер">${icons.nextPhoto}</button></div>`:''}`;
  const track=$('#banner-track');track.addEventListener('scroll',scrollBanner,{passive:true});
  if(window.ResizeObserver){bannerObserver=new ResizeObserver(resizeBanners);bannerObserver.observe(track);}
  resizeBanners();
