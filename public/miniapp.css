@@ -330,3 +330,5 @@ html[data-input="pointer"] a:focus-visible { outline: none; }
 
 .banner-open, .banner-open * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .banner-slide .banner-image { -webkit-user-drag: none; pointer-events: none; }
+
+html[data-device="mobile"] .product-close { display: none; }

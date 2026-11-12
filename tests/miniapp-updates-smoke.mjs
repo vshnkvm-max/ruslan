@@ -93,7 +93,7 @@ try {
  assert.ok(Math.abs(sheet.bottom-sheet.viewport)<1);assert.equal(sheet.width,390);assert.ok(sheet.height>sheet.viewport*0.9);
  assert.equal(await mini.locator('dialog').evaluate(element=>getComputedStyle(element).outlineStyle),'none');
  await mini.screenshot({path:'/tmp/shop-product-sheet.png'});
- await mini.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
+ await mini.keyboard.press('Escape');await mini.locator('dialog').waitFor({state:'hidden'});
  await mini.screenshot({path:'/tmp/shop-updated-catalog.png'});
  assert.deepEqual(errors,[]);
  console.log('PASS: category drag/order persistence, stock field removed, unified purchase/sale history, promotion descriptions, Telegram colors/fullscreen/avatar, centered photos, bottom product page and sticky categories');

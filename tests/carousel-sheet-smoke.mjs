@@ -36,7 +36,7 @@ try {
   await page.waitForTimeout(400);
  }
  const settle=()=>page.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));
- const close=async()=>{await page.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').tap();await page.locator('dialog').waitFor({state:'hidden'});};
+ const close=async()=>{if(await page.locator('dialog').getAttribute('data-view')==='product'){const handle=await page.locator('.sheet-handle').boundingBox();await swipe(handle.x+handle.width/2,handle.y+15,handle.x+handle.width/2,handle.y+240);}else await page.locator('dialog > .close').tap();await page.locator('dialog').waitFor({state:'hidden'});};
  const open=async()=>{await page.locator('[data-product="1"]').tap();await settle();assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),false);};
  assert.equal(await page.locator('.banner-slide').count(),3);
  assert.equal(await page.locator('[data-banner-dot]').count(),3);
