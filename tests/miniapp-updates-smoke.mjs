@@ -85,13 +85,17 @@ try {
  for(const id of [1,2]){
   const image=mini.locator(`[data-product="${id}"] img`);await image.waitFor();
   const geometry=await image.evaluate(image=>{const canvas=image.parentElement.getBoundingClientRect(),rect=image.getBoundingClientRect();return {square:Math.abs(canvas.width-canvas.height),offset:Math.abs((rect.left+rect.right)-(canvas.left+canvas.right))+Math.abs((rect.top+rect.bottom)-(canvas.top+canvas.bottom)),fit:getComputedStyle(image).objectFit};});
-  assert.ok(geometry.square<1);assert.ok(geometry.offset<1);assert.equal(geometry.fit,'cover');
+  assert.ok(geometry.square<1);assert.ok(geometry.offset<1);assert.equal(geometry.fit,'contain');
  }
  await mini.locator('[data-product="1"]').tap();
  await mini.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));
  const sheet=await mini.locator('dialog').evaluate(element=>{const rect=element.getBoundingClientRect();return {bottom:rect.bottom,width:rect.width,height:rect.height,viewport:innerHeight};});
  assert.ok(Math.abs(sheet.bottom-sheet.viewport)<1);assert.equal(sheet.width,390);assert.ok(sheet.height>sheet.viewport*0.9);
  assert.equal(await mini.locator('dialog').evaluate(element=>getComputedStyle(element).outlineStyle),'none');
+ await mini.waitForFunction(()=>{const image=document.querySelector('dialog .photo img');return image?.complete&&image.naturalWidth>0;});
+ const openedPhoto=await mini.locator('dialog .photo img').first().evaluate(image=>{const rect=image.getBoundingClientRect(),frame=image.parentElement.getBoundingClientRect();return {ratio:rect.width/rect.height,natural:image.naturalWidth/image.naturalHeight,gap:Math.abs(frame.width-rect.width)+Math.abs(frame.height-rect.height)};});
+ assert.ok(Math.abs(openedPhoto.ratio-openedPhoto.natural)<0.01,'opened portrait photo keeps its aspect ratio');
+ assert.ok(openedPhoto.gap<1,'opened photo does not sit inside a square with side gaps');
  await mini.screenshot({path:'/tmp/shop-product-sheet.png'});
  await mini.keyboard.press('Escape');await mini.locator('dialog').waitFor({state:'hidden'});
  await mini.screenshot({path:'/tmp/shop-updated-catalog.png'});

@@ -527,7 +527,12 @@ function openProduct(id) {
     <p class="detail-stock">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</p>
     ${formatted(product.short_description)}${formatted(product.description)}
     <button class="primary-button" id="product-add" data-add="${product.id}"></button><button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>`, 'product');
-  $('#gallery-track')?.addEventListener('scroll',updateGallery,{passive:true});
+  const galleryTrack=$('#gallery-track'),firstPhoto=galleryTrack?.querySelector('img');
+  if(firstPhoto){
+   const fitGallery=()=>{if(firstPhoto.naturalWidth&&firstPhoto.naturalHeight)galleryTrack.style.setProperty('--product-photo-ratio',`${firstPhoto.naturalWidth} / ${firstPhoto.naturalHeight}`);};
+   firstPhoto.addEventListener('load',fitGallery);fitGallery();
+  }
+  galleryTrack?.addEventListener('scroll',updateGallery,{passive:true});
   updateProductAddButton();
   fetch(`/api/storefront/products/${product.id}/view`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitor_id:visitorId(),init_data:telegram?.initData||''})}).catch(()=>{});
 }

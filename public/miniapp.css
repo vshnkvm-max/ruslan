@@ -193,7 +193,7 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 
 .catalog-photo { position: relative; flex: 0 0 auto; width: 100%; }
 .catalog-photo .photo { width: 100%; border-radius: 16px; background-color: transparent; }
-.catalog-photo .photo img { object-fit: cover; }
+.catalog-photo .photo img { object-fit: contain; }
 .availability-badge { position: absolute; left: 7px; top: 7px; border-radius: 12px; padding: 5px 7px; color: #756970; background: #fffffff0; font-size: 8px; line-height: 1; }
 .product .price { color: #111; font-size: 20px; font-weight: 750; letter-spacing: -.3px; }
 .product .currency-symbol { font-weight: inherit; }
@@ -332,3 +332,10 @@ html[data-input="pointer"] a:focus-visible { outline: none; }
 .banner-slide .banner-image { -webkit-user-drag: none; pointer-events: none; }
 
 html[data-device="mobile"] .product-close { display: none; }
+
+/* Keep the complete product visible; the opened photo uses its own proportions. */
+dialog[data-view="product"] #detail-content > .photo:not(.photo-empty) { aspect-ratio: auto; background: transparent; }
+dialog[data-view="product"] #detail-content > .photo > img { position: relative; inset: auto; width: 100%; height: auto; }
+.gallery-track { aspect-ratio: var(--product-photo-ratio, 1); align-items: stretch; overflow-y: hidden; }
+.gallery-slide { position: relative; }
+.gallery-slide .photo { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; background: transparent; }
