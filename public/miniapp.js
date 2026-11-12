@@ -446,17 +446,46 @@ async function load() {
     loading = false;
   }
 }
-let bannerIndex=0,bannerObserver;
-function updateBannerPosition(){
+let bannerIndex=0,bannerObserver,bannerWidth=0,bannerScrolling=false,bannerTouching=false,bannerFrame=0,bannerSettleTimer;
+function updateBannerHeight(track){
+ if(bannerScrolling||bannerTouching)return;
+ const active=track.children[bannerIndex],image=active?.querySelector('img');
+ if(!active)return;
+ const height=Math.round(image&&!image.naturalWidth?bannerWidth/3.15:active.offsetHeight);
+ if(height>0&&track.style.height!==height+'px')track.style.height=height+'px';
+}
+function updateBannerPosition(force=false){
  const track=$('#banner-track');if(!track)return;
- bannerIndex=Math.max(0,Math.min(data.banners.length-1,Math.round(track.scrollLeft/Math.max(1,track.clientWidth))));
- const slides=[...track.children],active=slides[bannerIndex];
- const image=active?.querySelector('img');
- if(active)track.style.height=(image&&!image.complete?track.clientWidth/3.15:active.offsetHeight)+'px';
- slides.forEach((slide,index)=>{slide.setAttribute('aria-hidden',String(index!==bannerIndex));slide.querySelector('button').tabIndex=index===bannerIndex?0:-1;});
- document.querySelectorAll('[data-banner-dot]').forEach((dot,index)=>dot.setAttribute('aria-pressed',String(index===bannerIndex)));
- const prev=$('[data-banner-step="-1"]'),next=$('[data-banner-step="1"]');
- if(prev)prev.disabled=bannerIndex===0;if(next)next.disabled=bannerIndex===slides.length-1;
+ const index=Math.max(0,Math.min(data.banners.length-1,Math.round(track.scrollLeft/Math.max(1,bannerWidth))));
+ if(force||index!==bannerIndex){
+  bannerIndex=index;
+  [...track.children].forEach((slide,i)=>{
+   slide.setAttribute('aria-hidden',String(i!==index));slide.querySelector('button').tabIndex=i===index?0:-1;
+   if(Math.abs(i-index)<=1){const image=slide.querySelector('img');if(image)image.loading='eager';}
+  });
+  document.querySelectorAll('[data-banner-dot]').forEach((dot,i)=>dot.setAttribute('aria-pressed',String(i===index)));
+  const prev=$('[data-banner-step="-1"]'),next=$('[data-banner-step="1"]');
+  if(prev)prev.disabled=index===0;if(next)next.disabled=index===track.children.length-1;
+ }
+ updateBannerHeight(track);
+}
+function settleBanner(){
+ clearTimeout(bannerSettleTimer);bannerScrolling=false;
+ updateBannerPosition();
+}
+function scrollBanner(){
+ bannerScrolling=true;clearTimeout(bannerSettleTimer);
+ if(!bannerFrame)bannerFrame=requestAnimationFrame(()=>{bannerFrame=0;updateBannerPosition();});
+ // Older iOS WebViews do not emit scrollend. Wait until momentum has stopped.
+ bannerSettleTimer=setTimeout(settleBanner,180);
+}
+function resizeBanners(){
+ const track=$('#banner-track');if(!track)return;
+ const width=track.clientWidth;
+ // Telegram changes viewport height while its chrome moves. Do not interrupt the swipe.
+ if(!width||width===bannerWidth)return;
+ clearTimeout(bannerSettleTimer);bannerScrolling=false;bannerWidth=width;
+ track.scrollLeft=bannerIndex*width;updateBannerPosition(true);
 }
 function goToBanner(index){
  const track=$('#banner-track');if(!track)return;
@@ -464,19 +493,22 @@ function goToBanner(index){
  track.scrollTo({left:target*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
 function renderBanners(){
- bannerObserver?.disconnect();bannerIndex=0;
+ bannerObserver?.disconnect();clearTimeout(bannerSettleTimer);cancelAnimationFrame(bannerFrame);bannerFrame=0;bannerIndex=0;bannerWidth=0;bannerScrolling=false;bannerTouching=false;
  const banners=data.banners,root=$('#banner');root.hidden=!banners.length;root.classList.remove('has-image');root.replaceChildren();
  if(!banners.length)return;
  root.innerHTML=`<div class="banner-track" id="banner-track" role="group" aria-roledescription="карусель" aria-label="Акции магазина">${banners.map((banner,index)=>{
   const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image);
   return `<div class="banner-slide ${image?'has-image':''}" role="group" aria-label="Акция ${index+1} из ${banners.length}"><button type="button" class="banner-open ${image?'':'banner-text'}" data-banner="${banner.id}" aria-label="Подробнее об акции: ${escape(banner.title)}">${image?`<img class="banner-image" src="${escape(banner.image)}" alt="${escape(banner.title)}" decoding="async" loading="${index===0?'eager':'lazy'}">`:`<span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span>`}</button></div>`;
  }).join('')}</div>${banners.length>1?`<div class="banner-navigation" aria-label="Листание акций"><button type="button" data-banner-step="-1" aria-label="Предыдущий баннер">‹</button><div class="banner-dots">${banners.map((_,index)=>`<button type="button" data-banner-dot="${index}" aria-label="Показать баннер ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" data-banner-step="1" aria-label="Следующий баннер">›</button></div>`:''}`;
- const track=$('#banner-track');track.addEventListener('scroll',updateBannerPosition,{passive:true});
- root.querySelectorAll('img').forEach(image=>image.addEventListener('load',updateBannerPosition,{once:true}));
- if(window.ResizeObserver){let width=track.clientWidth;bannerObserver=new ResizeObserver(()=>{if(track.clientWidth!==width){width=track.clientWidth;track.scrollLeft=bannerIndex*width;}updateBannerPosition();});for(const slide of track.children)bannerObserver.observe(slide);}
- updateBannerPosition();
+ const track=$('#banner-track');track.addEventListener('scroll',scrollBanner,{passive:true});
+ track.addEventListener('scrollend',settleBanner,{passive:true});
+ track.addEventListener('touchstart',()=>{bannerTouching=true;},{passive:true});
+ for(const type of ['touchend','touchcancel'])track.addEventListener(type,event=>{bannerTouching=event.touches.length>0;if(!bannerTouching){clearTimeout(bannerSettleTimer);bannerSettleTimer=setTimeout(settleBanner,180);}},{passive:true});
+ root.querySelectorAll('img').forEach(image=>image.addEventListener('load',()=>updateBannerHeight(track),{once:true}));
+ if(window.ResizeObserver){bannerObserver=new ResizeObserver(()=>{resizeBanners();updateBannerHeight(track);});bannerObserver.observe(track);for(const slide of track.children)bannerObserver.observe(slide);}
+ resizeBanners();
 }
-window.addEventListener('resize',()=>{const track=$('#banner-track');if(track){track.scrollLeft=bannerIndex*track.clientWidth;updateBannerPosition();}});
+window.addEventListener('resize',resizeBanners);
 function openBanner(id){
  const banner=data?.banners.find(banner=>banner.id===id);if(!banner)return;
  const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image)?`<img class="promotion-image" src="${escape(banner.image)}" alt="${escape(banner.title)}">`:'';

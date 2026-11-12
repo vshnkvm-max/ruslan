@@ -283,7 +283,7 @@ dialog[data-view="product"] { position: fixed; inset: auto 0 0; width: 100%; max
 
 #banner { display: block; aspect-ratio: auto; padding: 0; background: transparent; }
 #banner::after { content: none; }
-.banner-track { display: flex; align-items: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: inherit; transition: height .2s ease; }
+.banner-track { display: flex; align-items: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: inherit; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 .banner-track::-webkit-scrollbar { display: none; }
 .banner-slide { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
 .banner-text { position: relative; min-height: 110px; padding: 14px 55px 14px 16px; background: linear-gradient(110deg,#df1c35,#bd1129); color: #fff; }

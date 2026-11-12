@@ -49,8 +49,23 @@ try {
  await page.locator('[data-banner-dot="0"][aria-pressed="true"]').waitFor();
  await swipe(bannerRect.x+bannerRect.width-25,y,bannerRect.x+25,y);
  await page.locator('[data-banner-dot="1"][aria-pressed="true"]').waitFor();
- await page.getByRole('button',{name:'Следующий баннер',exact:true}).tap();
+ // A different-height banner must not resize the page under a held finger.
+ const beforeDrag=await page.locator('#banner-track').evaluate(track=>({left:track.scrollLeft,height:track.clientHeight}));
+ const touchY=(await page.locator('#banner-track').boundingBox()).y+25;
+ await touch('touchStart',bannerRect.x+bannerRect.width-20,touchY);
+ for(let step=1;step<=10;step++){await touch('touchMove',bannerRect.x+bannerRect.width-20-step*25,touchY);await page.waitForTimeout(18);}
+ await page.waitForTimeout(220);
+ const duringDrag=await page.locator('#banner-track').evaluate(track=>{
+  const before=track.scrollLeft,height=track.clientHeight;
+  dispatchEvent(new Event('resize'));
+  return {before,after:track.scrollLeft,height};
+ });
+ assert.ok(duringDrag.before>beforeDrag.left+50,'the native touch gesture moved the carousel');
+ assert.equal(duringDrag.before,duringDrag.after,'viewport-height resize must not snap an unfinished swipe');
+ assert.equal(duringDrag.height,beforeDrag.height,'banner height remains stable while the finger is held');
+ await touch('touchEnd');
  await page.locator('[data-banner-dot="2"][aria-pressed="true"]').waitFor();
+ await page.waitForTimeout(400);
  await page.waitForFunction(()=>{const image=document.querySelector('.banner-slide[aria-hidden="false"] img');return image?.complete&&image.naturalWidth>0;});
  await settle();
  const sizing=await page.locator('#banner-track').evaluate(track=>({track:track.getBoundingClientRect().height,image:track.querySelector('.banner-slide[aria-hidden="false"] img').getBoundingClientRect().height}));
