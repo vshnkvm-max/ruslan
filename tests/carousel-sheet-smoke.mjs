@@ -49,7 +49,7 @@ try {
  await page.locator('[data-banner-dot="0"][aria-pressed="true"]').waitFor();
  await swipe(bannerRect.x+bannerRect.width-25,y,bannerRect.x+25,y);
  await page.locator('[data-banner-dot="1"][aria-pressed="true"]').waitFor();
- // A different-height banner must not resize the page under a held finger.
+ // A square source image must use the same frame as text and landscape banners.
  const beforeDrag=await page.locator('#banner-track').evaluate(track=>({left:track.scrollLeft,height:track.clientHeight}));
  const touchY=(await page.locator('#banner-track').boundingBox()).y+25;
  await touch('touchStart',bannerRect.x+bannerRect.width-20,touchY);
@@ -69,7 +69,8 @@ try {
  await page.waitForFunction(()=>{const image=document.querySelector('.banner-slide[aria-hidden="false"] img');return image?.complete&&image.naturalWidth>0;});
  await settle();
  const sizing=await page.locator('#banner-track').evaluate(track=>({track:track.getBoundingClientRect().height,image:track.querySelector('.banner-slide[aria-hidden="false"] img').getBoundingClientRect().height}));
- assert.ok(Math.abs(sizing.track-sizing.image)<1,'banner height follows the active image proportions');
+ assert.ok(Math.abs(sizing.track-sizing.image)<1,'image fills the uniform banner frame');
+ assert.ok(Math.abs(sizing.track-beforeDrag.height)<1,'switching source aspect ratios must not change banner height');
  await page.locator('.banner-slide[aria-hidden="false"] .banner-open').tap();await page.getByText('Image promotion details',{exact:true}).waitFor();await close();
  await page.getByRole('button',{name:'Показать баннер 1',exact:true}).tap();
  await page.locator('[data-banner-dot="0"][aria-pressed="true"]').waitFor();

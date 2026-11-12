@@ -41,6 +41,13 @@ try{
  const title=await mini.locator('.product-title-row').boundingBox(),close=await mini.locator('.product-close').boundingBox(),gallery=await mini.locator('.gallery-stage').boundingBox();assert.ok(close.y>=gallery.y+gallery.height);assert.ok(close.x>title.x+title.width/2);
  await mini.locator('.gallery-stage').hover();assert.equal(await mini.getByRole('button',{name:'Следующее фото',exact:true}).evaluate(e=>getComputedStyle(e).opacity),'1');await mini.getByRole('button',{name:'Следующее фото',exact:true}).click();await mini.locator('[data-gallery-dot="1"][aria-pressed=true]').waitFor();
  const before=await mini.evaluate(()=>hapticCalls);await mini.getByRole('button',{name:'Поделиться товаром',exact:true}).click();assert.equal(await mini.evaluate(()=>shared.length),1);assert.match(await mini.evaluate(()=>shared[0].url),/startapp=product_1/);assert.ok(await mini.evaluate(()=>hapticCalls)>before);
+ const surface=await mini.locator('dialog').evaluate(dialog=>{const style=getComputedStyle(dialog);return {background:style.backgroundColor,blur:style.backdropFilter||style.webkitBackdropFilter};});
+ assert.match(surface.background,/rgba\(/);assert.match(surface.blur,/blur\(18px\)/);
+ const shareButton=mini.locator('[data-share-product]');await shareButton.focus();
+ assert.equal(await shareButton.evaluate(button=>getComputedStyle(button).outlineStyle),'none','native share return must not leave a touch focus ring');
+ await mini.keyboard.press('Tab');await shareButton.focus();
+ assert.equal(await shareButton.evaluate(button=>getComputedStyle(button).outlineStyle),'solid','keyboard focus remains visible');
+ await shareButton.click();
  for(let i=0;i<10;i++){await mini.locator('.product-close').click();await mini.locator('dialog').waitFor({state:'hidden'});await mini.locator('[data-product="1"]').click();await mini.locator('.product-close').waitFor();}
  assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views,1);
  assert.match(await mini.locator('meta[name=viewport]').getAttribute('content'),/user-scalable=no/);

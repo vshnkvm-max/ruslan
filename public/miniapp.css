@@ -283,10 +283,12 @@ dialog[data-view="product"] { position: fixed; inset: auto 0 0; width: 100%; max
 
 #banner { display: block; aspect-ratio: auto; padding: 0; background: transparent; }
 #banner::after { content: none; }
-.banner-track { display: flex; align-items: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: inherit; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.banner-track { display: flex; aspect-ratio: 16 / 9; align-items: stretch; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: inherit; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 .banner-track::-webkit-scrollbar { display: none; }
-.banner-slide { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
-.banner-text { position: relative; min-height: 110px; padding: 14px 55px 14px 16px; background: linear-gradient(110deg,#df1c35,#bd1129); color: #fff; }
+.banner-slide { flex: 0 0 100%; min-width: 0; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; }
+.banner-slide .banner-open { height: 100%; }
+.banner-slide .banner-image { height: 100%; object-fit: cover; }
+.banner-text { display: flex; align-items: center; position: relative; min-height: 0; padding: 14px 55px 14px 16px; background: linear-gradient(110deg,#df1c35,#bd1129); color: #fff; }
 .banner-navigation { position: absolute; z-index: 1; bottom: 6px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; align-items: center; gap: 6px; max-width: calc(100% - 12px); padding: 0 4px; border-radius: 99px; background: #0009; }
 .banner-navigation > button { width: 28px; height: 28px; padding: 0; border: 0; background: transparent; color: #fff; font-size: 23px; }
 .banner-navigation > button:disabled { opacity: .3; }
@@ -315,3 +317,9 @@ dialog[data-dragging] { user-select: none; cursor: grabbing; }
 .product-title-actions svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 dialog[data-view=product] > .close { display: none; }
 .photo img { -webkit-user-drag: none; user-select: none; }
+
+html[data-input="pointer"] button:focus-visible,
+html[data-input="pointer"] a:focus-visible { outline: none; }
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+ dialog[data-view="product"] { background: #fff9fbc7; border: 1px solid #ffffff80; -webkit-backdrop-filter: blur(18px) saturate(115%); backdrop-filter: blur(18px) saturate(115%); }
+}

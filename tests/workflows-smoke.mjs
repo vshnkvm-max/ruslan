@@ -91,7 +91,7 @@ try {
  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n,1);
  await page.getByRole('button',{name:'Закрыть',exact:true}).click();
 
- // A nonstandard banner ratio must be preserved in both the admin and Mini App.
+ // Different source proportions share one storefront frame; originals remain available in promotion details.
  await page.locator('nav a[href="#content"]').click();
  await page.getByRole('button',{name:/Баннеры/}).click();
  await page.getByRole('button',{name:'Добавить первый баннер',exact:true}).click();
@@ -110,9 +110,10 @@ try {
  assert.equal(await mini.locator('#fullscreen-button').count(),1);
  await mini.waitForFunction(()=>{const image=document.querySelector('#banner img');return image?.complete&&image.naturalWidth>0;});
  const ratio=await mini.locator('#banner img').evaluate(image=>{
-  const rect=image.getBoundingClientRect();return {rendered:rect.width/rect.height,natural:image.naturalWidth/image.naturalHeight};
+  const rect=image.getBoundingClientRect();return {rendered:rect.width/rect.height,natural:image.naturalWidth/image.naturalHeight,fit:getComputedStyle(image).objectFit};
  });
- assert.ok(Math.abs(ratio.rendered-ratio.natural)<0.01,'banner keeps its own proportions');
+ assert.ok(Math.abs(ratio.rendered-16/9)<0.01,'banner uses the common 16:9 frame');
+ assert.equal(ratio.fit,'cover','different source proportions fill the frame without stretching');
  await mini.locator(`[data-product="${product.id}"]`).click();
  await mini.locator('#gallery-track img').first().waitFor();
  assert.equal(await mini.locator('.gallery-slide').count(),2);

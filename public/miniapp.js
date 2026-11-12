@@ -446,14 +446,7 @@ async function load() {
     loading = false;
   }
 }
-let bannerIndex=0,bannerObserver,bannerWidth=0,bannerScrolling=false,bannerTouching=false,bannerFrame=0,bannerSettleTimer;
-function updateBannerHeight(track){
- if(bannerScrolling||bannerTouching)return;
- const active=track.children[bannerIndex],image=active?.querySelector('img');
- if(!active)return;
- const height=Math.round(image&&!image.naturalWidth?bannerWidth/3.15:active.offsetHeight);
- if(height>0&&track.style.height!==height+'px')track.style.height=height+'px';
-}
+let bannerIndex=0,bannerObserver,bannerWidth=0,bannerFrame=0;
 function updateBannerPosition(force=false){
  const track=$('#banner-track');if(!track)return;
  const index=Math.max(0,Math.min(data.banners.length-1,Math.round(track.scrollLeft/Math.max(1,bannerWidth))));
@@ -467,24 +460,16 @@ function updateBannerPosition(force=false){
   const prev=$('[data-banner-step="-1"]'),next=$('[data-banner-step="1"]');
   if(prev)prev.disabled=index===0;if(next)next.disabled=index===track.children.length-1;
  }
- updateBannerHeight(track);
-}
-function settleBanner(){
- clearTimeout(bannerSettleTimer);bannerScrolling=false;
- updateBannerPosition();
 }
 function scrollBanner(){
- bannerScrolling=true;clearTimeout(bannerSettleTimer);
  if(!bannerFrame)bannerFrame=requestAnimationFrame(()=>{bannerFrame=0;updateBannerPosition();});
- // Older iOS WebViews do not emit scrollend. Wait until momentum has stopped.
- bannerSettleTimer=setTimeout(settleBanner,180);
 }
 function resizeBanners(){
  const track=$('#banner-track');if(!track)return;
  const width=track.clientWidth;
  // Telegram changes viewport height while its chrome moves. Do not interrupt the swipe.
  if(!width||width===bannerWidth)return;
- clearTimeout(bannerSettleTimer);bannerScrolling=false;bannerWidth=width;
+ bannerWidth=width;
  track.scrollLeft=bannerIndex*width;updateBannerPosition(true);
 }
 function goToBanner(index){
@@ -493,7 +478,7 @@ function goToBanner(index){
  track.scrollTo({left:target*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
 }
 function renderBanners(){
- bannerObserver?.disconnect();clearTimeout(bannerSettleTimer);cancelAnimationFrame(bannerFrame);bannerFrame=0;bannerIndex=0;bannerWidth=0;bannerScrolling=false;bannerTouching=false;
+ bannerObserver?.disconnect();cancelAnimationFrame(bannerFrame);bannerFrame=0;bannerIndex=0;bannerWidth=0;
  const banners=data.banners,root=$('#banner');root.hidden=!banners.length;root.classList.remove('has-image');root.replaceChildren();
  if(!banners.length)return;
  root.innerHTML=`<div class="banner-track" id="banner-track" role="group" aria-roledescription="карусель" aria-label="Акции магазина">${banners.map((banner,index)=>{
@@ -501,11 +486,7 @@ function renderBanners(){
   return `<div class="banner-slide ${image?'has-image':''}" role="group" aria-label="Акция ${index+1} из ${banners.length}"><button type="button" class="banner-open ${image?'':'banner-text'}" data-banner="${banner.id}" aria-label="Подробнее об акции: ${escape(banner.title)}">${image?`<img class="banner-image" src="${escape(banner.image)}" alt="${escape(banner.title)}" decoding="async" loading="${index===0?'eager':'lazy'}">`:`<span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span>`}</button></div>`;
  }).join('')}</div>${banners.length>1?`<div class="banner-navigation" aria-label="Листание акций"><button type="button" data-banner-step="-1" aria-label="Предыдущий баннер">‹</button><div class="banner-dots">${banners.map((_,index)=>`<button type="button" data-banner-dot="${index}" aria-label="Показать баннер ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" data-banner-step="1" aria-label="Следующий баннер">›</button></div>`:''}`;
  const track=$('#banner-track');track.addEventListener('scroll',scrollBanner,{passive:true});
- track.addEventListener('scrollend',settleBanner,{passive:true});
- track.addEventListener('touchstart',()=>{bannerTouching=true;},{passive:true});
- for(const type of ['touchend','touchcancel'])track.addEventListener(type,event=>{bannerTouching=event.touches.length>0;if(!bannerTouching){clearTimeout(bannerSettleTimer);bannerSettleTimer=setTimeout(settleBanner,180);}},{passive:true});
- root.querySelectorAll('img').forEach(image=>image.addEventListener('load',()=>updateBannerHeight(track),{once:true}));
- if(window.ResizeObserver){bannerObserver=new ResizeObserver(()=>{resizeBanners();updateBannerHeight(track);});bannerObserver.observe(track);for(const slide of track.children)bannerObserver.observe(slide);}
+ if(window.ResizeObserver){bannerObserver=new ResizeObserver(resizeBanners);bannerObserver.observe(track);}
  resizeBanners();
 }
 window.addEventListener('resize',resizeBanners);
@@ -830,3 +811,8 @@ document.addEventListener('click',event=>{const button=event.target.closest('but
 document.addEventListener('touchmove',event=>{if(event.touches.length>1&&event.cancelable)event.preventDefault();},{passive:false});
 for(const type of ['gesturestart','gesturechange'])document.addEventListener(type,event=>event.preventDefault(),{passive:false});
 document.addEventListener('dblclick',event=>{if(!event.target.closest('input,textarea'))event.preventDefault();});
+
+// Touch must not leave the keyboard focus ring behind after the native share sheet.
+document.documentElement.dataset.input='pointer';
+for(const type of ['pointerdown','touchstart'])document.addEventListener(type,()=>{document.documentElement.dataset.input='pointer';},{capture:true,passive:true});
+document.addEventListener('keydown',event=>{if(event.key==='Tab'||event.key.startsWith('Arrow'))document.documentElement.dataset.input='keyboard';},true);
