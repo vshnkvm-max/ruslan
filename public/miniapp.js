@@ -57,6 +57,7 @@ const icons = {
   bag: icon('<path d="M4 7h16l-1 14H5ZM8 8V6a4 4 0 0 1 8 0v2"/>'),
   package: icon('<path d="m12 3 9 5v9l-9 5-9-5V8ZM3 8l9 5 9-5M12 13v9M8 5l9 5"/>'),
   trash: icon('<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'),
+  telegram: icon('<path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/>'),
   previousPhoto: icon('<path d="m14 6-6 6 6 6"/>'),
   nextPhoto: icon('<path d="m10 6 6 6-6 6"/>'),
   chevron: icon('<path d="m9 5 7 7-7 7"/>'),
@@ -509,7 +510,12 @@ function visitorId(){if(browserVisitor)return browserVisitor;try{browserVisitor=
 async function shareProduct(id){
  const product=data?.products.find(item=>item.id===id);if(!product)return;
  const bot=data.shop?.botUsername||'gas_shop_vape_bot',url=`https://t.me/${bot}?startapp=product_${id}`;
- try{if(navigator.share)await navigator.share({title:product.name,text:product.name,url});else if(telegram?.openTelegramLink)telegram.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(product.name)}`);else{await navigator.clipboard.writeText(url);notify('Ссылка на товар скопирована');}}catch(error){if(error.name!=='AbortError')notify('Не удалось открыть меню «Поделиться».');}
+ const path=`/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(product.name)}`;
+ try{
+  if(typeof telegram?.openTelegramLink==='function')telegram.openTelegramLink('https://t.me'+path);
+  else if(window.TelegramWebviewProxy?.postEvent||window.external?.notify||window.parent!==window)postTelegramEvent('web_app_open_tg_link',{path_full:path});
+  else window.open('https://t.me'+path,'_blank','noopener,noreferrer');
+ }catch{notify('Не удалось открыть чаты Telegram.');}
 }
 let startProductHandled=false;
 function openStartProduct(){if(startProductHandled)return;const start=telegram?.initDataUnsafe?.start_param||new URLSearchParams(location.hash.slice(1)).get('tgWebAppStartParam')||new URL(location.href).searchParams.get('product');const match=/^(?:product_)?(\d+)$/.exec(start||'');if(match){startProductHandled=true;openProduct(Number(match[1]));}}
@@ -517,7 +523,7 @@ function openProduct(id) {
   const product = data?.products.find(item => item.id === id);
   if (!product) return;
   $('#details').dataset.productId = id;
-  show(`${productGallery(product)}<div class="product-title-row"><h2>${escape(product.name)}</h2><div class="product-title-actions"><button type="button" class="product-share" data-share-product="${product.id}" aria-label="Поделиться товаром">${icon('<path d="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 1 0-4m9.2 10a3 3 0 1 0 0-4M8.6 10.5l6.8-5M8.6 13.5l6.8 5"/>')}</button><button type="button" class="product-close" data-product-close aria-label="Закрыть товар">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div></div><strong class="price">${moneyMarkup(product.price)}</strong>
+  show(`${productGallery(product)}<div class="product-title-row"><h2>${escape(product.name)}</h2><div class="product-title-actions"><button type="button" class="product-share" data-share-product="${product.id}" aria-label="Поделиться товаром">${icons.telegram}<span>Поделиться</span></button><button type="button" class="product-close" data-product-close aria-label="Закрыть товар">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div></div><strong class="price">${moneyMarkup(product.price)}</strong>
     <p class="detail-stock">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</p>
     ${formatted(product.short_description)}${formatted(product.description)}
     <button class="primary-button" id="product-add" data-add="${product.id}"></button><button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>`, 'product');
