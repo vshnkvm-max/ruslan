@@ -30,6 +30,8 @@ try {
   await touch('touchStart',x1,y1);
   for(let i=1;i<=steps;i++){await touch('touchMove',x1+(x2-x1)*i/steps,y1+(y2-y1)*i/steps);await new Promise(resolve=>setTimeout(resolve,18));}
   await touch('touchEnd');
+  // Let native momentum and scroll snapping finish before the next simulated gesture.
+  await page.waitForTimeout(400);
  }
  const settle=()=>page.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));
  const close=async()=>{await page.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').tap();await page.locator('dialog').waitFor({state:'hidden'});};
