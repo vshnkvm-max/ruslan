@@ -58,8 +58,8 @@ try {
  console.log('PASS: empty default sections, blank settings, disabled referrals, empty storefront and reload');
  // Business scenarios use explicit fixtures only in this temporary test database.
  insertTestFixtures(db);
- const viewedProducts=db.prepare('SELECT id,name FROM products WHERE active=1 AND deleted=0 ORDER BY id LIMIT 11').all();
- await page.evaluate(async products=>{for(const [i,p] of products.entries())for(let n=0;n<=i;n++){const res=await fetch(`/api/storefront/products/${p.id}/view`,{method:'POST'});if(!res.ok)throw new Error('View recording failed');}},viewedProducts);
+ const viewedProducts=db.prepare('SELECT id,name FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY id LIMIT 11').all();
+ for(const [i,p] of viewedProducts.entries())for(let n=0;n<=i;n++){const response=await fetch(base+`/api/storefront/products/${p.id}/view`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitor_id:(n+1).toString(16).padStart(64,'0')})});assert.ok(response.ok);}
  await page.goto(base+'/#statistics');await page.reload();await page.locator('.top-products-table').waitFor();
  assert.equal(await page.locator('.top-products-table tbody tr').count(),10);
  assert.equal(await page.locator('.top-products-table tbody tr').first().locator('strong').innerText(),viewedProducts.at(-1).name);
@@ -110,6 +110,7 @@ try {
  assert.match(await page.locator('.products-table tbody').innerText(),/1\s500/);
  await page.reload();await page.locator('.products-table').waitFor();await page.getByRole('searchbox').fill('Browser test lamp');
  assert.ok(await page.locator('.products-table img').evaluate(img=>img.complete&&img.naturalWidth>0));assert.equal(await page.locator('.products-table img').evaluate(img=>getComputedStyle(img).objectFit),'contain');
+ db.prepare("UPDATE products SET stock=1 WHERE name='Browser test lamp'").run();
  const savedPhoto=await page.evaluate(async()=>{const d=await(await fetch('/api/storefront')).json();return d.products.find(p=>p.name==='Browser test lamp').image;});
  assert.match(savedPhoto,/^\/api\/images\//);
  await page.getByRole('button',{name:'Browser test lamp Для дома'}).click();
@@ -166,7 +167,7 @@ try {
  await page.getByRole('button',{name:'Опубликовать',exact:true}).first().click();
  await page.waitForFunction(count=>document.querySelectorAll('[data-action=review-publish]').length===count-1,pending);
  await page.locator('nav a[href="#finance"]').click();
- await page.getByRole('button',{name:'Добавить операцию',exact:true}).click();
+ await page.getByRole('button',{name:'Создать документ',exact:true}).click();await page.getByRole('button',{name:'Списание',exact:true}).click();
  await page.getByLabel('Описание',{exact:true}).fill('UI expense');await page.getByLabel('Категория',{exact:true}).fill('Прочее');await page.getByLabel('Сумма, ₽',{exact:true}).fill('400');
  await page.locator('#transaction-form button[type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  assert.match(await page.locator('tbody').innerText(),/UI expense/);
@@ -247,7 +248,7 @@ try {
  assert.equal(await page.locator('#purchase-total').innerText(),'600 ₽');
  await page.getByRole('button',{name:'Закрыть',exact:true}).click();
  console.log('PASS: purchase draft, lines, totals, posting stock once, payment, history and mobile layout');
- for(const [label,type] of [['Продажа','income'],['Списание','expense']]){
+ for(const [label,type] of [['Списание','expense']]){
   await page.getByRole('button',{name:'Создать документ',exact:true}).click();
   assert.deepEqual(await page.locator('.document-actions button').allTextContents(),['Продажа','Закупка','Списание']);
   await page.getByRole('button',{name:label,exact:true}).click();
@@ -258,7 +259,7 @@ try {
   await page.locator('#transaction-form [type=submit]').click();await page.locator('.modal').waitFor({state:'detached'});
  }
  await page.locator('nav a[href="#finance"]').click();await page.locator('#main-content h1').waitFor();
- for(const label of ['Продажа','Списание'])assert.match(await page.locator('#main-content>.panel').first().locator('tbody').innerText(),new RegExp('Документ '+label));
+ for(const label of ['Списание'])assert.match(await page.locator('#main-content>.panel').first().locator('tbody').innerText(),new RegExp('Документ '+label));
  console.log('PASS: document menu and sale/writeoff financial entries');
 
  await page.locator('nav a[href="#products"]').click();

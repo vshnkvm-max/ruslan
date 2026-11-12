@@ -43,7 +43,7 @@ try {
  await page.locator(`[data-operation="p${purchase.id}"]`).waitFor();
  assert.equal(await page.locator('.operations-table tbody tr').count(),1,'purchase payment is not duplicated as a second operation');
  assert.match(await page.locator('.operations-table').innerText(),/Закупка/);assert.equal(await page.locator('.metrics-grid').count(),0);
- await page.locator(`[data-operation="p${purchase.id}"] button`).click();await page.locator('#purchase-form').waitFor();
+ await page.locator(`[data-operation="p${purchase.id}"] [data-action=purchase-open]`).click();await page.locator('#purchase-form').waitFor();
  await page.getByRole('button',{name:'Закрыть',exact:true}).click();
  await page.getByRole('searchbox').fill('');await page.locator('[data-action=filter][data-value=sale]').click();
  assert.ok(await page.locator('[data-operation^="o"]').count()>0);
@@ -74,10 +74,10 @@ try {
  await mini.waitForFunction(()=>{const image=document.querySelector('#profile-button img');return image?.complete&&image.naturalWidth>0;});
  assert.deepEqual(await mini.locator('#categories [data-category]').evaluateAll(elements=>elements.map(e=>e.dataset.category)),['',...expected]);
  await mini.locator('#profile-button').tap();await mini.waitForFunction(()=>{const image=document.querySelector('.profile-avatar img');return image?.complete&&image.naturalWidth>0;});
- await mini.locator('.close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
- await mini.locator('#banner button').tap();await mini.getByText('Только до конца недели.',{exact:true}).waitFor();
+ await mini.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
+ await mini.locator('#banner .banner-open').first().tap();await mini.getByText('Только до конца недели.',{exact:true}).waitFor();
  assert.equal(await mini.locator('#banner a').count(),0);assert.equal(mobile.pages().length,1);
- await mini.locator('.close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
+ await mini.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
  await mini.evaluate(()=>scrollTo(0,650));
  const sticky=await mini.locator('.category-bar').evaluate(element=>({top:element.getBoundingClientRect().top,position:getComputedStyle(element).position,scroll:scrollY}));
  assert.equal(sticky.position,'sticky');assert.ok(sticky.scroll>300);assert.ok(Math.abs(sticky.top-54)<2,JSON.stringify(sticky));
@@ -93,7 +93,7 @@ try {
  assert.ok(Math.abs(sheet.bottom-sheet.viewport)<1);assert.equal(sheet.width,390);assert.ok(sheet.height>sheet.viewport*0.9);
  assert.equal(await mini.locator('dialog').evaluate(element=>getComputedStyle(element).outlineStyle),'none');
  await mini.screenshot({path:'/tmp/shop-product-sheet.png'});
- await mini.locator('.close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
+ await mini.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
  await mini.screenshot({path:'/tmp/shop-updated-catalog.png'});
  assert.deepEqual(errors,[]);
  console.log('PASS: category drag/order persistence, stock field removed, unified purchase/sale history, promotion descriptions, Telegram colors/fullscreen/avatar, centered photos, bottom product page and sticky categories');

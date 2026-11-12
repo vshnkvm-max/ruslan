@@ -29,7 +29,7 @@ try {
     };
   });
   const close = async () => {
-    await page.locator('.close').click();
+    await page.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').click();
     await page.locator('dialog').waitFor({ state: 'hidden' });
   };
   const settle = () => page.waitForFunction(() => document.getAnimations().every(animation =>
@@ -152,7 +152,7 @@ try {
   db.prepare("UPDATE settings SET value=? WHERE key='categories'").run(JSON.stringify(['Скоро']));
   await page.reload();
   await page.locator('.product').first().waitFor();
-  assert.equal(await page.locator('.product').count(), 12);
+  assert.equal(await page.locator('.product').count(), 11);
   // Banner visibility and content follow the admin data, including removing the final active banner.
   const banners = db.prepare('SELECT * FROM banners ORDER BY id').all();
   await page.locator('#banner h2').filter({ hasText: banners[0].title }).waitFor();
@@ -173,10 +173,10 @@ try {
   await page.locator('#banner img').waitFor();
   assert.equal(await page.locator('#banner img').getAttribute('alt'),'Баннер из админки');
   assert.equal(await page.locator('#banner a').count(),0);
-  await page.locator('#banner button').click();
+  await page.locator('#banner .banner-open').first().click();
   await page.locator('#details h2').filter({hasText:'Баннер из админки'}).waitFor();
   await close();
-  assert.equal(await page.locator('#banner h2').count(),0);
+  assert.equal(await page.locator('#banner .banner-slide[aria-hidden="false"] h2').count(),0);
   db.prepare("UPDATE banners SET image='' WHERE id=?").run(banners[0].id);
   await page.reload();
   await page.getByRole('heading', { name: 'Баннер из админки', exact: true }).waitFor();
@@ -188,7 +188,7 @@ try {
   await slideToCategory('Для дома', 1, 5);
   assert.equal(await page.getByRole('searchbox').count(), 0);
   assert.equal(await page.getByRole('button', { name: 'Поиск товаров' }).count(), 0);
-  await slideToCategory('Все товары', -1, 12);
+  await slideToCategory('Все товары', -1, 11);
   // Rapid selections must cancel old transitions and leave only the latest grid.
   await page.evaluate(() => {
     for (const name of ['Для дома', 'Аксессуары', 'Электроника', 'Для дома']) {
@@ -258,12 +258,9 @@ try {
   assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views + 1);
   assert.equal(await page.locator('#cart-badge').textContent(), '2');
   await close();
-  assert.equal(await page.locator('[data-product="6"] .availability-badge').textContent(), 'Нет в наличии');
-  await page.locator('[data-product="6"]').click();
-  assert.ok(await page.locator('#product-add').isDisabled());
-  await close();
+  assert.equal(await page.locator('[data-product="6"]').count(),0);
   await page.locator('[data-info="reviews"]').click();
-  assert.equal(await page.locator('dialog .review').count(), 4);
+  assert.equal(await page.locator('dialog .review').count(), 3);
   await close();
   await page.locator('[data-info="important"]').click();
   await page.getByText('Информация о магазине скоро появится.', { exact: true }).waitFor();
@@ -377,7 +374,7 @@ try {
   await guest.locator('.product').first().waitFor();
   await guest.locator('#profile-button').click();
   await guest.getByRole('heading', { name: 'Гость' }).waitFor();
-  await guest.locator('.close').click();
+  await guest.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').click();
   await guest.locator('[data-product="2"]').click();
   await guest.locator('#product-add').click();
   await guest.locator('#product-cart').click();

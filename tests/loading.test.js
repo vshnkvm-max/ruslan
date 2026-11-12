@@ -53,7 +53,7 @@ test('HTML uses content-versioned scripts and styles to prevent stale Telegram a
  for(const page of ['/','/miniapp']){
   const response=await raw(page);assert.equal(response.headers['cache-control'],'no-store');
   const references=[...response.body.toString().matchAll(/(?:src|href)="(\/[^"?]+\.(?:js|css)\?v=[a-f0-9]{16})"/g)].map(match=>match[1]);
-  assert.equal(references.length,2);
+  assert.equal(references.length,3);
   for(const reference of references){const asset=await raw(reference);assert.equal(asset.status,200);assert.ok(asset.body.length>0);}
  }
 });

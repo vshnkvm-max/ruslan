@@ -7,6 +7,8 @@ import { createProductImages, legacyImages } from './lib/product-images.js';
 import { createStaticAssets } from './lib/static-assets.js';
 import { loadOrderHistory } from './lib/order-history.js';
 import { sendJson } from './lib/http-response.js';
+import { createInventoryDocuments } from './lib/inventory-documents.js';
+import { recordProductView } from './lib/product-views.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const sessionDuration = 12 * 60 * 60 * 1000;
@@ -42,9 +44,10 @@ function imageValue(value, allowLegacy=false) {
  return value;
 }
 
-export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/shop.db'), secureCookie=process.env.COOKIE_SECURE==='true'}={}) {
+export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/shop.db'), secureCookie=process.env.COOKIE_SECURE==='true',botToken=process.env.BOT_TOKEN||''}={}) {
   const db=openDatabase(dbPath);
   const productImages=createProductImages(db,imageValue,fail);
+  const documents=createInventoryDocuments(db,{fail,str,num,bool,token});
   const serveStatic=createStaticAssets(root);
   const attempts=new Map();
   let activePasswordWork=0;
@@ -66,7 +69,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const bootstrap=()=>({
     products:products(),...loadOrderHistory(db),categories:categories(),
     reviews:db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all(),
-    purchases:db.prepare('SELECT * FROM purchases ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
+    sales:db.prepare('SELECT * FROM sales WHERE deleted=0 ORDER BY id DESC').all().map(row=>({...row,items:JSON.parse(row.items)})),
+    purchases:db.prepare('SELECT * FROM purchases WHERE deleted=0 ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
     referrals:db.prepare('SELECT r.*,c.name AS inviter_name,c.referral_code,i.name AS invitee_name FROM referrals r JOIN customers c ON c.id=r.inviter_id JOIN customers i ON i.id=r.invitee_id ORDER BY r.created_at DESC').all(),
     banners:db.prepare('SELECT * FROM banners ORDER BY id').all().map(serializeBanner),shop:getSettings('shop'),referral:getSettings('referral')
   });
@@ -106,9 +110,9 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
       const imageMatch=path.match(/^\/api\/images\/([a-f0-9-]{36})$/);
       if(imageMatch) {
         if(!['GET','HEAD'].includes(method))fail(405,'Метод не поддерживается.');
-        const image=db.prepare('SELECT i.data,p.active,p.deleted FROM product_images i LEFT JOIN products p ON p.id=i.product_id WHERE i.id=?').get(imageMatch[1]);
+        const image=db.prepare('SELECT i.data,p.active,p.visible,p.stock,p.deleted FROM product_images i LEFT JOIN products p ON p.id=i.product_id WHERE i.id=?').get(imageMatch[1]);
         if(!image)fail(404,'Фотография не найдена.');
-        const published=image.active===1&&image.deleted===0;
+        const published=image.active===1&&image.visible===1&&image.stock>0&&image.deleted===0;
         if(!published&&!getSession(req))fail(404,'Фотография не найдена.');
         const [,type,encoded]=/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(image.data);
         const etag=`"${imageMatch[1]}"`;
@@ -128,14 +132,15 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/health'&&method==='GET') return json(res,200,{ok:true});
         if(path==='/api/storefront'&&method==='GET') {
           const shop=getSettings('shop');
-          const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description FROM products WHERE active=1 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
-          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description})=>({id,name,sku,category,price,stock,image,images,description,short_description})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
+          const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
+          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.visible=1 AND p.stock>0 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description})=>({id,name,sku,category,price,stock,image,images,description,short_description})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
         const productView=path.match(/^\/api\/storefront\/products\/(\d+)\/view$/);
         if(productView&&method==='POST') {
-          const result=db.prepare('UPDATE products SET views=views+1 WHERE id=? AND active=1 AND deleted=0').run(Number(productView[1]));
-          if(!result.changes) fail(404,'Товар не найден.');
-          return json(res,200,{ok:true});
+          const payload=req.headers['content-type']?.startsWith('application/json')&&(Number(req.headers['content-length'])>0||req.headers['transfer-encoding'])?await body(req):{};
+          const view=recordProductView(db,req,{productId:Number(productView[1]),body:payload,secureCookie,botToken});
+          if(!view)fail(404,'Товар не найден.');
+          return json(res,200,{ok:true,counted:view.counted},view.headers);
         }
         if(path==='/api/auth/login'&&method==='POST') {
           const key=req.socket.remoteAddress; const now=Date.now();
@@ -169,12 +174,14 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(match) {
           const [,table,idText]=match; const id=Number(idText);
           if(!db.prepare(`SELECT id FROM ${table} WHERE id=?`).get(id)) fail(404,'Запись не найдена.');
-          if(method==='DELETE'&&['products','customers'].includes(table)) {db.prepare(`UPDATE ${table} SET deleted=1 WHERE id=?`).run(id);return json(res,200,{ok:true});}
+          if(method==='DELETE'&&['products','customers','orders'].includes(table)) {db.prepare(`UPDATE ${table} SET deleted=1 WHERE id=?`).run(id);return json(res,200,{ok:true});}
           if(method==='DELETE'&&table==='banners') {db.prepare('DELETE FROM banners WHERE id=?').run(id);return json(res,200,{ok:true});}
           if(method!=='PATCH') fail(405,'Метод не поддерживается.');
           const b=await body(req);
           if(table==='products') {
+            if(b.visible===0||b.visible===1)b.visible=Boolean(b.visible);
             if(Object.keys(b).length===1&&'sort_order' in b){db.prepare('UPDATE products SET sort_order=? WHERE id=?').run(num(b.sort_order,'Сортировка',1000000),id);return json(res,200,{ok:true});}
+            if(Object.keys(b).length===1&&'visible' in b){const saved=db.prepare('SELECT stock FROM products WHERE id=?').get(id);if(b.visible&&saved.stock===0)fail(400,'Нет остатка. Сначала оформите закупку.');db.prepare('UPDATE products SET visible=? WHERE id=?').run(bool(b.visible),id);return json(res,200,{ok:true});}
             if(Object.keys(b).length===1&&'active' in b){db.prepare('UPDATE products SET active=? WHERE id=?').run(bool(b.active),id);return json(res,200,{ok:true});}
             const saved=db.prepare('SELECT * FROM products WHERE id=?').get(id);
             if(b.stock!==undefined&&b.stock!==saved.stock)fail(400,'Остатки изменяются через документы закупки.');
@@ -184,6 +191,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
             try {
               db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=?,short_description=?,sort_order=? WHERE id=?').run(...p,sort,id);
               productImages.replace(id,b,saved);
+              if(b.visible!==undefined){if(b.visible&&saved.stock===0)fail(400,'Нет остатка. Сначала оформите закупку.');db.prepare('UPDATE products SET visible=? WHERE id=?').run(bool(b.visible),id);}
               db.exec('COMMIT');
             } catch(error){db.exec('ROLLBACK');throw error;}
           } else if(table==='customers') {
@@ -235,44 +243,26 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           } catch(error){db.exec('ROLLBACK');throw error;}
         }
         if(path==='/api/banners'&&method==='POST') {const p=validateBanner(await body(req));const r=db.prepare('INSERT INTO banners (title,subtitle,color,link,active,image,description) VALUES (?,?,?,?,?,?,?)').run(...p);return json(res,201,{id:Number(r.lastInsertRowid)});}
-        const purchaseMatch=path.match(/^\/api\/purchases(?:\/(\d+))?$/);
-        if(purchaseMatch&&['POST','PATCH'].includes(method)) {
-          if((method==='POST')===Boolean(purchaseMatch[1])) fail(405,'Метод не поддерживается.');
-          const b=await body(req),posted=bool(b.posted),paid=num(b.paid,'Оплачено');
-          const supplier=str(b.supplier,'Поставщик'),comment=str(b.comment??'','Комментарий',2000,false);
-          const requestKey=str(b.request_key,'Ключ документа',80);
-          const previous=purchaseMatch[1]?db.prepare('SELECT * FROM purchases WHERE id=?').get(Number(purchaseMatch[1])):null;
-          if(purchaseMatch[1]&&!previous) fail(404,'Закупка не найдена.');
-          const store=str(b.store??previous?.store??'','Магазин',200,false);
-          if(previous?.posted) fail(409,'Проведённая закупка доступна только для просмотра.');
-          if(method==='POST') {const existing=db.prepare('SELECT id FROM purchases WHERE request_key=?').get(requestKey);if(existing)return json(res,200,{id:existing.id});}
-          if(!Array.isArray(b.items)||!b.items.length||b.items.length>100) fail(400,'Добавьте от 1 до 100 товаров.');
-          const seen=new Set();let total=0;
-          const items=b.items.map(item=>{
-            const id=num(item.product_id,'Товар'),quantity=num(item.quantity,'Количество',1000000),cost=num(item.cost,'Цена закупки');
-            if(!quantity||seen.has(id))fail(400,'Количество должно быть больше нуля; товары не должны повторяться.');seen.add(id);
-            const product=db.prepare('SELECT * FROM products WHERE id=? AND deleted=0 AND active=1').get(id);
-            if(!product)fail(400,'Один из товаров удалён или находится в архиве.');
-            if(posted&&product.stock+quantity>1000000)fail(400,'Остаток товара превысит 1000000.');
-            total+=quantity*cost;if(!Number.isSafeInteger(total)||total>100000000)fail(400,'Сумма закупки превышает 100000000 ₽.');
-            return {product_id:id,name:product.name,sku:product.sku,quantity,cost};
-          });
-          if(paid>total)fail(400,'Оплата не может превышать итог закупки.');
-          let id;db.exec('BEGIN IMMEDIATE');
-          try {
-            if(previous){id=previous.id;db.prepare('UPDATE purchases SET supplier=?,store=?,posted=?,paid=?,total=?,comment=?,items=? WHERE id=?').run(supplier,store,posted,paid,total,comment,JSON.stringify(items),id);}
-            else {id=Number(db.prepare('INSERT INTO purchases (supplier,store,posted,paid,total,comment,items,created_at,request_key) VALUES (?,?,?,?,?,?,?,?,?)').run(supplier,store,posted,paid,total,comment,JSON.stringify(items),new Date().toISOString(),requestKey).lastInsertRowid);}
-            if(posted){for(const item of items)db.prepare('UPDATE products SET stock=stock+?,cost=? WHERE id=?').run(item.quantity,item.cost,item.product_id);
-              if(paid){const payment=db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run('expense','Закупка',`Закупка #${id} · ${supplier}`,paid,new Date().toISOString());db.prepare('UPDATE purchases SET transaction_id=? WHERE id=?').run(Number(payment.lastInsertRowid),id);}}
-            db.exec('COMMIT');
-          }catch(error){db.exec('ROLLBACK');throw error;}
-          return json(res,previous?200:201,{id});
+        const documentMatch=path.match(/^\/api\/(purchases|sales)(?:\/(\d+))?$/);
+        if(documentMatch&&['POST','PATCH','DELETE'].includes(method)){
+          const kind=documentMatch[1]==='sales'?'sale':'purchase',id=documentMatch[2]?Number(documentMatch[2]):null;
+          if((method==='POST'&&id)||(method!=='POST'&&!id))fail(405,'Метод не поддерживается.');
+          const result=method==='DELETE'?documents.remove(kind,id):documents.save(kind,id,await body(req));
+          return json(res,method==='POST'&&!result.repeated?201:200,result);
+        }
+        const transactionMatch=path.match(/^\/api\/transactions\/(\d+)$/);
+        if(transactionMatch&&['PATCH','DELETE'].includes(method)){
+          const id=Number(transactionMatch[1]);if(!db.prepare('SELECT id FROM transactions WHERE id=? AND deleted=0').get(id))fail(404,'Операция не найдена.');
+          if(db.prepare('SELECT id FROM purchases WHERE transaction_id=? AND deleted=0 UNION ALL SELECT id FROM sales WHERE transaction_id=? AND deleted=0').get(id,id))fail(409,'Измените или удалите связанный документ закупки или продажи.');
+          if(method==='DELETE')db.prepare('UPDATE transactions SET deleted=1 WHERE id=?').run(id);
+          else{const value=await body(req),amount=num(value.amount,'Сумма');if(!amount)fail(400,'Сумма должна быть больше нуля.');db.prepare('UPDATE transactions SET type=?,category=?,description=?,amount=? WHERE id=?').run(choice(value.type,['income','expense']),str(value.category,'Категория',80),str(value.description,'Описание'),amount,id);}
+          return json(res,200,{ok:true});
         }
         if(path==='/api/transactions'&&method==='POST') {
           const b=await body(req);const amount=num(b.amount,'Сумма');if(!amount) fail(400,'Сумма должна быть больше нуля.');
           const r=db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run(choice(b.type,['income','expense']),str(b.category,'Категория',80),str(b.description,'Описание'),amount,new Date().toISOString());return json(res,201,{id:Number(r.lastInsertRowid)});
         }
-        if(path==='/api/settings/shop'&&method==='PATCH') {const b=await body(req);b.address??=getSettings('shop').address;const shop={};for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');saveSettings('shop',shop);return json(res,200,{ok:true});}
+        if(path==='/api/settings/shop'&&method==='PATCH') {const b=await body(req);b.address??=getSettings('shop').address;const shop={};for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');const bot=str(b.botUsername??getSettings('shop').botUsername??'gas_shop_vape_bot','Имя бота',32,false).replace(/^@/,'');if(bot&&!/^[A-Za-z0-9_]{5,32}$/.test(bot))fail(400,'Проверьте имя Telegram-бота.');shop.botUsername=bot;saveSettings('shop',shop);return json(res,200,{ok:true});}
         if(path==='/api/settings/referral'&&method==='PATCH') {const b=await body(req);saveSettings('referral',{enabled:Boolean(bool(b.enabled)),bonus:num(b.bonus,'Бонус',100000),minPayout:num(b.minPayout,'Минимальная выплата',1000000)});return json(res,200,{ok:true});}
         if(path==='/api/auth/password'&&method==='POST') {
           const b=await body(req);const current=passwordValue(b.current);const next=passwordValue(b.password);

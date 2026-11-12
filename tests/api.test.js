@@ -70,11 +70,13 @@ test('product creation, validation, duplicate SKU, editing and public visibility
   const created=await request('/products',{method:'POST',body});assert.equal(created.res.status,201);
   assert.equal((await request('/products',{method:'POST',body})).res.status,409);
   const id=created.data.id;
+  assert.ok(!(await request('/storefront',{auth:false})).data.products.some(p=>p.id===id));
+  app.db.prepare('UPDATE products SET stock=1 WHERE id=?').run(id);body.stock=1;
   let storefront=(await request('/storefront',{auth:false})).data;
   const product=storefront.products.find(p=>p.id===id);assert.equal(product.price,2490);assert.equal(product.cost,undefined);
   assert.equal((await request(`/products/${id}`,{method:'PATCH',body:{...body,name:'Updated product',active:false}})).res.status,200);
   storefront=(await request('/storefront',{auth:false})).data;assert.ok(!storefront.products.some(p=>p.id===id));
-  const saved=(await request('/bootstrap')).data.products.find(p=>p.id===id);assert.equal(saved.name,'Updated product');assert.equal(saved.stock,0);
+  const saved=(await request('/bootstrap')).data.products.find(p=>p.id===id);assert.equal(saved.name,'Updated product');assert.equal(saved.stock,1);
 });
 test('customer blocking changes status and preserves order history',async()=>{
   assert.equal((await request('/customers/1',{method:'PATCH',body:{banned:true}})).res.status,200);
@@ -164,6 +166,7 @@ test('product photos validate formats, persist, appear on storefront and can be 
  const product={name:'Photo product',sku:'PHOTO-1',category:'Test',price:10,cost:5,stock:0,active:true,image,description:''};
  const created=await request('/products',{method:'POST',body:product});assert.equal(created.res.status,201);
  const productId=created.data.id;
+ app.db.prepare('UPDATE products SET stock=1 WHERE id=?').run(productId);product.stock=1;
  const savedPhoto=(await request('/storefront',{auth:false})).data.products.find(p=>p.id===productId);
  assert.match(savedPhoto.image,/^\/api\/images\//);assert.deepEqual(savedPhoto.images,[savedPhoto.image]);
  const photoResponse=await fetch(base+savedPhoto.image);assert.equal(photoResponse.status,200);assert.equal(photoResponse.headers.get('content-type'),'image/png');
@@ -189,6 +192,7 @@ test('gallery uploads, ordering, privacy and creation retries preserve one produ
  let product=(await request('/bootstrap')).data.products.find(p=>p.id===id);
  assert.equal(product.stock,0);assert.equal(product.sort_order,100);assert.deepEqual(product.images,[first,second]);
  assert.ok(!JSON.stringify(product).includes('base64'));
+ app.db.prepare('UPDATE products SET stock=1 WHERE id=?').run(id);
  const publicImage=await fetch(base+first);assert.equal(publicImage.status,200);
  assert.equal((await fetch(base+first,{headers:{'If-None-Match':publicImage.headers.get('etag')}})).status,304);
  const other=await request('/products',{method:'POST',body:{...body,request_key:'other-gallery',images:[]}});
@@ -361,7 +365,7 @@ test('purchase documents validate lines, preserve drafts and post stock and paym
   const posted=await request(`/purchases/${purchaseId}`,{method:'PATCH',body:{...payload,posted:true}});assert.equal(posted.res.status,200);
   assert.equal(app.db.prepare('SELECT store FROM purchases WHERE id=?').get(purchaseId).store,'Старое значение магазина');
   assert.equal(product().stock,5);assert.equal(product().cost,120);
-  assert.equal((await request(`/purchases/${purchaseId}`,{method:'PATCH',body:{...payload,posted:true}})).res.status,409);
+  assert.equal((await request(`/purchases/${purchaseId}`,{method:'PATCH',body:{...payload,posted:true}})).res.status,200);
   assert.equal((await request('/purchases',{method:'POST',body:{...payload,posted:true}})).data.id,purchaseId);
   assert.equal(product().stock,5);
   const payments=app.db.prepare("SELECT * FROM transactions WHERE description LIKE ?").all(`Закупка #${purchaseId} · %`);assert.equal(payments.length,1);assert.equal(payments[0].amount,100);assert.equal(payments[0].type,'expense');

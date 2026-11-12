@@ -172,14 +172,14 @@ const photo = product => isPhoto(product.image)
 function productGallery(product){
  const images=product.images?.length?product.images:(isPhoto(product.image)?[product.image]:[]);
  if(images.length<2)return photo(product);
- return `<div class="product-gallery"><div class="gallery-track" id="gallery-track" aria-label="Фотографии товара">${images.map((image,index)=>`<div class="gallery-slide">${photo({...product,image,name:`${product.name} — фото ${index+1}`})}</div>`).join('')}</div><div class="gallery-controls"><button type="button" data-gallery-step="-1" aria-label="Предыдущее фото" disabled>‹</button><span id="gallery-counter" aria-live="polite">1 / ${images.length}</span><button type="button" data-gallery-step="1" aria-label="Следующее фото">›</button></div></div>`;
+ return `<div class="product-gallery"><div class="gallery-stage"><div class="gallery-track" id="gallery-track" aria-label="Фотографии товара">${images.map((image,index)=>`<div class="gallery-slide">${photo({...product,image,name:`${product.name} — фото ${index+1}`})}</div>`).join('')}</div><button type="button" class="gallery-arrow gallery-prev" data-gallery-step="-1" aria-label="Предыдущее фото" disabled>‹</button><button type="button" class="gallery-arrow gallery-next" data-gallery-step="1" aria-label="Следующее фото">›</button></div><div class="gallery-controls"><div class="gallery-dots">${images.map((_,index)=>`<button type="button" data-gallery-dot="${index}" aria-label="Фото ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><span id="gallery-counter" aria-live="polite">1 / ${images.length}</span></div></div>`;
 }
 function updateGallery(){
  const track=$('#gallery-track');if(!track)return;
  const index=Math.round(track.scrollLeft/Math.max(1,track.clientWidth)),count=track.children.length;
  $('#gallery-counter').textContent=`${index+1} / ${count}`;
- $('[data-gallery-step="-1"]').disabled=index===0;
- $('[data-gallery-step="1"]').disabled=index>=count-1;
+ $('[data-gallery-step="-1"]').disabled=index===0;$('[data-gallery-step="1"]').disabled=index>=count-1;
+ document.querySelectorAll('[data-gallery-dot]').forEach((dot,i)=>dot.setAttribute('aria-pressed',String(i===index)));
 }
 function formatted(value) {
   return escape(value).split('\n').map(line => {
@@ -199,6 +199,8 @@ function setNav(view) {
   (inCart ? $('#cart-tab') : $('#catalog-tab')).setAttribute('aria-current', 'page');
 }
 function show(html, view = 'info', shouldAnimate = true) {
+  resetSheetGesture();
+  if(view==='product')holdTelegramSwipes();else releaseTelegramSwipes();
   stopProfileTransition();
   ordersTransition?.cancel();
   ordersTransition = undefined;
@@ -226,14 +228,65 @@ function show(html, view = 'info', shouldAnimate = true) {
 async function closeDetails() {
   const dialog = $('#details');
   if (!dialog.open) return;
+  const from=getComputedStyle(dialog).transform;
+  dialog.getAnimations().forEach(animation=>animation.cancel());
+  resetSheetGesture();
   const version = ++modalVersion;
   dialog.dataset.closing = 'true';
-  await animate(dialog,dialog.dataset.view==='product'?[{transform:'translateY(0)'},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
+  await animate(dialog,dialog.dataset.view==='product'?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
   if (version !== modalVersion) return;
   dialog.close();
 }
-$('#details').addEventListener('close', () => { document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav(activePage === 'cart' ? 'cart' : 'catalog'); });
+$('#details').addEventListener('close', () => { resetSheetGesture();releaseTelegramSwipes();document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav(activePage === 'cart' ? 'cart' : 'catalog'); });
 $('#details').addEventListener('cancel', event => { event.preventDefault(); void closeDetails(); });
+
+let sheetGesture=null,swipeOwner=null;
+function holdTelegramSwipes(){
+ if(swipeOwner||!telegram?.disableVerticalSwipes||telegram.isVerticalSwipesEnabled===false)return;
+ try{telegram.disableVerticalSwipes();swipeOwner=telegram;}catch{/* Older Telegram clients may not support this API. */}
+}
+function releaseTelegramSwipes(){const owner=swipeOwner;swipeOwner=null;try{owner?.enableVerticalSwipes?.();}catch{/* Keep closing available without the SDK. */}}
+window.addEventListener('pagehide',releaseTelegramSwipes);
+window.addEventListener('pageshow',()=>{if($('#details').open&&$('#details').dataset.view==='product')holdTelegramSwipes();});
+function resetSheetGesture(){sheetGesture=null;const dialog=$('#details');dialog.style.removeProperty('transform');delete dialog.dataset.dragging;}
+function startSheetGesture(x,y,target,pointerId=null){
+ const dialog=$('#details');
+ if(!dialog.open||dialog.dataset.view!=='product'||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
+ if(dialog.scrollTop>1&&!target.closest('.sheet-handle'))return;
+ sheetGesture={x,y,dy:0,axis:null,dragging:false,time:performance.now(),samples:[],version:modalVersion,pointerId};
+}
+function moveSheetGesture(x,y,event){
+ const gesture=sheetGesture,dialog=$('#details');if(!gesture)return;
+ if(gesture.version!==modalVersion||!dialog.open||dialog.dataset.closing){resetSheetGesture();return;}
+ const dx=x-gesture.x,dy=y-gesture.y;
+ if(!gesture.axis&&Math.max(Math.abs(dx),Math.abs(dy))>8)gesture.axis=Math.abs(dx)>Math.abs(dy)?'horizontal':dy>0?'down':'scroll';
+ if(gesture.axis!=='down'||!event.cancelable)return;
+ event.preventDefault();
+ if(!gesture.dragging){dialog.getAnimations().forEach(animation=>animation.cancel());gesture.dragging=true;dialog.dataset.dragging='true';}
+ gesture.dy=Math.max(0,dy);const now=performance.now();gesture.samples.push({y:dy,time:now});gesture.samples=gesture.samples.filter(sample=>now-sample.time<=120);
+ dialog.style.transform=`translateY(${gesture.dy}px)`;
+}
+function endSheetGesture(cancelled=false){
+ const gesture=sheetGesture,dialog=$('#details');if(!gesture)return;
+ sheetGesture=null;delete dialog.dataset.dragging;
+ if(!gesture.dragging)return;
+ const last=gesture.samples.at(-1),first=gesture.samples[0];
+ const speed=!last||performance.now()-last.time>100?0:last.time>first.time?(last.y-first.y)/(last.time-first.time):gesture.dy/Math.max(1,performance.now()-gesture.time);
+ const threshold=Math.min(140,dialog.clientHeight*0.18);
+ if(!cancelled&&(gesture.dy>=threshold||(gesture.dy>45&&speed>0.65))){void closeDetails();return;}
+ const from=dialog.style.transform;dialog.style.removeProperty('transform');
+ void animate(dialog,[{transform:from},{transform:'translateY(0)'}],{duration:180});
+}
+const sheet=$('#details');
+sheet.addEventListener('touchstart',event=>{if(event.touches.length!==1){endSheetGesture(true);return;}const touch=event.touches[0];startSheetGesture(touch.clientX,touch.clientY,event.target);},{passive:true});
+sheet.addEventListener('touchmove',event=>{if(event.touches.length!==1){endSheetGesture(true);return;}const touch=event.touches[0];moveSheetGesture(touch.clientX,touch.clientY,event);},{passive:false});
+sheet.addEventListener('touchend',()=>endSheetGesture(),{passive:true});
+sheet.addEventListener('touchcancel',()=>endSheetGesture(true),{passive:true});
+sheet.addEventListener('pointerdown',event=>{if(event.pointerType!=='mouse'||event.button!==0||!event.target.closest('.sheet-handle'))return;startSheetGesture(event.clientX,event.clientY,event.target,event.pointerId);if(sheetGesture)sheet.setPointerCapture(event.pointerId);});
+sheet.addEventListener('pointermove',event=>{if(sheetGesture?.pointerId===event.pointerId)moveSheetGesture(event.clientX,event.clientY,event);});
+sheet.addEventListener('pointerup',event=>{if(sheetGesture?.pointerId===event.pointerId)endSheetGesture();});
+sheet.addEventListener('pointercancel',event=>{if(sheetGesture?.pointerId===event.pointerId)endSheetGesture(true);});
+sheet.addEventListener('lostpointercapture',event=>{if(sheetGesture?.pointerId===event.pointerId)endSheetGesture(true);});
 
 function positionCategoryIndicator(smooth = false) {
   const selected = $('#categories [aria-pressed="true"]');
@@ -378,17 +431,11 @@ async function load() {
     stage='render';
     document.title = 'GAS SHOP — магазин';
     if (!data.categories.includes(category)) category = '';
-    const banner = data.banners[0];
-    const bannerImage = /^data:image\/(jpeg|png|webp);base64,/.test(banner?.image)||/^\/api\/banner-images\/\d+\?v=[a-f0-9]{64}$/.test(banner?.image);
-    $('#banner').hidden = !banner;
-    $('#banner').classList.toggle('has-image', bannerImage);
-    $('#banner').replaceChildren();
-    if (banner) {
-      $('#banner').innerHTML=bannerImage?`<button type="button" class="banner-open" aria-label="Подробнее об акции: ${escape(banner.title)}"><img class="banner-image" src="${escape(banner.image)}" alt="${escape(banner.title)}"></button>`:`<button type="button" class="banner-open" aria-label="Подробнее об акции: ${escape(banner.title)}"><span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span></button>`;
-    }
+    renderBanners();
     reconcileCart();
     render();
     if (activePage === 'cart') renderCart();
+    openStartProduct();
   } catch(error) {
     const reason=error.name==='AbortError'?'Сервер не ответил за 15 секунд.':error.httpStatus?`Сервер вернул HTTP ${error.httpStatus}.`:stage==='network'?'Нет соединения с сервером.':stage==='data'?'Сервер вернул некорректные данные каталога.':'Ошибка отображения каталога.';
     console.error(`Каталог: ${reason}`,error);
@@ -399,22 +446,62 @@ async function load() {
     loading = false;
   }
 }
-function openBanner(){
- const banner=data?.banners[0];if(!banner)return;
+let bannerIndex=0,bannerObserver;
+function updateBannerPosition(){
+ const track=$('#banner-track');if(!track)return;
+ bannerIndex=Math.max(0,Math.min(data.banners.length-1,Math.round(track.scrollLeft/Math.max(1,track.clientWidth))));
+ const slides=[...track.children],active=slides[bannerIndex];
+ const image=active?.querySelector('img');
+ if(active)track.style.height=(image&&!image.complete?track.clientWidth/3.15:active.offsetHeight)+'px';
+ slides.forEach((slide,index)=>{slide.setAttribute('aria-hidden',String(index!==bannerIndex));slide.querySelector('button').tabIndex=index===bannerIndex?0:-1;});
+ document.querySelectorAll('[data-banner-dot]').forEach((dot,index)=>dot.setAttribute('aria-pressed',String(index===bannerIndex)));
+ const prev=$('[data-banner-step="-1"]'),next=$('[data-banner-step="1"]');
+ if(prev)prev.disabled=bannerIndex===0;if(next)next.disabled=bannerIndex===slides.length-1;
+}
+function goToBanner(index){
+ const track=$('#banner-track');if(!track)return;
+ const target=Math.max(0,Math.min(data.banners.length-1,index));
+ track.scrollTo({left:target*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+}
+function renderBanners(){
+ bannerObserver?.disconnect();bannerIndex=0;
+ const banners=data.banners,root=$('#banner');root.hidden=!banners.length;root.classList.remove('has-image');root.replaceChildren();
+ if(!banners.length)return;
+ root.innerHTML=`<div class="banner-track" id="banner-track" role="group" aria-roledescription="карусель" aria-label="Акции магазина">${banners.map((banner,index)=>{
+  const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image);
+  return `<div class="banner-slide ${image?'has-image':''}" role="group" aria-label="Акция ${index+1} из ${banners.length}"><button type="button" class="banner-open ${image?'':'banner-text'}" data-banner="${banner.id}" aria-label="Подробнее об акции: ${escape(banner.title)}">${image?`<img class="banner-image" src="${escape(banner.image)}" alt="${escape(banner.title)}" decoding="async" loading="${index===0?'eager':'lazy'}">`:`<span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span>`}</button></div>`;
+ }).join('')}</div>${banners.length>1?`<div class="banner-navigation" aria-label="Листание акций"><button type="button" data-banner-step="-1" aria-label="Предыдущий баннер">‹</button><div class="banner-dots">${banners.map((_,index)=>`<button type="button" data-banner-dot="${index}" aria-label="Показать баннер ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" data-banner-step="1" aria-label="Следующий баннер">›</button></div>`:''}`;
+ const track=$('#banner-track');track.addEventListener('scroll',updateBannerPosition,{passive:true});
+ root.querySelectorAll('img').forEach(image=>image.addEventListener('load',updateBannerPosition,{once:true}));
+ if(window.ResizeObserver){let width=track.clientWidth;bannerObserver=new ResizeObserver(()=>{if(track.clientWidth!==width){width=track.clientWidth;track.scrollLeft=bannerIndex*width;}updateBannerPosition();});for(const slide of track.children)bannerObserver.observe(slide);}
+ updateBannerPosition();
+}
+window.addEventListener('resize',()=>{const track=$('#banner-track');if(track){track.scrollLeft=bannerIndex*track.clientWidth;updateBannerPosition();}});
+function openBanner(id){
+ const banner=data?.banners.find(banner=>banner.id===id);if(!banner)return;
  const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image)?`<img class="promotion-image" src="${escape(banner.image)}" alt="${escape(banner.title)}">`:'';
  show(`${image}<h2>${escape(banner.title)}</h2>${banner.subtitle?`<p>${escape(banner.subtitle)}</p>`:''}${formatted(banner.description)}${!banner.description&&!banner.subtitle?'<p>Подробности акции скоро появятся.</p>':''}`,'promotion');
 }
+let browserVisitor;
+function visitorId(){if(browserVisitor)return browserVisitor;try{browserVisitor=localStorage.getItem('gas-visitor:v1');}catch{}if(!/^[a-f0-9]{64}$/.test(browserVisitor||'')){browserVisitor=Array.from(crypto.getRandomValues(new Uint8Array(32)),byte=>byte.toString(16).padStart(2,'0')).join('');try{localStorage.setItem('gas-visitor:v1',browserVisitor);}catch{}}return browserVisitor;}
+async function shareProduct(id){
+ const product=data?.products.find(item=>item.id===id);if(!product)return;
+ const bot=data.shop?.botUsername||'gas_shop_vape_bot',url=`https://t.me/${bot}?startapp=product_${id}`;
+ try{if(navigator.share)await navigator.share({title:product.name,text:product.name,url});else if(telegram?.openTelegramLink)telegram.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(product.name)}`);else{await navigator.clipboard.writeText(url);notify('Ссылка на товар скопирована');}}catch(error){if(error.name!=='AbortError')notify('Не удалось открыть меню «Поделиться».');}
+}
+let startProductHandled=false;
+function openStartProduct(){if(startProductHandled)return;const start=telegram?.initDataUnsafe?.start_param||new URLSearchParams(location.hash.slice(1)).get('tgWebAppStartParam')||new URL(location.href).searchParams.get('product');const match=/^(?:product_)?(\d+)$/.exec(start||'');if(match){startProductHandled=true;openProduct(Number(match[1]));}}
 function openProduct(id) {
   const product = data?.products.find(item => item.id === id);
   if (!product) return;
   $('#details').dataset.productId = id;
-  show(`${productGallery(product)}<h2>${escape(product.name)}</h2><strong class="price">${moneyMarkup(product.price)}</strong>
+  show(`${productGallery(product)}<div class="product-title-row"><h2>${escape(product.name)}</h2><div class="product-title-actions"><button type="button" class="product-share" data-share-product="${product.id}" aria-label="Поделиться товаром">${icon('<path d="M18 8a3 3 0 1 0-2.8-4M6 14a3 3 0 1 1 0-4m9.2 10a3 3 0 1 0 0-4M8.6 10.5l6.8-5M8.6 13.5l6.8 5"/>')}</button><button type="button" class="product-close" data-product-close aria-label="Закрыть товар">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div></div><strong class="price">${moneyMarkup(product.price)}</strong>
     <p class="detail-stock">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</p>
     ${formatted(product.short_description)}${formatted(product.description)}
     <button class="primary-button" id="product-add" data-add="${product.id}"></button><button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>`, 'product');
   $('#gallery-track')?.addEventListener('scroll',updateGallery,{passive:true});
   updateProductAddButton();
-  fetch(`/api/storefront/products/${product.id}/view`, { method: 'POST', credentials: 'omit' }).catch(() => {});
+  fetch(`/api/storefront/products/${product.id}/view`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitor_id:visitorId(),init_data:telegram?.initData||''})}).catch(()=>{});
 }
 function updateProductAddButton() {
   const button = $('#product-add');
@@ -623,7 +710,11 @@ else window.addEventListener('resize', resizeCategoryPanel);
 
 $('#profile-button').onclick = () => renderProfile();
 $('#fullscreen-button')?.addEventListener('click',()=>requestTelegramFullscreen());
-$('#banner').onclick=openBanner;
+$('#banner').onclick=event=>{
+ const step=event.target.closest('[data-banner-step]'),dot=event.target.closest('[data-banner-dot]'),banner=event.target.closest('[data-banner]');
+ if(step)goToBanner(bannerIndex+Number(step.dataset.bannerStep));else if(dot)goToBanner(Number(dot.dataset.bannerDot));else if(banner)openBanner(Number(banner.dataset.banner));
+};
+$('#banner').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key)||!event.target.closest('[data-banner-dot],[data-banner-step],.banner-open'))return;event.preventDefault();const target=Math.max(0,Math.min(data.banners.length-1,bannerIndex+(event.key==='ArrowRight'?1:-1)));goToBanner(target);document.querySelector(`[data-banner-dot="${target}"]`)?.focus({preventScroll:true});});
 $('#cart-tab').onclick = () => { void navigateToPage('cart'); };
 $('#catalog-tab').onclick = () => { void navigateToPage('home'); };
 $('#categories').onclick = event => {
@@ -647,6 +738,9 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ if(event.target.closest('[data-product-close]')){void closeDetails();return;}
+ const share=event.target.closest('[data-share-product]');if(share){void shareProduct(Number(share.dataset.shareProduct));return;}
+ const dot=event.target.closest('[data-gallery-dot]');if(dot){const track=$('#gallery-track');track.scrollTo({left:Number(dot.dataset.galleryDot)*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});return;}
  const step=event.target.closest('[data-gallery-step]');
  if(step){const track=$('#gallery-track');const index=Math.round(track.scrollLeft/Math.max(1,track.clientWidth));track.scrollTo({left:Math.max(0,Math.min(track.children.length-1,index+Number(step.dataset.galleryStep)))*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});return;}
   const add = event.target.closest('[data-add]');
@@ -678,8 +772,10 @@ document.addEventListener('click', event => { if (event.target.id === 'retry') l
 $('#telegram-sdk')?.addEventListener('load', () => {
   telegram = window.Telegram?.WebApp;
   configureTelegram();
+  if($('#details').open&&$('#details').dataset.view==='product')holdTelegramSwipes();
   user = telegram?.initDataUnsafe?.user;
   updateClientAvatar();
+  if(data)openStartProduct();
   const nextKey = cartKeyFor(user);
   if (nextKey !== cartKey) {
     // Keep guest and Telegram carts separate even when the SDK arrives late.
@@ -697,3 +793,8 @@ updateClientAvatar();
 load();
 configureTelegram();
 signalReadyWithoutSdk();
+
+document.addEventListener('click',event=>{const button=event.target.closest('button');if(!event.isTrusted||!button||button.disabled)return;try{if(telegram?.HapticFeedback?.impactOccurred)telegram.HapticFeedback.impactOccurred('light');else if(telegram||window.TelegramWebviewProxy)postTelegramEvent('web_app_trigger_haptic_feedback',{type:'impact',impact_style:'light'});else navigator.vibrate?.(8);}catch{}});
+document.addEventListener('touchmove',event=>{if(event.touches.length>1&&event.cancelable)event.preventDefault();},{passive:false});
+for(const type of ['gesturestart','gesturechange'])document.addEventListener(type,event=>event.preventDefault(),{passive:false});
+document.addEventListener('dblclick',event=>{if(!event.target.closest('input,textarea'))event.preventDefault();});

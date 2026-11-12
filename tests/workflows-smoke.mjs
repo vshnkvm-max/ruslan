@@ -122,7 +122,7 @@ try {
  await mini.locator('#gallery-counter').filter({hasText:'2 / 2'}).waitFor();
  await mini.getByRole('button',{name:'Предыдущее фото',exact:true}).click();
  await mini.locator('#gallery-counter').filter({hasText:'1 / 2'}).waitFor();
- await mini.locator('.close').click();
+ await mini.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').click();
  await mini.screenshot({path:'/tmp/shop-workflows-miniapp.png',fullPage:false});
  await mini.close();
  await page.locator('nav a[href="#products"]').click();
@@ -150,7 +150,7 @@ try {
  });
  for(let i=0;i<50;i++){
   const imageId=randomUUID(),image='/api/images/'+imageId;
-  const id=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,image) VALUES (?,?,?,?,?,?,?)').run('Photo catalog '+i,'CAT-'+i,'Catalog',100,0,0,image).lastInsertRowid;
+  const id=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,image) VALUES (?,?,?,?,?,?,?)').run('Photo catalog '+i,'CAT-'+i,'Catalog',100,0,1,image).lastInsertRowid;
   db.prepare('INSERT INTO product_images (id,product_id,position,data) VALUES (?,?,?,?)').run(imageId,id,0,largePhoto);
  }
  const metrics=await page.evaluate(async()=>{
