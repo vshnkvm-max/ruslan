@@ -483,7 +483,7 @@ function renderBanners(){
  if(!banners.length)return;
  root.innerHTML=`<div class="banner-track" id="banner-track" role="group" aria-roledescription="карусель" aria-label="Акции магазина">${banners.map((banner,index)=>{
   const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image);
-  return `<div class="banner-slide ${image?'has-image':''}" role="group" aria-label="Акция ${index+1} из ${banners.length}"><button type="button" class="banner-open ${image?'':'banner-text'}" data-banner="${banner.id}" aria-label="Подробнее об акции: ${escape(banner.title)}">${image?`<img class="banner-image" src="${escape(banner.image)}" alt="${escape(banner.title)}" decoding="async" loading="${index===0?'eager':'lazy'}">`:`<span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span>`}</button></div>`;
+  return `<div class="banner-slide ${image?'has-image':''}" role="group" aria-label="Акция ${index+1} из ${banners.length}"><button type="button" class="banner-open ${image?'':'banner-text'}" data-banner="${banner.id}" aria-label="Подробнее об акции: ${escape(banner.title)}">${image?`<img class="banner-image" draggable="false" src="${escape(banner.image)}" alt="${escape(banner.title)}" decoding="async" loading="${index===0?'eager':'lazy'}">`:`<span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span>`}</button></div>`;
  }).join('')}</div>${banners.length>1?`<div class="banner-navigation" aria-label="Листание акций"><button type="button" data-banner-step="-1" aria-label="Предыдущий баннер">‹</button><div class="banner-dots">${banners.map((_,index)=>`<button type="button" data-banner-dot="${index}" aria-label="Показать баннер ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" data-banner-step="1" aria-label="Следующий баннер">›</button></div>`:''}`;
  const track=$('#banner-track');track.addEventListener('scroll',scrollBanner,{passive:true});
  if(window.ResizeObserver){bannerObserver=new ResizeObserver(resizeBanners);bannerObserver.observe(track);}
@@ -727,6 +727,7 @@ $('#banner').onclick=event=>{
  const step=event.target.closest('[data-banner-step]'),dot=event.target.closest('[data-banner-dot]'),banner=event.target.closest('[data-banner]');
  if(step)goToBanner(bannerIndex+Number(step.dataset.bannerStep));else if(dot)goToBanner(Number(dot.dataset.bannerDot));else if(banner)openBanner(Number(banner.dataset.banner));
 };
+$('#banner').addEventListener('dragstart',event=>event.preventDefault());
 $('#banner').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key)||!event.target.closest('[data-banner-dot],[data-banner-step],.banner-open'))return;event.preventDefault();const target=Math.max(0,Math.min(data.banners.length-1,bannerIndex+(event.key==='ArrowRight'?1:-1)));goToBanner(target);document.querySelector(`[data-banner-dot="${target}"]`)?.focus({preventScroll:true});});
 $('#cart-tab').onclick = () => { void navigateToPage('cart'); };
 $('#catalog-tab').onclick = () => { void navigateToPage('home'); };

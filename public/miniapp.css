@@ -283,7 +283,7 @@ dialog[data-view="product"] { position: fixed; inset: auto 0 0; width: 100%; max
 
 #banner { display: block; aspect-ratio: auto; padding: 0; background: transparent; }
 #banner::after { content: none; }
-.banner-track { display: flex; aspect-ratio: 16 / 9; align-items: stretch; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: inherit; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
+.banner-track { display: flex; aspect-ratio: 16 / 9; align-items: stretch; overflow-x: auto; scroll-snap-type: x mandatory; overscroll-behavior-x: none; scrollbar-width: none; border-radius: inherit; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
 .banner-track::-webkit-scrollbar { display: none; }
 .banner-slide { flex: 0 0 100%; min-width: 0; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; }
 .banner-slide .banner-open { height: 100%; }
@@ -323,3 +323,6 @@ html[data-input="pointer"] a:focus-visible { outline: none; }
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
  dialog[data-view="product"] { background: #fff9fbc7; border: 1px solid #ffffff80; -webkit-backdrop-filter: blur(18px) saturate(115%); backdrop-filter: blur(18px) saturate(115%); }
 }
+
+.banner-open, .banner-open * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.banner-slide .banner-image { -webkit-user-drag: none; pointer-events: none; }
