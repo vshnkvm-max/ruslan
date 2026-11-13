@@ -3,7 +3,7 @@
 const centeredPhotos=new WeakSet(),photoPreviewCache=new Map();
 function centerProductPhoto(image){
  if(centeredPhotos.has(image)||!image.naturalWidth)return;centeredPhotos.add(image);
- const source=image.currentSrc||image.src,fillFrame=Boolean(image.closest('dialog[data-view="product"]'));
+ const source=image.currentSrc||image.src,fillFrame=Boolean(image.closest('.catalog-photo, dialog[data-view="product"]'));
  const cacheKey=(fillFrame?'cover:':'contain:')+source,cached=photoPreviewCache.get(cacheKey);
  if(cached){image.src=cached;return;}
  try{

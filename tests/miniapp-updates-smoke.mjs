@@ -85,7 +85,7 @@ try {
  for(const id of [1,2]){
   const image=mini.locator(`[data-product="${id}"] img`);await image.waitFor();
   const geometry=await image.evaluate(image=>{const canvas=image.parentElement.getBoundingClientRect(),rect=image.getBoundingClientRect();return {square:Math.abs(canvas.width-canvas.height),offset:Math.abs((rect.left+rect.right)-(canvas.left+canvas.right))+Math.abs((rect.top+rect.bottom)-(canvas.top+canvas.bottom)),fit:getComputedStyle(image).objectFit};});
-  assert.ok(geometry.square<1);assert.ok(geometry.offset<1);assert.equal(geometry.fit,'contain');
+  assert.ok(geometry.square<1);assert.ok(geometry.offset<1);assert.equal(geometry.fit,'cover');
  }
  await mini.locator('[data-product="1"]').tap();
  await mini.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));
