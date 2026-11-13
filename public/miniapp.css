@@ -41,8 +41,8 @@ main { padding: 0 20px 110px; }
 #categories button:focus-visible { outline-offset: -3px; }
 .products { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 8px; }
 .product { position: relative; min-width: 0; border: 0; border-radius: 24px; color: inherit; background: #dedbe3; text-align: left; overflow: hidden; }
-.photo { aspect-ratio: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 18px; background: #f0eceb; }
-.photo img { width: 100%; height: 100%; object-fit: cover; object-position: center; display: block; }
+.photo { aspect-ratio: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 18px; background: #fff; }
+.photo img { width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; }
 .photo-empty { flex-direction: column; gap: 6px; background: linear-gradient(145deg, #f3eff0, #e9e3e5); }
 .photo-empty > svg { width: 44px; height: 44px; fill: none; stroke: #cfbbc2; stroke-width: 1; stroke-linecap: round; stroke-linejoin: round; }
 .photo-empty small { color: #a28d96; font-size: 8px; }
@@ -192,8 +192,8 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 .outgoing-catalog-page { position: absolute; inset: 0 auto auto 0; pointer-events: none; }
 
 .catalog-photo { position: relative; flex: 0 0 auto; width: 100%; }
-.catalog-photo .photo { width: 100%; border-radius: 16px; background-color: transparent; }
-.catalog-photo .photo img { object-fit: cover; }
+.catalog-photo .photo { width: 100%; border-radius: 16px; background-color: #fff; }
+.catalog-photo .photo img { object-fit: contain; }
 .availability-badge { position: absolute; left: 7px; top: 7px; border-radius: 12px; padding: 5px 7px; color: #756970; background: #fffffff0; font-size: 8px; line-height: 1; }
 .product .price { color: #111; font-size: 20px; font-weight: 750; letter-spacing: -.3px; }
 .product .currency-symbol { font-weight: inherit; }
@@ -274,7 +274,7 @@ main { padding-bottom: calc(80px + max(30px, env(safe-area-inset-bottom), var(--
 .fullscreen-button { flex: 0 0 32px; width: 32px; height: 32px; padding: 6px; border: 0; border-radius: 50%; background: transparent; color: #222; }
 .fullscreen-button svg { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .photo { width: 100%; }
-.photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; }
+.photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: 50% 50%; }
 .profile-button, .profile-avatar { position: relative; overflow: hidden; }
 .client-avatar-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; background: #f7eff1; }
 .banner-open { display: block; width: 100%; border: 0; padding: 0; background: transparent; color: inherit; text-align: inherit; cursor: pointer; }
@@ -328,10 +328,10 @@ html[data-input="pointer"] a:focus-visible { outline: none; }
 .banner-slide .banner-image { -webkit-user-drag: none; pointer-events: none; }
 
 
-/* Every product image fills the same square, scaling proportionally from the center. */
+/* Keep the entire product centered within the same square photo frame. */
 .gallery-track { aspect-ratio: 1; align-items: stretch; overflow-y: hidden; }
 .gallery-slide { position: relative; }
-.gallery-slide .photo { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; background: transparent; }
+.gallery-slide .photo { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; background: #fff; }
 
 dialog[data-view="promotion"] { width: calc(100% - 32px); max-width: 520px; max-height: calc(100dvh - 48px); padding: 0; overflow-y: auto; border: 1px solid #ffffff35; border-radius: 24px; background: #fff9fb; box-shadow: 0 18px 70px #0006; }
 dialog[data-view="promotion"]::backdrop { background: #10040a80; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }

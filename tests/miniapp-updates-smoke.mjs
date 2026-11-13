@@ -85,7 +85,7 @@ try {
  for(const id of [1,2]){
   const image=mini.locator(`[data-product="${id}"] img`);await image.waitFor();
   const geometry=await image.evaluate(image=>{const canvas=image.parentElement.getBoundingClientRect(),rect=image.getBoundingClientRect();return {square:Math.abs(canvas.width-canvas.height),offset:Math.abs((rect.left+rect.right)-(canvas.left+canvas.right))+Math.abs((rect.top+rect.bottom)-(canvas.top+canvas.bottom)),fit:getComputedStyle(image).objectFit};});
-  assert.ok(geometry.square<1);assert.ok(geometry.offset<1);assert.equal(geometry.fit,'cover');
+  assert.ok(geometry.square<1);assert.ok(geometry.offset<1);assert.equal(geometry.fit,'contain');
  }
  await mini.locator('[data-product="1"]').tap();
  await mini.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));
@@ -94,9 +94,9 @@ try {
  assert.equal(await mini.locator('dialog').evaluate(element=>getComputedStyle(element).outlineStyle),'none');
  await mini.waitForFunction(()=>{const image=document.querySelector('dialog .photo img');return image?.complete&&image.naturalWidth>0;});
  const openedPhoto=await mini.locator('dialog .photo img').first().evaluate(image=>{const rect=image.getBoundingClientRect(),frame=image.parentElement.getBoundingClientRect();return {ratio:rect.width/rect.height,fit:getComputedStyle(image).objectFit,position:getComputedStyle(image).objectPosition,gap:Math.abs(frame.width-rect.width)+Math.abs(frame.height-rect.height)};});
- assert.ok(Math.abs(openedPhoto.ratio-1)<0.01,'portrait source fills the fixed square frame');
- assert.equal(openedPhoto.fit,'cover');assert.equal(openedPhoto.position,'50% 50%');
- assert.ok(openedPhoto.gap<1,'opened photo fills the frame without side gaps');
+ assert.ok(Math.abs(openedPhoto.ratio-1)<0.01,'portrait source uses a fixed square frame');
+ assert.equal(openedPhoto.fit,'contain');assert.equal(openedPhoto.position,'50% 50%');
+ assert.ok(openedPhoto.gap<1,'image bounds stay centered in the frame');
  await mini.screenshot({path:'/tmp/shop-product-sheet.png'});
  await mini.keyboard.press('Escape');await mini.locator('dialog').waitFor({state:'hidden'});
  await mini.screenshot({path:'/tmp/shop-updated-catalog.png'});
