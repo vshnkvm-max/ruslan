@@ -209,6 +209,7 @@ function setNav(view) {
   (inCart ? $('#cart-tab') : $('#catalog-tab')).setAttribute('aria-current', 'page');
 }
 function show(html, view = 'info', shouldAnimate = true) {
+  stopBannerAuto();
   resetSheetGesture();
   if(view==='product')holdTelegramSwipes();else releaseTelegramSwipes();
   stopProfileTransition();
@@ -247,7 +248,7 @@ async function closeDetails() {
   if (version !== modalVersion) return;
   dialog.close();
 }
-$('#details').addEventListener('close', () => { resetSheetGesture();releaseTelegramSwipes();document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav(activePage === 'cart' ? 'cart' : 'catalog'); });
+$('#details').addEventListener('close', () => { resetSheetGesture();releaseTelegramSwipes();scheduleBannerAuto();document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav(activePage === 'cart' ? 'cart' : 'catalog'); });
 $('#details').addEventListener('cancel', event => { event.preventDefault(); void closeDetails(); });
 
 let sheetGesture=null,swipeOwner=null;
@@ -456,54 +457,86 @@ async function load() {
     loading = false;
   }
 }
-let bannerIndex=0,bannerObserver,bannerWidth=0,bannerFrame=0;
+let bannerIndex=0,bannerObserver,bannerWidth=0,bannerFrame=0,bannerSettleTimer,bannerAutoTimer,bannerTouching=false;
+const bannerLoop=()=>data?.banners.length>1;
+const bannerOffset=()=>bannerLoop()?1:0;
+function stopBannerAuto(){clearTimeout(bannerAutoTimer);}
+function scheduleBannerAuto(){
+ stopBannerAuto();
+ if(!bannerLoop()||document.hidden)return;
+ bannerAutoTimer=setTimeout(()=>{
+  if(!bannerTouching&&!$('#details').open&&activePage==='home')goToBanner(bannerIndex+1);
+  else scheduleBannerAuto();
+ },7000);
+}
 function updateBannerPosition(force=false){
- const track=$('#banner-track');if(!track)return;
- const index=Math.max(0,Math.min(data.banners.length-1,Math.round(track.scrollLeft/Math.max(1,bannerWidth))));
- if(force||index!==bannerIndex){
-  bannerIndex=index;
+ const track=$('#banner-track');if(!track||!data?.banners.length)return;
+ const physical=Math.max(0,Math.min(track.children.length-1,Math.round(track.scrollLeft/Math.max(1,bannerWidth))));
+ const index=(physical-bannerOffset()+data.banners.length)%data.banners.length;
+ if(force||index!==bannerIndex||track.dataset.physical!==String(physical)){
+  bannerIndex=index;track.dataset.physical=physical;
   [...track.children].forEach((slide,i)=>{
-   slide.setAttribute('aria-hidden',String(i!==index));slide.querySelector('button').tabIndex=i===index?0:-1;
-   if(Math.abs(i-index)<=1){const image=slide.querySelector('img');if(image)image.loading='eager';}
+   slide.setAttribute('aria-hidden',String(i!==physical));slide.querySelector('button').tabIndex=i===physical?0:-1;
+   if(Math.abs(i-physical)<=1){const image=slide.querySelector('img');if(image)image.loading='eager';}
   });
   document.querySelectorAll('[data-banner-dot]').forEach((dot,i)=>dot.setAttribute('aria-pressed',String(i===index)));
-  const prev=$('[data-banner-step="-1"]'),next=$('[data-banner-step="1"]');
-  if(prev)prev.disabled=index===0;if(next)next.disabled=index===track.children.length-1;
  }
 }
+function finishBannerScroll(){
+ clearTimeout(bannerSettleTimer);
+ const track=$('#banner-track');if(!track||bannerTouching)return;
+ updateBannerPosition();
+ if(bannerLoop()){
+  const physical=Math.round(track.scrollLeft/Math.max(1,bannerWidth));
+  if(physical===0||physical===track.children.length-1){track.scrollLeft=(bannerIndex+1)*bannerWidth;updateBannerPosition(true);}
+ }
+ scheduleBannerAuto();
+}
 function scrollBanner(){
+ stopBannerAuto();clearTimeout(bannerSettleTimer);
  if(!bannerFrame)bannerFrame=requestAnimationFrame(()=>{bannerFrame=0;updateBannerPosition();});
+ bannerSettleTimer=setTimeout(finishBannerScroll,160);
 }
 function resizeBanners(){
  const track=$('#banner-track');if(!track)return;
  const width=track.clientWidth;
- // Telegram changes viewport height while its chrome moves. Do not interrupt the swipe.
  if(!width||width===bannerWidth)return;
  bannerWidth=width;
- track.scrollLeft=bannerIndex*width;updateBannerPosition(true);
+ track.scrollLeft=(bannerIndex+bannerOffset())*width;updateBannerPosition(true);
 }
 function goToBanner(index){
- const track=$('#banner-track');if(!track)return;
- const target=Math.max(0,Math.min(data.banners.length-1,index));
- track.scrollTo({left:target*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+ const track=$('#banner-track');if(!track||!data.banners.length)return;
+ stopBannerAuto();
+ const count=data.banners.length,target=(index%count+count)%count;
+ let physical=target+bannerOffset();
+ if(bannerLoop()&&bannerIndex===0&&index===-1)physical=0;
+ else if(bannerLoop()&&bannerIndex===count-1&&index===count)physical=count+1;
+ track.scrollTo({left:physical*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
+ scheduleBannerAuto();
 }
 function renderBanners(){
- bannerObserver?.disconnect();cancelAnimationFrame(bannerFrame);bannerFrame=0;bannerIndex=0;bannerWidth=0;
+ bannerObserver?.disconnect();stopBannerAuto();clearTimeout(bannerSettleTimer);cancelAnimationFrame(bannerFrame);bannerFrame=0;bannerIndex=0;bannerWidth=0;bannerTouching=false;
  const banners=data.banners,root=$('#banner');root.hidden=!banners.length;root.classList.remove('has-image');root.replaceChildren();
  if(!banners.length)return;
- root.innerHTML=`<div class="banner-track" id="banner-track" role="group" aria-roledescription="карусель" aria-label="Акции магазина">${banners.map((banner,index)=>{
-  const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image);
-  return `<div class="banner-slide ${image?'has-image':''}" role="group" aria-label="Акция ${index+1} из ${banners.length}"><button type="button" class="banner-open ${image?'':'banner-text'}" data-banner="${banner.id}" aria-label="Подробнее об акции: ${escape(banner.title)}">${image?`<img class="banner-image" draggable="false" src="${escape(banner.image)}" alt="${escape(banner.title)}" decoding="async" loading="${index===0?'eager':'lazy'}">`:`<span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span>`}</button></div>`;
+ const slides=bannerLoop()?[banners.at(-1),...banners,banners[0]]:banners;
+ root.innerHTML=`<div class="banner-track" id="banner-track" role="group" aria-roledescription="карусель" aria-label="Акции магазина">${slides.map((banner,physical)=>{
+  const index=banners.indexOf(banner),image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image);
+  return `<div class="banner-slide ${image?'has-image':''}" role="group" aria-label="Акция ${index+1} из ${banners.length}"><button type="button" class="banner-open ${image?'':'banner-text'}" data-banner="${banner.id}" aria-label="Подробнее об акции: ${escape(banner.title)}">${image?`<img class="banner-image" draggable="false" src="${escape(banner.image)}" alt="${escape(banner.title)}" decoding="async" loading="${physical<=2?'eager':'lazy'}">`:`<span class="banner-copy"><h2>${escape(banner.title)}</h2><p>${escape(banner.subtitle)}</p></span><span class="banner-link" aria-hidden="true">${icons.arrow}</span>`}</button></div>`;
  }).join('')}</div>${banners.length>1?`<div class="banner-navigation" aria-label="Листание акций"><button type="button" data-banner-step="-1" aria-label="Предыдущий баннер">${icons.previousPhoto}</button><div class="banner-dots">${banners.map((_,index)=>`<button type="button" data-banner-dot="${index}" aria-label="Показать баннер ${index+1}" aria-pressed="${index===0}"></button>`).join('')}</div><button type="button" data-banner-step="1" aria-label="Следующий баннер">${icons.nextPhoto}</button></div>`:''}`;
- const track=$('#banner-track');track.addEventListener('scroll',scrollBanner,{passive:true});
+ const track=$('#banner-track');track.addEventListener('scroll',scrollBanner,{passive:true});track.addEventListener('scrollend',finishBannerScroll,{passive:true});
+ track.addEventListener('touchstart',()=>{bannerTouching=true;stopBannerAuto();},{passive:true});
+ for(const event of ['touchend','touchcancel'])track.addEventListener(event,e=>{bannerTouching=e.touches.length>0;if(!bannerTouching){clearTimeout(bannerSettleTimer);bannerSettleTimer=setTimeout(finishBannerScroll,160);}},{passive:true});
  if(window.ResizeObserver){bannerObserver=new ResizeObserver(resizeBanners);bannerObserver.observe(track);}
- resizeBanners();
+ resizeBanners();scheduleBannerAuto();
 }
 window.addEventListener('resize',resizeBanners);
+document.addEventListener('visibilitychange',()=>{if(document.hidden)stopBannerAuto();else scheduleBannerAuto();});
+window.addEventListener('pagehide',stopBannerAuto);
+window.addEventListener('pageshow',scheduleBannerAuto);
 function openBanner(id){
  const banner=data?.banners.find(banner=>banner.id===id);if(!banner)return;
  const image=/^data:image\/(jpeg|png|webp);base64,|^\/api\/banner-images\//.test(banner.image)?`<img class="promotion-image" src="${escape(banner.image)}" alt="${escape(banner.title)}">`:'';
- show(`${image}<h2>${escape(banner.title)}</h2>${banner.subtitle?`<p>${escape(banner.subtitle)}</p>`:''}${formatted(banner.description)}${!banner.description&&!banner.subtitle?'<p>Подробности акции скоро появятся.</p>':''}`,'promotion');
+ show(`${image}<div class="promotion-copy ${image&&!banner.subtitle&&!banner.description?'promotion-copy-empty':''}"><h2>${escape(banner.title)}</h2>${banner.subtitle?`<p>${escape(banner.subtitle)}</p>`:''}${formatted(banner.description)}</div>`,'promotion');
 }
 let browserVisitor;
 function visitorId(){if(browserVisitor)return browserVisitor;try{browserVisitor=localStorage.getItem('gas-visitor:v1');}catch{}if(!/^[a-f0-9]{64}$/.test(browserVisitor||'')){browserVisitor=Array.from(crypto.getRandomValues(new Uint8Array(32)),byte=>byte.toString(16).padStart(2,'0')).join('');try{localStorage.setItem('gas-visitor:v1',browserVisitor);}catch{}}return browserVisitor;}
@@ -748,7 +781,7 @@ $('#banner').onclick=event=>{
  if(step)goToBanner(bannerIndex+Number(step.dataset.bannerStep));else if(dot)goToBanner(Number(dot.dataset.bannerDot));else if(banner)openBanner(Number(banner.dataset.banner));
 };
 $('#banner').addEventListener('dragstart',event=>event.preventDefault());
-$('#banner').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key)||!event.target.closest('[data-banner-dot],[data-banner-step],.banner-open'))return;event.preventDefault();const target=Math.max(0,Math.min(data.banners.length-1,bannerIndex+(event.key==='ArrowRight'?1:-1)));goToBanner(target);document.querySelector(`[data-banner-dot="${target}"]`)?.focus({preventScroll:true});});
+$('#banner').addEventListener('keydown',event=>{if(!['ArrowLeft','ArrowRight'].includes(event.key)||!event.target.closest('[data-banner-dot],[data-banner-step],.banner-open'))return;event.preventDefault();const next=bannerIndex+(event.key==='ArrowRight'?1:-1),target=(next+data.banners.length)%data.banners.length;goToBanner(next);document.querySelector(`[data-banner-dot="${target}"]`)?.focus({preventScroll:true});});
 $('#cart-tab').onclick = () => { void navigateToPage('cart'); };
 $('#catalog-tab').onclick = () => { void navigateToPage('home'); };
 $('#categories').onclick = event => {

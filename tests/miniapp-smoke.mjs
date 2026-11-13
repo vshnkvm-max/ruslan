@@ -173,7 +173,7 @@ try {
   await page.locator('#banner img').waitFor();
   assert.equal(await page.locator('#banner img').getAttribute('alt'),'Баннер из админки');
   assert.equal(await page.locator('#banner a').count(),0);
-  await page.locator('#banner .banner-open').first().click();
+  await page.locator('#banner .banner-slide[aria-hidden="false"] .banner-open').click();
   await page.locator('#details h2').filter({hasText:'Баннер из админки'}).waitFor();
   await close();
   assert.equal(await page.locator('#banner .banner-slide[aria-hidden="false"] h2').count(),0);

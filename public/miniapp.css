@@ -335,3 +335,14 @@ dialog[data-view="product"] #detail-content > .photo > img { position: relative;
 .gallery-track { aspect-ratio: var(--product-photo-ratio, 1); align-items: stretch; overflow-y: hidden; }
 .gallery-slide { position: relative; }
 .gallery-slide .photo { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; background: transparent; }
+
+dialog[data-view="promotion"] { width: calc(100% - 32px); max-width: 520px; max-height: calc(100dvh - 48px); padding: 0; overflow-y: auto; border: 1px solid #ffffff35; border-radius: 24px; background: #fff9fb; box-shadow: 0 18px 70px #0006; }
+dialog[data-view="promotion"]::backdrop { background: #10040a80; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+dialog[data-view="promotion"] > .sheet-handle { display: none; }
+dialog[data-view="promotion"] > .close { top: 10px; right: 10px; width: 36px; height: 36px; color: #fff; background: #171116bd; }
+dialog[data-view="promotion"] .promotion-image { border-radius: 0; }
+.promotion-copy { padding: 18px 22px 22px; }
+.promotion-copy h2 { margin: 0 0 12px; }
+.promotion-copy p:last-child { margin-bottom: 0; }
+
+.promotion-copy-empty { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }

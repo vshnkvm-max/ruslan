@@ -38,11 +38,18 @@ try {
  const settle=()=>page.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));
  const close=async()=>{if(await page.locator('dialog').getAttribute('data-view')==='product'){const handle=await page.locator('.sheet-handle').boundingBox();await swipe(handle.x+handle.width/2,handle.y+15,handle.x+handle.width/2,handle.y+240);}else await page.locator('dialog > .close').tap();await page.locator('dialog').waitFor({state:'hidden'});};
  const open=async()=>{await page.locator('[data-product="1"]').tap();await settle();assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),false);};
- assert.equal(await page.locator('.banner-slide').count(),3);
+ assert.equal(await page.locator('.banner-slide').count(),5);
  assert.equal(await page.locator('[data-banner-dot]').count(),3);
  assert.equal(await page.locator('[data-banner-step="1"]').isHidden(),true);
  const bannerRect=await page.locator('#banner-track').boundingBox();
  const y=bannerRect.y+Math.min(50,bannerRect.height/2);
+ await swipe(bannerRect.x+25,y,bannerRect.x+bannerRect.width-25,y);
+ await page.locator('[data-banner-dot="2"][aria-pressed="true"]').waitFor();
+ await page.waitForFunction(()=>{const t=document.querySelector('#banner-track');return Math.abs(t.scrollLeft-3*t.clientWidth)<1;});
+ await swipe(bannerRect.x+bannerRect.width-25,y,bannerRect.x+25,y);
+ await page.locator('[data-banner-dot="0"][aria-pressed="true"]').waitFor();
+ await page.waitForFunction(()=>{const t=document.querySelector('#banner-track');return Math.abs(t.scrollLeft-t.clientWidth)<1;});
+
  await swipe(bannerRect.x+bannerRect.width-25,y,bannerRect.x+25,y);
  await page.locator('[data-banner-dot="1"][aria-pressed="true"]').waitFor();
  assert.ok(!await page.locator('dialog').evaluate(element=>element.open),'swiping does not accidentally open the promotion');

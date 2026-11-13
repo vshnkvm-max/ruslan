@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createApp} from '../server.js';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const directory=mkdtempSync(join(tmpdir(),'shop-banner-auto-'));
+const {server,db}=createApp({dbPath:join(directory,'shop.db')});
+const image='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0a0AAAAASUVORK5CYII=';
+for(let i=0;i<3;i++)db.prepare('INSERT INTO banners(title,subtitle,color,link,image,description) VALUES (?,?,?,?,?,?)').run('Promo '+i,'','#ff0000','',image,i===1?'Promotion terms':'' );
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage']});
+try{
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
+ await context.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:'window.Telegram={WebApp:{ready(){},expand(){}}};'}));
+ const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.clock.install();await page.goto(`http://127.0.0.1:${server.address().port}/miniapp`);await page.locator('#banner-track').waitFor();await page.clock.runFor(500);
+ const current=()=>page.locator('#banner-track').evaluate(track=>(Math.round(track.scrollLeft/track.clientWidth)-1+3)%3);
+ await page.clock.pauseAt(await page.evaluate(()=>new Date(Date.now()+1000).toISOString()));
+ await page.evaluate(()=>dispatchEvent(new Event('pageshow')));
+ await page.clock.runFor(6999);assert.equal(await current(),0,'must not advance before seven seconds');
+ await page.clock.runFor(1);assert.equal(await current(),1,'advances at seven seconds');
+ await page.clock.runFor(7500);assert.equal(await current(),2);
+ await page.clock.runFor(7500);assert.equal(await current(),0,'autoplay loops from last to first');
+ await page.clock.runFor(500);
+ await page.locator('.banner-slide[aria-hidden=false] .banner-open').tap();await page.locator('dialog').waitFor({state:'visible'});
+ assert.equal(await page.getByText('Подробности акции скоро появятся.',{exact:true}).count(),0);
+ assert.equal(await page.locator('.promotion-copy-empty').count(),1,'image-only promotions have no blank text footer');
+ const position=await current();await page.clock.runFor(22000);assert.equal(await current(),position,'autoplay pauses behind the promotion dialog');
+ await page.locator('dialog > .close').tap();await page.clock.runFor(7000);assert.equal(await current(),1,'autoplay restarts after closing');await page.clock.runFor(500);
+ await page.locator('.banner-slide[aria-hidden=false] .banner-open').tap();await page.getByText('Promotion terms',{exact:true}).waitFor();
+ const geometry=await page.locator('dialog').evaluate(dialog=>{
+  const image=dialog.querySelector('.promotion-image').getBoundingClientRect(),close=dialog.querySelector('.close').getBoundingClientRect();
+  return {overImage:close.top>=image.top&&close.bottom<=image.bottom&&close.left>=image.left&&close.right<=image.right};
+ });assert.equal(geometry.overImage,true,'the close button overlays the large image');
+ await page.screenshot({path:'/tmp/shop-promotion-window.png'});
+ await page.locator('dialog > .close').tap();
+ await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
+ const hidden=await current();await page.clock.runFor(15000);assert.equal(await current(),hidden,'hidden pages do not autoplay');
+ await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});
+ await page.clock.runFor(7500);assert.equal(await current(),(hidden+1)%3);
+ db.prepare('UPDATE banners SET active=0 WHERE id!=1').run();await page.reload();await page.locator('#banner-track').waitFor();await page.clock.runFor(15000);
+ assert.equal(await page.locator('.banner-slide').count(),1);assert.equal(await page.locator('.banner-navigation').count(),0);
+ assert.equal(await page.locator('#banner-track').evaluate(track=>track.scrollLeft),0);
+ assert.deepEqual(errors,[]);
+ console.log('PASS: seven-second autoplay, infinite wrap, modal/visibility pause, image-only promotions, close over image, single-banner stability');
+ await context.close();
+}finally{await browser.close();await new Promise(resolve=>server.close(resolve));rmSync(directory,{recursive:true,force:true});}

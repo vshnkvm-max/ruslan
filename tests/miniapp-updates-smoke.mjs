@@ -75,7 +75,7 @@ try {
  assert.deepEqual(await mini.locator('#categories [data-category]').evaluateAll(elements=>elements.map(e=>e.dataset.category)),['',...expected]);
  await mini.locator('#profile-button').tap();await mini.waitForFunction(()=>{const image=document.querySelector('.profile-avatar img');return image?.complete&&image.naturalWidth>0;});
  await mini.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
- await mini.locator('#banner .banner-open').first().tap();await mini.getByText('Только до конца недели.',{exact:true}).waitFor();
+ await mini.locator('#banner .banner-slide[aria-hidden="false"] .banner-open').tap();await mini.getByText('Только до конца недели.',{exact:true}).waitFor();
  assert.equal(await mini.locator('#banner a').count(),0);assert.equal(mobile.pages().length,1);
  await mini.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').tap();await mini.locator('dialog').waitFor({state:'hidden'});
  await mini.evaluate(()=>scrollTo(0,650));
