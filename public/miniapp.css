@@ -343,3 +343,6 @@ dialog[data-view="promotion"] .promotion-image { border-radius: 0; }
 .promotion-copy p:last-child { margin-bottom: 0; }
 
 .promotion-copy-empty { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+
+/* Remove the promotion backdrop together with its dialog, including Safari blur layers. */
+dialog[data-view="promotion"][data-closing]::backdrop { animation: none; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }

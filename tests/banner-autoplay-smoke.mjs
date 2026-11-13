@@ -34,7 +34,10 @@ try{
   return {overImage:close.top>=image.top&&close.bottom<=image.bottom&&close.left>=image.left&&close.right<=image.right};
  });assert.equal(geometry.overImage,true,'the close button overlays the large image');
  await page.screenshot({path:'/tmp/shop-promotion-window.png'});
- await page.locator('dialog > .close').tap();
+ await page.emulateMedia({reducedMotion:'no-preference'});
+ const closedImmediately=await page.locator('dialog > .close').evaluate(button=>{const dialog=button.closest('dialog');button.click();return !dialog.open;});
+ assert.equal(closedImmediately,true,'closing a promotion removes its modal backdrop in the same event, without an animation timeout');
+ await page.emulateMedia({reducedMotion:'reduce'});
  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,value:true});document.dispatchEvent(new Event('visibilitychange'));});
  const hidden=await current();await page.clock.runFor(15000);assert.equal(await current(),hidden,'hidden pages do not autoplay');
  await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});

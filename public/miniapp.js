@@ -244,6 +244,7 @@ async function closeDetails() {
   resetSheetGesture();
   const version = ++modalVersion;
   dialog.dataset.closing = 'true';
+  if(dialog.dataset.view==='promotion'){dialog.close();return;}
   await animate(dialog,dialog.dataset.view==='product'?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
   if (version !== modalVersion) return;
   dialog.close();
