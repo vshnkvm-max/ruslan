@@ -348,3 +348,5 @@ dialog[data-view="promotion"] .promotion-image { border-radius: 0; }
 dialog[data-view="promotion"][data-closing]::backdrop { animation: none; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
 
 dialog[data-view="product"] .photo img { object-fit: cover; object-position: 50% 50%; }
+
+.catalog-photo .photo:not(.photo-empty), dialog[data-view="product"] .photo:not(.photo-empty) { background: transparent; }
