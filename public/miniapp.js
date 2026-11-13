@@ -178,7 +178,7 @@ function changeCart(id, delta, source) {
 
 const isPhoto=value=>/^data:image\/(jpeg|png|webp);base64,/.test(value)||/^\/api\/images\/[a-f0-9-]{36}$/.test(value);
 const photo = product => isPhoto(product.image)
-  ? `<div class="photo"><img src="${escape(product.image)}" alt="${escape(product.name)}" loading="lazy" decoding="async"></div>`
+  ? `<div class="photo" data-photo-fit="${['auto','contain','cover'].includes(product.image_fit)?product.image_fit:'auto'}"><img src="${escape(product.image)}" alt="${escape(product.name)}" loading="lazy" decoding="async"></div>`
   : `<div class="photo photo-empty">${icons.bag}<small>Фото скоро появится</small></div>`;
 function productGallery(product){
  const images=product.images?.length?product.images:(isPhoto(product.image)?[product.image]:[]);

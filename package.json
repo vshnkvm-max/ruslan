@@ -13,6 +13,7 @@
     "test:workflows": "node tests/workflows-smoke.mjs",
     "test:miniapp-updates": "node tests/miniapp-updates-smoke.mjs",
     "test:refinements": "node tests/shop-refinements-smoke.mjs",
+    "test:photos": "node tests/photo-mode-smoke.mjs",
     "test:banners": "node tests/banner-autoplay-smoke.mjs",
     "test:gestures": "node tests/carousel-sheet-smoke.mjs",
     "check": "node --check server.js && node --check lib/database.js && node --check lib/product-images.js && node --check lib/static-assets.js && node --check lib/auth.js && node --check lib/order-history.js && node --check lib/http-response.js && node --check lib/inventory-documents.js && node --check lib/product-views.js && node --check public/photo-centering.js && node --check public/app.js && node --check public/miniapp.js"

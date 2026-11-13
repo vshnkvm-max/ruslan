@@ -10,6 +10,7 @@ const directory=mkdtempSync(join(tmpdir(),'shop-refinements-'));
 const {server,db}=createApp({dbPath:join(directory,'test.db')});
 db.prepare('INSERT INTO admins(username,password) VALUES (?,?)').run('admin',hashPassword('refinements-password'));
 for(const [name,sku,stock] of [['Test device','REF-1',5],['Out of stock','REF-2',0]])db.prepare('INSERT INTO products(name,sku,category,price,cost,stock,image) VALUES (?,?,?,?,?,?,?)').run(name,sku,'Devices',200,50,stock,'');
+db.prepare("UPDATE products SET image_fit='cover' WHERE id=1").run();
 for(const title of ['Promo one','Promo two','Promo three'])db.prepare('INSERT INTO banners(title,subtitle,color,link,description) VALUES (?,?,?,?,?)').run(title,'','#ff0000','','Terms for '+title);
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage']});

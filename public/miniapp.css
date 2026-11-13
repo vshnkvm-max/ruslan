@@ -350,3 +350,6 @@ dialog[data-view="promotion"][data-closing]::backdrop { animation: none; backgro
 dialog[data-view="product"] .photo img { object-fit: cover; object-position: 50% 50%; }
 
 .catalog-photo .photo:not(.photo-empty), dialog[data-view="product"] .photo:not(.photo-empty) { background: transparent; }
+
+.catalog-photo .photo[data-photo-fit="auto"] img, .catalog-photo .photo[data-photo-fit="contain"] img,
+dialog[data-view="product"] .photo[data-photo-fit="auto"] img, dialog[data-view="product"] .photo[data-photo-fit="contain"] img { object-fit: contain; }

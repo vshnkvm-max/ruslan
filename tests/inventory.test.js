@@ -82,3 +82,13 @@ test('removing purchases in either order restores the original cost and unpostin
  assert.equal(saved(id).stock,0);assert.equal(saved(id).cost,17);
  assert.equal((await request(`/purchases/${third}`,'PATCH',body('cost-third',70))).status,200);assert.equal(saved(id).stock,3);assert.equal(saved(id).cost,70);
 });
+
+test('photo fitting mode is validated, public, and preserved by legacy full-product edits',async()=>{
+ const id=product(3);assert.equal(saved(id).image_fit,'auto');
+ assert.equal((await request(`/products/${id}`,'PATCH',{image_fit:'contain'})).status,200);
+ assert.equal((await request('/storefront','GET',undefined,false)).data.products.find(p=>p.id===id).image_fit,'contain');
+ const record=saved(id),body={name:record.name,sku:record.sku,category:record.category,price:record.price,cost:record.cost,active:true,image:'',description:'Edited'};
+ assert.equal((await request(`/products/${id}`,'PATCH',body)).status,200);assert.equal(saved(id).image_fit,'contain');
+ assert.equal((await request(`/products/${id}`,'PATCH',{image_fit:'invalid'})).status,400);assert.equal(saved(id).image_fit,'contain');
+ const created=await request('/products','POST',{...body,sku:'mode-create',image_fit:'cover',request_key:'mode-create'});assert.equal(created.status,201);assert.equal(saved(created.data.id).image_fit,'cover');
+});

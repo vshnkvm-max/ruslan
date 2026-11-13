@@ -132,8 +132,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/health'&&method==='GET') return json(res,200,{ok:true});
         if(path==='/api/storefront'&&method==='GET') {
           const shop=getSettings('shop');
-          const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
-          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.visible=1 AND p.stock>0 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description})=>({id,name,sku,category,price,stock,image,images,description,short_description})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
+          const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
+          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.visible=1 AND p.stock>0 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
         const productView=path.match(/^\/api\/storefront\/products\/(\d+)\/view$/);
         if(productView&&method==='POST') {
@@ -180,16 +180,17 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const b=await body(req);
           if(table==='products') {
             if(b.visible===0||b.visible===1)b.visible=Boolean(b.visible);
+            if(Object.keys(b).length===1&&'image_fit' in b){db.prepare('UPDATE products SET image_fit=? WHERE id=?').run(choice(b.image_fit,['auto','contain','cover']),id);return json(res,200,{ok:true});}
             if(Object.keys(b).length===1&&'sort_order' in b){db.prepare('UPDATE products SET sort_order=? WHERE id=?').run(num(b.sort_order,'Сортировка',1000000),id);return json(res,200,{ok:true});}
             if(Object.keys(b).length===1&&'visible' in b){const saved=db.prepare('SELECT stock FROM products WHERE id=?').get(id);if(b.visible&&saved.stock===0)fail(400,'Нет остатка. Сначала оформите закупку.');db.prepare('UPDATE products SET visible=? WHERE id=?').run(bool(b.visible),id);return json(res,200,{ok:true});}
             if(Object.keys(b).length===1&&'active' in b){db.prepare('UPDATE products SET active=? WHERE id=?').run(bool(b.active),id);return json(res,200,{ok:true});}
             const saved=db.prepare('SELECT * FROM products WHERE id=?').get(id);
             if(b.stock!==undefined&&b.stock!==saved.stock)fail(400,'Остатки изменяются через документы закупки.');
             b.sku??=saved.sku;b.short_description??=saved.short_description;b.stock??=saved.stock;
-            const p=validateProduct(b),sort=num(b.sort_order??saved.sort_order,'Сортировка',1000000);
+            const p=validateProduct(b),sort=num(b.sort_order??saved.sort_order,'Сортировка',1000000),fit=choice(b.image_fit??saved.image_fit,['auto','contain','cover']);
             db.exec('BEGIN IMMEDIATE');
             try {
-              db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=?,short_description=?,sort_order=? WHERE id=?').run(...p,sort,id);
+              db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=?,short_description=?,sort_order=?,image_fit=? WHERE id=?').run(...p,sort,fit,id);
               productImages.replace(id,b,saved);
               if(b.visible!==undefined){if(b.visible&&saved.stock===0)fail(400,'Нет остатка. Сначала оформите закупку.');db.prepare('UPDATE products SET visible=? WHERE id=?').run(bool(b.visible),id);}
               db.exec('COMMIT');
@@ -233,10 +234,10 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           b.stock??=0;
           if(num(b.stock,'Остаток',1000000)!==0)fail(400,'Новый товар создаётся без остатков. Добавьте поступление через закупку.');
           b.sku??=token().slice(0,32);
-          const p=validateProduct(b),sort=num(b.sort_order??100,'Сортировка',1000000);
+          const p=validateProduct(b),sort=num(b.sort_order??100,'Сортировка',1000000),fit=choice(b.image_fit??'auto',['auto','contain','cover']);
           db.exec('BEGIN IMMEDIATE');
           try {
-            const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description,short_description,sort_order,create_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)').run(...p,sort,key);
+            const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description,short_description,sort_order,create_key,image_fit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...p,sort,key,fit);
             const id=Number(r.lastInsertRowid);
             productImages.replace(id,b);
             db.exec('COMMIT');return json(res,201,{id});
