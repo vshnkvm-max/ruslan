@@ -327,7 +327,6 @@ html[data-input="pointer"] a:focus-visible { outline: none; }
 .banner-open, .banner-open * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .banner-slide .banner-image { -webkit-user-drag: none; pointer-events: none; }
 
-html[data-device="mobile"] .product-close { display: none; }
 
 /* Every product image fills the same square, scaling proportionally from the center. */
 .gallery-track { aspect-ratio: 1; align-items: stretch; overflow-y: hidden; }
