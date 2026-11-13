@@ -3,7 +3,8 @@
 const centeredPhotos=new WeakSet(),photoPreviewCache=new Map();
 function centerProductPhoto(image){
  if(centeredPhotos.has(image)||!image.naturalWidth)return;centeredPhotos.add(image);
- const source=image.currentSrc||image.src,cacheKey=source,cached=photoPreviewCache.get(cacheKey);
+ const source=image.currentSrc||image.src,fillFrame=Boolean(image.closest('dialog[data-view="product"]'));
+ const cacheKey=(fillFrame?'cover:':'contain:')+source,cached=photoPreviewCache.get(cacheKey);
  if(cached){image.src=cached;return;}
  try{
   const sample=document.createElement('canvas'),ratio=Math.min(1,180/Math.max(image.naturalWidth,image.naturalHeight));
@@ -16,12 +17,13 @@ function centerProductPhoto(image){
    left=sample.width;right=-1;top=sample.height;bottom=-1;
    for(let y=0;y<sample.height;y++)for(let x=0;x<sample.width;x++)if(!blank((y*sample.width+x)*4)){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}
    if(right<left||bottom<top)return;
-   const pad=Math.max(2,Math.ceil(Math.max(right-left+1,bottom-top+1)*0.05));
+   const pad=fillFrame?0:Math.max(2,Math.ceil(Math.max(right-left+1,bottom-top+1)*0.05));
    left=Math.max(0,left-pad);top=Math.max(0,top-pad);right=Math.min(sample.width-1,right+pad);bottom=Math.min(sample.height-1,bottom+pad);
   }
   const sourceX=left/sample.width*image.naturalWidth,sourceY=top/sample.height*image.naturalHeight;
   const width=(right-left+1)/sample.width*image.naturalWidth,height=(bottom-top+1)/sample.height*image.naturalHeight;
-  if(width*height>image.naturalWidth*image.naturalHeight*0.92)return;
+  const unchanged=left===0&&top===0&&right===sample.width-1&&bottom===sample.height-1;
+  if(fillFrame?unchanged:width*height>image.naturalWidth*image.naturalHeight*0.92)return;
   const output=document.createElement('canvas'),scale=Math.min(1,900/Math.max(width,height));
   output.width=Math.max(1,Math.round(width*scale));output.height=Math.max(1,Math.round(height*scale));
   const drawing=output.getContext('2d');drawing.fillStyle='#fff';drawing.fillRect(0,0,output.width,output.height);

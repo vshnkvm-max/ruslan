@@ -95,7 +95,7 @@ try {
  await mini.waitForFunction(()=>{const image=document.querySelector('dialog .photo img');return image?.complete&&image.naturalWidth>0;});
  const openedPhoto=await mini.locator('dialog .photo img').first().evaluate(image=>{const rect=image.getBoundingClientRect(),frame=image.parentElement.getBoundingClientRect();return {ratio:rect.width/rect.height,fit:getComputedStyle(image).objectFit,position:getComputedStyle(image).objectPosition,gap:Math.abs(frame.width-rect.width)+Math.abs(frame.height-rect.height)};});
  assert.ok(Math.abs(openedPhoto.ratio-1)<0.01,'portrait source uses a fixed square frame');
- assert.equal(openedPhoto.fit,'contain');assert.equal(openedPhoto.position,'50% 50%');
+ assert.equal(openedPhoto.fit,'cover');assert.equal(openedPhoto.position,'50% 50%');
  assert.ok(openedPhoto.gap<1,'image bounds stay centered in the frame');
  await mini.screenshot({path:'/tmp/shop-product-sheet.png'});
  await mini.keyboard.press('Escape');await mini.locator('dialog').waitFor({state:'hidden'});

@@ -346,3 +346,5 @@ dialog[data-view="promotion"] .promotion-image { border-radius: 0; }
 
 /* Remove the promotion backdrop together with its dialog, including Safari blur layers. */
 dialog[data-view="promotion"][data-closing]::backdrop { animation: none; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+dialog[data-view="product"] .photo img { object-fit: cover; object-position: 50% 50%; }
