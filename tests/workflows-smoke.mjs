@@ -118,7 +118,7 @@ try {
  await mini.locator(`[data-product="${product.id}"]`).click();
  await mini.locator('#gallery-track img').first().waitFor();
  assert.equal(await mini.locator('.gallery-slide').count(),2);
- assert.equal(await mini.locator('#gallery-track img').first().evaluate(image=>getComputedStyle(image).objectFit),'contain');
+ assert.equal(await mini.locator('#gallery-track img').first().evaluate(image=>getComputedStyle(image).objectFit),'cover');
  assert.equal(await mini.locator('#gallery-track img').first().evaluate(image=>getComputedStyle(image).objectPosition),'50% 50%');
  await mini.getByRole('button',{name:'Следующее фото',exact:true}).click();
  await mini.locator('[data-gallery-dot="1"][aria-pressed=true]').waitFor();
