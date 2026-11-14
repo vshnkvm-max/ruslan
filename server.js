@@ -9,6 +9,8 @@ import { loadOrderHistory } from './lib/order-history.js';
 import { sendJson } from './lib/http-response.js';
 import { createInventoryDocuments } from './lib/inventory-documents.js';
 import { recordProductView } from './lib/product-views.js';
+import { createStorefrontOrders } from './lib/storefront-orders.js';
+import { createOrderNotifier } from './lib/order-notifications.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const sessionDuration = 12 * 60 * 60 * 1000;
@@ -45,11 +47,13 @@ function imageValue(value, allowLegacy=false) {
  return value;
 }
 
-export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/shop.db'), secureCookie=process.env.COOKIE_SECURE==='true',botToken=process.env.BOT_TOKEN||''}={}) {
+export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/shop.db'), secureCookie=process.env.COOKIE_SECURE==='true',botToken=process.env.BOT_TOKEN||'',orderBotToken=process.env.ORDER_BOT_TOKEN||'',orderChatId=process.env.ORDER_CHAT_ID||'',telegramFetch=fetch}={}) {
   const db=openDatabase(dbPath);
   const productImages=createProductImages(db,imageValue,fail);
   const documents=createInventoryDocuments(db,{fail,str,num,bool,token});
   const serveStatic=createStaticAssets(root);
+  const storefrontOrders=createStorefrontOrders(db,{botToken,fail});
+  const notifier=createOrderNotifier(db,{token:orderBotToken,chatId:orderChatId,fetchImpl:telegramFetch});
   const attempts=new Map();
   let activePasswordWork=0;
   async function passwordWork(work) {
@@ -68,7 +72,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const serializeBanner=row=>({...row,image:bannerPath(row)});
   const categories=()=>[...new Set([...getSettings('categories'),...db.prepare("SELECT DISTINCT category FROM products WHERE deleted=0 AND category!=''").all().map(p=>p.category)])].filter(Boolean);
   const bootstrap=()=>({
-    products:products(),...loadOrderHistory(db),categories:categories(),
+    products:products(),...loadOrderHistory(db),orderDelivery:db.prepare('SELECT order_id,delivered_at,last_error FROM order_notifications').all(),categories:categories(),
+    orderNotifications:{configured:notifier.configured,pending:db.prepare('SELECT COUNT(*) AS count FROM order_notifications WHERE delivered_at IS NULL').get().count},
     reviews:db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all(),
     sales:db.prepare('SELECT * FROM sales WHERE deleted=0 ORDER BY id DESC').all().map(row=>({...row,items:JSON.parse(row.items)})),
     purchases:db.prepare('SELECT * FROM purchases WHERE deleted=0 ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
@@ -136,6 +141,10 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
           return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.visible=1 AND p.stock>0 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
+        if(path==='/api/storefront/orders'&&method==='POST') {
+          const result=storefrontOrders.create(await body(req));
+          return json(res,result.repeated?200:201,{order:result.order});
+        }
         const productView=path.match(/^\/api\/storefront\/products\/(\d+)\/view$/);
         if(productView&&method==='POST') {
           const payload=req.headers['content-type']?.startsWith('application/json')&&(Number(req.headers['content-length'])>0||req.headers['transfer-encoding'])?await body(req):{};
@@ -175,7 +184,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(match) {
           const [,table,idText]=match; const id=Number(idText);
           if(!db.prepare(`SELECT id FROM ${table} WHERE id=?`).get(id)) fail(404,'Запись не найдена.');
-          if(method==='DELETE'&&['products','customers','orders'].includes(table)) {db.prepare(`UPDATE ${table} SET deleted=1 WHERE id=?`).run(id);return json(res,200,{ok:true});}
+          if(method==='DELETE'&&['products','customers','orders'].includes(table)) {if(table==='orders')storefrontOrders.update(id,undefined,true);else db.prepare(`UPDATE ${table} SET deleted=1 WHERE id=?`).run(id);return json(res,200,{ok:true});}
           if(method==='DELETE'&&table==='banners') {db.prepare('DELETE FROM banners WHERE id=?').run(id);return json(res,200,{ok:true});}
           if(method!=='PATCH') fail(405,'Метод не поддерживается.');
           const b=await body(req);
@@ -200,7 +209,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
             if(Object.keys(b).length===1&&'banned' in b){const banned=bool(b.banned);db.prepare("UPDATE customers SET banned=?,status=? WHERE id=?").run(banned,banned?'banned':'active',id);}
             else {const saved=db.prepare('SELECT email,city FROM customers WHERE id=?').get(id);const c=validateCustomer({...b,email:b.email??saved.email,city:b.city??saved.city});db.prepare('UPDATE customers SET name=?,username=?,phone=?,email=?,city=?,status=?,banned=? WHERE id=?').run(...c,id);}
           }
-          else if(table==='orders') db.prepare('UPDATE orders SET status=? WHERE id=?').run(choice(b.status,['new','accepted','completed','cancelled']),id);
+          else if(table==='orders') storefrontOrders.update(id,choice(b.status,['new','accepted','completed','cancelled']));
           else if(table==='reviews') db.prepare('UPDATE reviews SET status=? WHERE id=?').run(choice(b.status,['pending','published','hidden']),id);
           else if(table==='banners') {
             const saved=db.prepare('SELECT id,image,description,link FROM banners WHERE id=?').get(id);
@@ -292,8 +301,9 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   });
   server.requestTimeout=20000;
   server.headersTimeout=20000;
-  server.on('close',()=>db.close());
-  return {server,db};
+  server.on('listening',()=>notifier.start());
+  server.on('close',()=>{notifier.stop();db.close();});
+  return {server,db,notifier};
 }
 
 function validateCustomer(b) {

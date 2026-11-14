@@ -96,6 +96,16 @@ button:disabled { cursor: default; }
 .primary-button { display: flex; width: 100%; justify-content: center; align-items: center; gap: 10px; margin-top: 18px; padding: 15px 12px; border: 0; border-radius: 16px; color: #fff; background: var(--red); font-size: 13px; font-weight: 700; box-shadow: 0 5px 16px #e7193520; }
 .primary-button:disabled { color: #a4929b; background: #f1e9ed; box-shadow: none; }
 .primary-button svg { flex-shrink: 0; }
+.secondary-button { background: #fff7fa; color: #6e4d5b; box-shadow: none; }
+dialog[data-view="checkout"] { position: fixed; inset: auto 0 0; width: 100%; max-width: var(--app-width); max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); margin: 0 auto; border: 0; border-radius: 24px 24px 0 0; padding-bottom: max(28px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+dialog[data-view="checkout"] > .close { display: none; }
+.checkout-items { margin-top: 24px; }
+.checkout-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #6e4d5b20; }
+.checkout-item > span { min-width: 0; overflow-wrap: anywhere; }
+.checkout-item small { display: block; margin-top: 5px; color: #897681; }
+.checkout-item strong { white-space: nowrap; }
+.checkout-note { font-size: 13px; line-height: 1.5; color: #76636c; }
+.checkout-error { color: #b00025; font-size: 13px; line-height: 1.5; }
 .detail-stock { color: var(--muted); }
 .profile-card { padding: 20px; border: 1px solid #fff; border-radius: 20px; background: #ffffffed; }
 .profile-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }

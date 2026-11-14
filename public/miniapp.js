@@ -210,8 +210,9 @@ function setNav(view) {
 }
 function show(html, view = 'info', shouldAnimate = true) {
   stopBannerAuto();
+  if(view==='checkout'){clearTimeout(toastTimer);$('#toast').classList.remove('visible');}
   resetSheetGesture();
-  if(view==='product')holdTelegramSwipes();else releaseTelegramSwipes();
+  if(['product','checkout'].includes(view))holdTelegramSwipes();else releaseTelegramSwipes();
   stopProfileTransition();
   ordersTransition?.cancel();
   ordersTransition = undefined;
@@ -230,7 +231,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   if (!wasOpen) {
     dialog.showModal();
     document.body.style.overflow = 'hidden';
-    void animate(dialog, view==='product'?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
+    void animate(dialog, ['product','checkout'].includes(view)?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
   } else if (shouldAnimate) {
     void animate(content, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180 });
   }
@@ -245,7 +246,7 @@ async function closeDetails() {
   const version = ++modalVersion;
   dialog.dataset.closing = 'true';
   if(dialog.dataset.view==='promotion'){dialog.close();return;}
-  await animate(dialog,dialog.dataset.view==='product'?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
+  await animate(dialog,['product','checkout'].includes(dialog.dataset.view)?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
   if (version !== modalVersion) return;
   dialog.close();
 }
@@ -259,11 +260,11 @@ function holdTelegramSwipes(){
 }
 function releaseTelegramSwipes(){const owner=swipeOwner;swipeOwner=null;try{owner?.enableVerticalSwipes?.();}catch{/* Keep closing available without the SDK. */}}
 window.addEventListener('pagehide',releaseTelegramSwipes);
-window.addEventListener('pageshow',()=>{if($('#details').open&&$('#details').dataset.view==='product')holdTelegramSwipes();});
+window.addEventListener('pageshow',()=>{if($('#details').open&&['product','checkout'].includes($('#details').dataset.view))holdTelegramSwipes();});
 function resetSheetGesture(){sheetGesture=null;const dialog=$('#details');dialog.style.removeProperty('transform');delete dialog.dataset.dragging;}
 function startSheetGesture(x,y,target,pointerId=null){
  const dialog=$('#details');
- if(!dialog.open||dialog.dataset.view!=='product'||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
+ if(!dialog.open||!['product','checkout'].includes(dialog.dataset.view)||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
  if(dialog.scrollTop>1&&!target.closest('.sheet-handle'))return;
  sheetGesture={x,y,dy:0,axis:null,dragging:false,time:performance.now(),samples:[],version:modalVersion,pointerId};
 }
@@ -723,7 +724,76 @@ function renderCart() {
         <button class="remove-item" data-remove="${product.id}" aria-label="Удалить: ${escape(product.name)}">${icons.trash}</button>
       </div>`).join('')}</div>
       <div class="cart-total"><span>Итого</span><strong>${moneyMarkup(amount)}</strong></div>` : `<div class="cart-empty">${icons.bag}<h3>Корзина пока пуста</h3><p>Добавьте то, что вам понравилось.</p></div>`}
-    <button class="primary-button" data-continue>${items.length ? 'Продолжить покупки' : 'Перейти в каталог'}${icons.arrow}</button>`;
+    ${items.length || pendingCheckout() ? '<button class="primary-button" data-checkout>'+ (pendingCheckout() ? 'Проверить заказ' : 'Оформить заказ') + icons.bag + '</button>' : ''}
+    <button class="primary-button secondary-button" data-continue>${items.length ? 'Продолжить покупки' : 'Перейти в каталог'}${icons.arrow}</button>`;
+}
+let checkoutDraft, checkoutSubmitting = false;
+const checkoutPending = new Map();
+function pendingCheckout() {
+  try {
+    const pending = checkoutPending.get(cartKey) || JSON.parse(localStorage.getItem(cartKey + ':checkout'));
+    return pending && typeof pending.request_key === 'string' && Array.isArray(pending.items) && pending.items.length ? pending : null;
+  } catch { return checkoutPending.get(cartKey) || null; }
+}
+function openCheckout() {
+  if (checkoutSubmitting) return;
+  const pending = pendingCheckout();
+  const items = pending?.items || cartItems().map(({ product, quantity }) => ({ product_id: product.id, name: product.name, price: product.price, quantity }));
+  if (!items.length) return;
+  checkoutDraft = pending || { request_key: crypto.randomUUID(), items };
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  show(`<h2>Подтверждение заказа</h2>
+    ${pending ? '<p>Проверим, сохранился ли предыдущий заказ. Повторного списания не будет.</p>' : ''}
+    <div class="checkout-items">${items.map(item => `<div class="checkout-item"><span>${escape(item.name)}<small>${item.quantity} шт. × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity * item.price)}</strong></div>`).join('')}</div>
+    <div class="cart-total"><span>Итого</span><strong>${moneyMarkup(total)}</strong></div>
+    <p class="checkout-note">Менеджер свяжется с вами в Telegram для согласования получения.</p>
+    <p class="checkout-error" role="alert" hidden></p>
+    <button class="primary-button" data-confirm-checkout>${pending ? 'Проверить заказ' : 'Подтвердить'}</button>
+    <button class="primary-button secondary-button" data-cancel-checkout>Отмена</button>`, 'checkout');
+}
+async function confirmCheckout() {
+  if (checkoutSubmitting || !checkoutDraft) return;
+  const errorElement = $('.checkout-error');
+  if (!telegram?.initData) { errorElement.hidden = false; errorElement.textContent = 'Откройте магазин через Telegram, чтобы оформить заказ.'; return; }
+  const draft = checkoutDraft, ownerKey = cartKey, dialogVersion = modalVersion;
+  const confirm = $('[data-confirm-checkout]'), cancel = $('[data-cancel-checkout]');
+  checkoutSubmitting = true; confirm.disabled = true; cancel.disabled = true; confirm.textContent = 'Подтверждаем…'; errorElement.hidden = true;
+  checkoutPending.set(ownerKey, draft);
+  try { localStorage.setItem(ownerKey + ':checkout', JSON.stringify(draft)); } catch { /* Retain the in-memory request key on retry. */ }
+  const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch('/api/storefront/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ ...draft, init_data: telegram.initData }) });
+    const result = await response.json();
+    if (!response.ok) {
+      if (response.status >= 400 && response.status < 500) {
+        checkoutPending.delete(ownerKey);
+        try { localStorage.removeItem(ownerKey + ':checkout'); } catch { /* Storage can be unavailable. */ }
+      }
+      throw new Error(result.error || 'Не удалось подтвердить заказ. Повторите попытку.');
+    }
+    checkoutPending.delete(ownerKey);
+    try { localStorage.removeItem(ownerKey + ':checkout'); } catch { /* Storage can be unavailable. */ }
+    if (ownerKey === cartKey) {
+      for (const item of draft.items) {
+        const remaining = (cart.get(item.product_id) || 0) - item.quantity;
+        if (remaining > 0) cart.set(item.product_id, remaining); else cart.delete(item.product_id);
+      }
+      saveCart(); updateBadge(); renderCart();
+    }
+    checkoutDraft = undefined;
+    if ($('#details').open && modalVersion === dialogVersion) show(`<h2>Заказ #${result.order.id} принят</h2><p>Менеджер свяжется с вами в Telegram.</p><div class="cart-total"><span>Итого</span><strong>${moneyMarkup(result.order.total)}</strong></div><button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
+    else notify(`Заказ #${result.order.id} принят`);
+    void load();
+  } catch (error) {
+    if ($('#details').open && modalVersion === dialogVersion) {
+      errorElement.hidden = false;
+      errorElement.textContent = ['AbortError','TimeoutError','TypeError'].includes(error.name) ? 'Ответ не получен. Нажмите «Подтвердить» ещё раз: проверим сохранённый заказ без дублей.' : error.message;
+    } else { if(activePage==='cart')renderCart(); notify('Проверьте заказ в корзине, чтобы узнать результат подтверждения.'); }
+  } finally {
+    clearTimeout(timeout);
+    checkoutSubmitting = false;
+    if (confirm.isConnected) { confirm.disabled = false; cancel.disabled = false; confirm.textContent = 'Подтвердить'; }
+  }
 }
 async function navigateToPage(next, { toCatalog = false } = {}) {
   if (!['home', 'cart'].includes(next)) return;
@@ -801,6 +871,9 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ if(event.target.closest('[data-checkout]')){openCheckout();return;}
+ if(event.target.closest('[data-confirm-checkout]')){void confirmCheckout();return;}
+ if(event.target.closest('[data-cancel-checkout]')){void closeDetails();return;}
  if(event.target.closest('[data-product-close]')){void closeDetails();return;}
  const share=event.target.closest('[data-share-product]');if(share){void shareProduct(Number(share.dataset.shareProduct));return;}
  const dot=event.target.closest('[data-gallery-dot]');if(dot){const track=$('#gallery-track');track.scrollTo({left:Number(dot.dataset.galleryDot)*track.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});return;}
@@ -835,7 +908,7 @@ document.addEventListener('click', event => { if (event.target.id === 'retry') l
 $('#telegram-sdk')?.addEventListener('load', () => {
   telegram = window.Telegram?.WebApp;
   configureTelegram();
-  if($('#details').open&&$('#details').dataset.view==='product')holdTelegramSwipes();
+  if($('#details').open&&['product','checkout'].includes($('#details').dataset.view))holdTelegramSwipes();
   user = telegram?.initDataUnsafe?.user;
   updateClientAvatar();
   if(data)openStartProduct();

@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createHmac } from 'node:crypto';
+import { createApp } from '../server.js';
+import { hashPassword } from '../lib/auth.js';
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const directory = mkdtempSync(join(tmpdir(), 'shop-checkout-browser-')), botToken = 'test:checkout';
+const { server, db } = createApp({ dbPath: join(directory, 'shop.db'), botToken });
+db.prepare("INSERT INTO admins(username,password) VALUES ('admin',?)").run(hashPassword('checkout-test-password'));
+db.prepare("INSERT INTO products(id,name,sku,category,price,cost,stock,image) VALUES (1,'Тестовый товар','CHECKOUT','Категория',2300,1000,4,'')").run();
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+const base = `http://127.0.0.1:${server.address().port}`;
+const user = { id: 97531, first_name: 'Тестовый', last_name: 'Покупатель', username: 'testbuyer' };
+const params = new URLSearchParams({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify(user) });
+const text = [...params].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join('\n');
+params.set('hash', createHmac('sha256', createHmac('sha256', 'WebAppData').update(botToken).digest()).update(text).digest('hex'));
+const browser = await chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+try {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
+  await context.addInitScript(({ user, initData }) => { window.Telegram = { WebApp: { platform: 'ios', initData, initDataUnsafe: { user }, ready() {}, expand() {} } }; }, { user, initData: params.toString() });
+  await context.route('https://telegram.org/**', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
+  const page = await context.newPage(), errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(base + '/miniapp'); await page.locator('[data-product="1"]').click();
+  await page.locator('[data-add="1"]').click(); await page.locator('[data-open-cart]').click();
+  await page.locator('[data-checkout]').click();
+  assert.match(await page.locator('dialog').innerText(), /Тестовый товар/);
+  assert.match(await page.locator('dialog').innerText(), /2\s*300/);
+  const sheet = await page.locator('dialog').evaluate(element => ({ bottom: element.getBoundingClientRect().bottom, viewport: innerHeight }));
+  assert.equal(sheet.bottom, sheet.viewport);
+  await page.screenshot({ path: '/tmp/shop-checkout-confirmation.png' });
+  await page.locator('[data-cancel-checkout]').click();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 0);
+  assert.match(await page.locator('#cart-content').innerText(), /Тестовый товар/);
+  await page.locator('[data-checkout]').click();
+  const saved = page.waitForResponse(response => response.url().endsWith('/api/storefront/orders'));
+  await page.locator('[data-confirm-checkout]').click(); await saved;
+  await page.getByRole('heading', { name: 'Заказ #1 принят', exact: true }).waitFor();
+  assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 1);
+  await page.locator('dialog [data-continue]').click();
+
+  // Server commits but the response is lost: reload and retry the stored key.
+  await page.locator('[data-product="1"]').click(); await page.locator('[data-add="1"]').click(); await page.locator('[data-open-cart]').click();
+  await page.locator('[data-checkout]').click();
+  await page.route('**/api/storefront/orders', async route => { await route.fetch(); await route.abort('failed'); });
+  await page.locator('[data-confirm-checkout]').click(); await page.locator('.checkout-error:not([hidden])').waitFor();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2);
+  await page.unroute('**/api/storefront/orders'); await page.reload(); await page.locator('[data-product="1"]').waitFor();
+  await page.locator('#cart-tab').click(); await page.getByRole('button', { name: 'Проверить заказ', exact: true }).click();
+  await page.locator('[data-confirm-checkout]').click(); await page.getByRole('heading', { name: 'Заказ #2 принят', exact: true }).waitFor();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 2);
+
+  const admin = await context.newPage(); admin.on('pageerror', error => errors.push(error.message));
+  await admin.goto(base + '/#orders'); await admin.getByLabel('Логин', { exact: true }).fill('admin'); await admin.getByLabel('Пароль', { exact: true }).fill('checkout-test-password'); await admin.locator('#login-form [type=submit]').click();
+  await admin.locator('[data-action=order-detail][data-id="2"]').first().click(); await admin.locator('#order-form').waitFor();
+  assert.match(await admin.locator('.modal').innerText(), /Тестовый Покупатель/);
+  assert.match(await admin.locator('.modal').innerText(), /бот не подключён/);
+  await admin.locator('#order-status').selectOption('cancelled'); await admin.locator('#order-form [type=submit]').click();
+  await admin.locator('.modal').waitFor({ state: 'detached' }); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
+  assert.deepEqual(errors, []);
+  console.log('PASS: mobile confirmation sheet, cancel preserves cart, checkout creates admin order, lost-response retry survives reload without duplicate, cancellation restores stock');
+  await context.close();
+} finally { await browser.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, { recursive: true, force: true }); }

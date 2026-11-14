@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=24.0.0" },
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
@@ -17,6 +19,8 @@
     "test:photos": "node tests/photo-mode-smoke.mjs",
     "test:banners": "node tests/banner-autoplay-smoke.mjs",
     "test:gestures": "node tests/carousel-sheet-smoke.mjs",
-    "check": "node --check server.js && node --check lib/database.js && node --check lib/product-images.js && node --check lib/static-assets.js && node --check lib/auth.js && node --check lib/order-history.js && node --check lib/http-response.js && node --check lib/inventory-documents.js && node --check lib/product-views.js && node --check public/photo-centering.js && node --check public/app.js && node --check public/miniapp.js"
+    "check": "node --check server.js && node --check lib/database.js && node --check lib/product-images.js && node --check lib/static-assets.js && node --check lib/auth.js && node --check lib/order-history.js && node --check lib/http-response.js && node --check lib/inventory-documents.js && node --check lib/product-views.js && node --check public/photo-centering.js && node --check public/app.js && node --check public/miniapp.js && node --check lib/telegram-auth.js && node --check lib/storefront-orders.js && node --check lib/order-notifications.js && node --check scripts/order-bot-info.js",
+    "orders:bot-info": "node scripts/order-bot-info.js",
+    "test:checkout": "node tests/checkout-smoke.mjs"
   }
 }
