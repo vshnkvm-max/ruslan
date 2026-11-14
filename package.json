@@ -13,6 +13,7 @@
     "test:workflows": "node tests/workflows-smoke.mjs",
     "test:miniapp-updates": "node tests/miniapp-updates-smoke.mjs",
     "test:refinements": "node tests/shop-refinements-smoke.mjs",
+    "test:referrals": "node tests/referral-settings-smoke.mjs",
     "test:photos": "node tests/photo-mode-smoke.mjs",
     "test:banners": "node tests/banner-autoplay-smoke.mjs",
     "test:gestures": "node tests/carousel-sheet-smoke.mjs",

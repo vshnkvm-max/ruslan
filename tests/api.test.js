@@ -39,7 +39,7 @@ test('new store starts empty, with blank information and disabled referrals',asy
   const {res,data}=await request('/bootstrap');assert.equal(res.status,200);
   for(const key of ['products','customers','orders','reviews','transactions','referrals','banners']) assert.deepEqual(data[key],[],key);
   assert.deepEqual(data.shop,{name:'',headline:'',description:'',phone:'',address:'',hours:''});
-  assert.deepEqual(data.referral,{enabled:false,bonus:0,minPayout:0});
+  assert.deepEqual(data.referral,{enabled:false,bonus:100,percent:5,minPayout:0});
   assert.equal(data.admins,undefined);assert.equal(data.sessions,undefined);
   const storefront=(await request('/storefront',{auth:false})).data;
   assert.deepEqual(storefront.products,[]);assert.deepEqual(storefront.banners,[]);
@@ -104,7 +104,7 @@ test('review moderation and referral conditions persist',async()=>{
   await request('/reviews/1',{method:'PATCH',body:{status:'hidden'}});
   await request('/settings/referral',{method:'PATCH',body:{enabled:false,bonus:450,minPayout:1500}});
   const data=(await request('/bootstrap')).data;
-  assert.equal(data.reviews.find(r=>r.id===1).status,'hidden');assert.deepEqual(data.referral,{enabled:false,bonus:450,minPayout:1500});
+  assert.equal(data.reviews.find(r=>r.id===1).status,'hidden');assert.deepEqual(data.referral,{enabled:false,bonus:450,percent:5,minPayout:1500});
 });
 test('store information and banners appear in public API without private data',async()=>{
   const shop={...(await request('/bootstrap')).data.shop,name:'Test Store',description:'Persisted description'};
@@ -377,6 +377,19 @@ test('purchase documents validate lines, preserve drafts and post stock and paym
   assert.equal((await request('/purchases',{method:'POST',body:payload,headers:{'X-CSRF-Token':''}})).res.status,403);
 });
 
+test('referral rewards combine an editable fixed amount and percentage without changing settings on invalid input',async()=>{
+ const configured={enabled:true,bonus:100,percent:5,minPayout:500};
+ assert.equal((await request('/settings/referral',{method:'PATCH',body:configured})).res.status,200);
+ assert.deepEqual((await request('/storefront',{auth:false})).data.referral,configured);
+ const updated={...configured,bonus:200,percent:7.25};await request('/settings/referral',{method:'PATCH',body:updated});
+ for(const percent of [-1,100.01,1.001,'5',null]){
+  assert.equal((await request('/settings/referral',{method:'PATCH',body:{...updated,percent}})).res.status,400);
+  assert.deepEqual((await request('/bootstrap')).data.referral,updated);
+ }
+ assert.equal((await request('/settings/referral',{method:'PATCH',body:{enabled:false,bonus:250,minPayout:800}})).res.status,200);
+ assert.deepEqual((await request('/bootstrap')).data.referral,{enabled:false,bonus:250,percent:7.25,minPayout:800});
+ const zero={enabled:true,bonus:0,percent:0,minPayout:0};assert.equal((await request('/settings/referral',{method:'PATCH',body:zero})).res.status,200);assert.deepEqual((await request('/bootstrap')).data.referral,zero);
+});
 test('password change invalidates other sessions and logout revokes current session',async()=>{
   const other=await request('/auth/login',{method:'POST',auth:false,body:{username:'admin',password}});
   const otherCookie=other.res.headers.get('set-cookie').split(';')[0];
@@ -399,4 +412,18 @@ test('SQLite data survives server restart without reseeding',async()=>{
 test('login rate limiting activates after repeated failures',async()=>{
   for(let i=0;i<10;i++)assert.equal((await request('/auth/login',{method:'POST',auth:false,body:{username:'unknown',password:'invalid'}})).res.status,401);
   assert.equal((await request('/auth/login',{method:'POST',auth:false,body:{username:'unknown',password:'invalid'}})).res.status,429);
+});
+
+test('referral migration applies new defaults once and preserves configured rates and activation',()=>{
+ const cases=[
+  [{enabled:false,bonus:0,minPayout:0},{enabled:false,bonus:100,percent:5,minPayout:0}],
+  [{enabled:true,bonus:350,minPayout:500},{enabled:true,bonus:350,percent:5,minPayout:500}],
+  [{enabled:true,bonus:0,minPayout:500},{enabled:true,bonus:0,percent:5,minPayout:500}],
+  [{enabled:true,bonus:0,percent:0,minPayout:0},{enabled:true,bonus:0,percent:0,minPayout:0}]
+ ];
+ for(const [i,[before,expected]] of cases.entries()){
+  const path=join(temp,'referral-migration-'+i+'.db'),legacy=new DatabaseSync(path);legacy.exec('CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)');legacy.prepare('INSERT INTO settings VALUES (?,?)').run('referral',JSON.stringify(before));legacy.close();
+  const migrated=openDatabase(path);assert.deepEqual(JSON.parse(migrated.prepare('SELECT value FROM settings WHERE key=?').get('referral').value),expected);migrated.close();
+  const reopened=openDatabase(path);assert.deepEqual(JSON.parse(reopened.prepare('SELECT value FROM settings WHERE key=?').get('referral').value),expected);reopened.close();
+ }
 });

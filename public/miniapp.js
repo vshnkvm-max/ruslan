@@ -581,7 +581,7 @@ function referralContent() {
   const referral = data?.referral;
   if (!referral) return '<p>Информация пока недоступна. Обновите каталог.</p>';
   return referral.enabled
-    ? `<div class="referral-summary"><span>Бонус за приглашение</span><strong>${moneyMarkup(referral.bonus)}</strong></div><p>Минимальная выплата: ${moneyMarkup(referral.minPayout)}.</p><p>Условия участия уточняйте у магазина.</p>`
+    ? `<div class="referral-summary"><span>Награда за заказ друга</span><strong>${moneyMarkup(referral.bonus)} + ${new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(referral.percent??5)}%</strong><span>Фиксированная сумма и процент от суммы заказа складываются.</span></div><p>Минимальная выплата: ${moneyMarkup(referral.minPayout)}.</p><p>Условия участия уточняйте у магазина.</p>`
     : '<div class="empty-inline">Реферальная программа пока не действует.</div>';
 }
 function openInfo(type) {

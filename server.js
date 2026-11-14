@@ -24,6 +24,7 @@ const num = (v,name,max=100000000) => {
   return v;
 };
 const bool = v => { if(typeof v!=='boolean') fail(400,'Ожидается логическое значение.'); return Number(v); };
+const referralPercent = value => {if(typeof value!=='number'||!Number.isFinite(value)||value<0||value>100||Math.abs(value*100-Math.round(value*100))>0.000001)fail(400,'Процент должен быть от 0 до 100, не более двух знаков после запятой.');return value;};
 const passwordValue = v => { if(typeof v!=='string'||!v.length||v.length>1024) fail(400,'Проверьте поле «Пароль».'); return v; };
 const choice = (v,options) => { if(!options.includes(v)) fail(400,'Недопустимое значение.'); return v; };
 const safeLink = v => {
@@ -264,7 +265,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const r=db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run(choice(b.type,['income','expense']),str(b.category,'Категория',80),str(b.description,'Описание'),amount,new Date().toISOString());return json(res,201,{id:Number(r.lastInsertRowid)});
         }
         if(path==='/api/settings/shop'&&method==='PATCH') {const b=await body(req);b.address??=getSettings('shop').address;const shop={};for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');const bot=str(b.botUsername??getSettings('shop').botUsername??'gas_shop_vape_bot','Имя бота',32,false).replace(/^@/,'');if(bot&&!/^[A-Za-z0-9_]{5,32}$/.test(bot))fail(400,'Проверьте имя Telegram-бота.');shop.botUsername=bot;saveSettings('shop',shop);return json(res,200,{ok:true});}
-        if(path==='/api/settings/referral'&&method==='PATCH') {const b=await body(req);saveSettings('referral',{enabled:Boolean(bool(b.enabled)),bonus:num(b.bonus,'Бонус',100000),minPayout:num(b.minPayout,'Минимальная выплата',1000000)});return json(res,200,{ok:true});}
+        if(path==='/api/settings/referral'&&method==='PATCH') {const b=await body(req);saveSettings('referral',{enabled:Boolean(bool(b.enabled)),bonus:num(b.bonus,'Бонус',100000),percent:referralPercent(b.percent===undefined?(getSettings('referral').percent??5):b.percent),minPayout:num(b.minPayout,'Минимальная выплата',1000000)});return json(res,200,{ok:true});}
         if(path==='/api/auth/password'&&method==='POST') {
           const b=await body(req);const current=passwordValue(b.current);const next=passwordValue(b.password);
           if(next.length<12) fail(400,'Новый пароль должен содержать не менее 12 символов.');
