@@ -746,7 +746,6 @@ function openCheckout() {
     ${pending ? '<p>Проверим, сохранился ли предыдущий заказ. Повторного списания не будет.</p>' : ''}
     <div class="checkout-items">${items.map(item => `<div class="checkout-item"><span>${escape(item.name)}<small>${item.quantity} шт. × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity * item.price)}</strong></div>`).join('')}</div>
     <div class="cart-total"><span>Итого</span><strong>${moneyMarkup(total)}</strong></div>
-    <p class="checkout-note">Менеджер свяжется с вами в Telegram для согласования получения.</p>
     <p class="checkout-error" role="alert" hidden></p>
     <button class="primary-button" data-confirm-checkout>${pending ? 'Проверить заказ' : 'Подтвердить'}</button>
     <button class="primary-button secondary-button" data-cancel-checkout>Отмена</button>`, 'checkout');
