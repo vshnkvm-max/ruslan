@@ -37,6 +37,7 @@ try {
   const saved = page.waitForResponse(response => response.url().endsWith('/api/storefront/orders'));
   await page.locator('[data-confirm-checkout]').click(); await saved;
   await page.getByRole('heading', { name: 'Заказ #1 принят', exact: true }).waitFor();
+  assert.doesNotMatch(await page.locator('dialog').innerText(), /Менеджер свяжется/);
   assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 1);
   await page.locator('dialog [data-continue]').click();
@@ -56,7 +57,7 @@ try {
   await admin.goto(base + '/#orders'); await admin.getByLabel('Логин', { exact: true }).fill('admin'); await admin.getByLabel('Пароль', { exact: true }).fill('checkout-test-password'); await admin.locator('#login-form [type=submit]').click();
   await admin.locator('[data-action=order-detail][data-id="2"]').first().click(); await admin.locator('#order-form').waitFor();
   assert.match(await admin.locator('.modal').innerText(), /Тестовый Покупатель/);
-  assert.match(await admin.locator('.modal').innerText(), /бот не подключён/);
+  assert.match(await admin.locator('.modal').innerText(), /Не задан ORDER_BOT_TOKEN/);
   await admin.locator('#order-status').selectOption('cancelled'); await admin.locator('#order-form [type=submit]').click();
   await admin.locator('.modal').waitFor({ state: 'detached' }); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
   assert.deepEqual(errors, []);

@@ -780,7 +780,7 @@ async function confirmCheckout() {
       saveCart(); updateBadge(); renderCart();
     }
     checkoutDraft = undefined;
-    if ($('#details').open && modalVersion === dialogVersion) show(`<h2>Заказ #${result.order.id} принят</h2><p>Менеджер свяжется с вами в Telegram.</p><div class="cart-total"><span>Итого</span><strong>${moneyMarkup(result.order.total)}</strong></div><button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
+    if ($('#details').open && modalVersion === dialogVersion) show(`<h2>Заказ #${result.order.id} принят</h2><div class="cart-total"><span>Итого</span><strong>${moneyMarkup(result.order.total)}</strong></div><button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
     else notify(`Заказ #${result.order.id} принят`);
     void load();
   } catch (error) {

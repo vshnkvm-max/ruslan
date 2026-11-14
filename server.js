@@ -73,7 +73,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const categories=()=>[...new Set([...getSettings('categories'),...db.prepare("SELECT DISTINCT category FROM products WHERE deleted=0 AND category!=''").all().map(p=>p.category)])].filter(Boolean);
   const bootstrap=()=>({
     products:products(),...loadOrderHistory(db),orderDelivery:db.prepare('SELECT order_id,delivered_at,last_error FROM order_notifications').all(),categories:categories(),
-    orderNotifications:{configured:notifier.configured,registrationEnabled:notifier.registrationEnabled,recipientCount:notifier.recipientCount,pending:db.prepare('SELECT COUNT(*) AS count FROM order_notifications WHERE delivered_at IS NULL').get().count},
+    orderNotifications:{error:notifier.error,configured:notifier.configured,registrationEnabled:notifier.registrationEnabled,recipientCount:notifier.recipientCount,pending:db.prepare('SELECT COUNT(*) AS count FROM order_notifications WHERE delivered_at IS NULL').get().count},
     reviews:db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all(),
     sales:db.prepare('SELECT * FROM sales WHERE deleted=0 ORDER BY id DESC').all().map(row=>({...row,items:JSON.parse(row.items)})),
     purchases:db.prepare('SELECT * FROM purchases WHERE deleted=0 ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
