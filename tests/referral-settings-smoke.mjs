@@ -8,6 +8,7 @@ const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
 const directory=mkdtempSync(join(tmpdir(),'shop-referral-terms-'));
 const {server,db}=createApp({dbPath:join(directory,'shop.db')});
 db.prepare('INSERT INTO admins(username,password) VALUES (?,?)').run('admin',hashPassword('referral-test-password'));
+db.prepare("UPDATE settings SET value=json_set(value,'$.minPayout',500) WHERE key='referral'").run();
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
 const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage']});
 try{
@@ -15,11 +16,10 @@ try{
  await page.goto(base);await page.getByLabel('Логин',{exact:true}).fill('admin');await page.getByLabel('Пароль',{exact:true}).fill('referral-test-password');await page.locator('#login-form [type=submit]').click();await page.locator('.products-table').waitFor();
  await page.locator('nav a[href="#referrals"]').click();
  assert.equal(await page.locator('#referral-form [name=bonus]').inputValue(),'100');assert.equal(await page.locator('#referral-form [name=percent]').inputValue(),'5');
- assert.match(await page.locator('#referral-reward-example').textContent(),/награда:\s*150\s*₽/);
- await page.getByLabel('Сумма заказа для примера, ₽',{exact:true}).fill('999');assert.match(await page.locator('#referral-reward-example').textContent(),/149,95/);
  await page.getByLabel('Фиксированная награда с заказа, ₽',{exact:true}).fill('200');await page.getByLabel('Процент от суммы заказа, %',{exact:true}).fill('7.5');
- assert.match(await page.locator('#referral-reward-example').textContent(),/274,93/,'percentage is added to the fixed reward with kopeck rounding');
- await page.locator('#referral-form [name=enabled]').check();await page.locator('#referral-form [name=minPayout]').fill('500');
+ assert.equal(await page.locator('#referral-example-order,#referral-reward-example,#referral-form [name=minPayout]').count(),0);
+ for(const text of ['Автоматическое начисление и выплаты пока не подключены.','Настройте программу и подключите регистрацию по реферальным кодам.'])assert.equal(await page.getByText(text,{exact:true}).count(),0);
+ await page.locator('#referral-form [name=enabled]').check();
  await page.locator('#referral-form [type=submit]').click();await page.getByText('Включена',{exact:true}).waitFor();
  assert.deepEqual(JSON.parse(db.prepare('SELECT value FROM settings WHERE key=?').get('referral').value),{enabled:true,bonus:200,percent:7.5,minPayout:500});
  await page.reload();await page.locator('#referral-form').waitFor();assert.equal(await page.locator('#referral-form [name=bonus]').inputValue(),'200');assert.equal(await page.locator('#referral-form [name=percent]').inputValue(),'7.5');
@@ -28,10 +28,10 @@ try{
  const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await mobile.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:'window.Telegram={WebApp:{ready(){},expand(){}}};'}));
  const mini=await mobile.newPage();mini.on('pageerror',e=>errors.push(e.message));await mini.goto(base+'/miniapp');await mini.waitForFunction(()=>document.querySelector('#count')?.textContent.includes('0'));await mini.locator('[data-info=referral]').tap();await mini.locator('.referral-summary').waitFor();
  assert.match(await mini.locator('.referral-summary strong').innerText(),/200\s*₽\s*\+\s*7,5%/);assert.match(await mini.locator('.referral-summary').innerText(),/складываются/);
- assert.match(await mini.locator('dialog').innerText(),/500/);await mini.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));await mini.screenshot({path:'/tmp/shop-referral-miniapp.png'});
+ assert.doesNotMatch(await mini.locator('dialog').innerText(),/Минимальная выплата/);await mini.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));await mini.screenshot({path:'/tmp/shop-referral-miniapp.png'});
  await page.locator('#referral-form [name=bonus]').fill('0');await page.locator('#referral-form [name=percent]').fill('0');const savedZero=page.waitForResponse(response=>response.url().endsWith('/api/settings/referral')&&response.request().method()==='PATCH');await page.locator('#referral-form [type=submit]').click();await savedZero;
  await page.reload();await page.locator('#referral-form').waitFor();assert.equal(await page.locator('#referral-form [name=bonus]').inputValue(),'0');assert.equal(await page.locator('#referral-form [name=percent]').inputValue(),'0');
  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM transactions').get().n,0,'editing conditions must not create payouts');assert.deepEqual(errors,[]);
- console.log('PASS: default 100 RUB + 5%, editable combined rates, kopeck example, persistence, zero values, Mini App terms and unchanged payouts');
+ console.log('PASS: default 100 RUB + 5%, editable combined rates, simplified settings, legacy payout threshold preserved, persistence, zero values, Mini App terms and unchanged payouts');
  await mobile.close();await context.close();
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));rmSync(directory,{recursive:true,force:true});}

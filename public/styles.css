@@ -15,7 +15,7 @@
 
 .brand-mark>.icon{width:22px;height:22px}.loading-symbol{width:43px;height:43px;border-radius:14px}
 
-.login-form-wrap h1{margin-bottom:28px}.referral-settings{max-width:650px;margin-bottom:25px}.referral-note{margin:22px 0 0}.page-heading h1{margin-bottom:0}.heading-actions{padding-top:0}.sidebar>.store-card{margin-top:0}
+.login-form-wrap h1{margin-bottom:28px}.referral-settings{max-width:650px;margin-bottom:25px}.page-heading h1{margin-bottom:0}.heading-actions{padding-top:0}.sidebar>.store-card{margin-top:0}
 
 /* Inventory workspace — blue visual theme. */
 :root{--bg:#f1f8fe;--surface:#fff;--text:#17365d;--muted:#8195ae;--line:#edf3fa;--accent:#087fff;--green:#22a77b;--sidebar:228px;font-family:Arial,"Segoe UI",sans-serif;font-size:13px}
@@ -113,5 +113,3 @@ h1,h2,h3{letter-spacing:-.025em}button:focus-visible,a:focus-visible{outline-col
 .category-manager strong { min-width: 0; }
 .operations-table td { white-space: normal; }
 .operations-table td:first-child { white-space: nowrap; }
-
-.referral-example{margin:0 0 8px;padding:12px;border:1px solid #dcecff;border-radius:8px;background:#edf6ff;color:#47719e;line-height:1.5}

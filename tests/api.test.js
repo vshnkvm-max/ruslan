@@ -388,6 +388,7 @@ test('referral rewards combine an editable fixed amount and percentage without c
  }
  assert.equal((await request('/settings/referral',{method:'PATCH',body:{enabled:false,bonus:250,minPayout:800}})).res.status,200);
  assert.deepEqual((await request('/bootstrap')).data.referral,{enabled:false,bonus:250,percent:7.25,minPayout:800});
+ assert.equal((await request('/settings/referral',{method:'PATCH',body:{enabled:true,bonus:150,percent:8}})).res.status,200);assert.deepEqual((await request('/bootstrap')).data.referral,{enabled:true,bonus:150,percent:8,minPayout:800});
  const zero={enabled:true,bonus:0,percent:0,minPayout:0};assert.equal((await request('/settings/referral',{method:'PATCH',body:zero})).res.status,200);assert.deepEqual((await request('/bootstrap')).data.referral,zero);
 });
 test('password change invalidates other sessions and logout revokes current session',async()=>{
