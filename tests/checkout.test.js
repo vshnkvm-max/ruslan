@@ -92,7 +92,7 @@ test('outbox survives delivery failure and resumes from each confirmed message w
   let notification = app.db.prepare('SELECT * FROM order_notifications WHERE order_id=?').get(first);
   assert.equal(notification.sent_count, 1); assert.equal(notification.delivered_at, null); assert.equal(notification.attempts, 1); assert.ok(notification.next_attempt_at > Date.now());
   assert.doesNotMatch(notification.last_error, /token|network/);
-  app.db.prepare('UPDATE order_notifications SET next_attempt_at=0 WHERE order_id=?').run(first);
+  app.db.prepare('UPDATE order_notification_deliveries SET next_attempt_at=0 WHERE order_id=?').run(first);
   const restarted = createOrderNotifier(app.db, { token: 'separate:test-token', chatId: '1234', fetchImpl: async (url, options) => { sent.push(JSON.parse(options.body).text); return { ok: true, json: async () => ({ ok: true }) }; } });
   await restarted.flush(); restarted.stop();
   notification = app.db.prepare('SELECT * FROM order_notifications WHERE order_id=?').get(first);
