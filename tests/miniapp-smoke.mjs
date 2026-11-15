@@ -100,10 +100,10 @@ try {
   assert.ok(await page.locator('#banner').isHidden());
   assert.equal(await page.locator('#banner').textContent(), '');
   assert.equal(await page.getByText('Магазин в Telegram', { exact: true }).count(), 0);
-  assert.equal(await page.locator('#profile-button svg').count(), 1);
+  assert.equal(await page.locator('#profile-button .header-profile-avatar svg').count(), 1);
   assert.equal(await page.locator('#shop-info').count(), 0);
   assert.equal(await page.locator('.currency').count(), 0);
-  assert.equal(await page.locator('#shop-name').textContent(), 'GAS SHOP');
+  assert.equal(await page.locator('#profile-button .header-profile-label').textContent(), 'Мой профиль');
   assert.equal(await page.locator('.category-bar').evaluate(element => getComputedStyle(element).backdropFilter), 'none');
   await page.waitForFunction(() => [...document.querySelectorAll('.story img')].every(image => image.complete && image.naturalWidth > 0));
   for (const asset of ['important', 'referral', 'reviews', 'background']) {

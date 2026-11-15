@@ -28,10 +28,21 @@ test('review pagination stays scoped to the Telegram account and includes its mo
   assert.deepEqual(other.stats,{orders_count:1,total:50000});assert.deepEqual(other.reviews.map(r=>r.id),[24]);
   for(const reviews_before of [0,-1,'4',1.5])assert.equal((await profile({init_data:signedProfileUser(),reviews_before})).status,400);
 });
+test('balance is read-only, defaults to zero and is scoped to the signed buyer',async()=>{
+  app.db.prepare('UPDATE customers SET balance=1540 WHERE telegram_id=101').run();
+  app.db.prepare('UPDATE customers SET balance=99 WHERE telegram_id=202').run();
+  async function balance(init_data,extra={}){const response=await fetch(base+'/api/storefront/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({init_data,...extra})});return {status:response.status,data:await response.json()};}
+  assert.deepEqual(await balance(signedProfileUser(),{telegram_id:202,customer_id:2,balance:999999}),{status:200,data:{balance:1540}});
+  assert.deepEqual((await balance(signedProfileUser(202))).data,{balance:99});
+  assert.deepEqual((await balance(signedProfileUser(303))).data,{balance:0});
+  assert.equal((await balance('')).status,401);
+  assert.equal((await profile({init_data:signedProfileUser()})).data.balance,1540);
+  assert.equal(app.db.prepare('SELECT balance FROM customers WHERE telegram_id=101').get().balance,1540);
+});
 test('new or removed customers get an empty profile without creating customer records',async()=>{
   const count=app.db.prepare('SELECT COUNT(*) AS n FROM customers').get().n;
   const fresh=(await profile({init_data:signedProfileUser(303)})).data;
-  assert.deepEqual(fresh,{stats:{orders_count:0,total:0},orders:[],reviews:[],reviews_count:0,reviews_next:null});
+  assert.deepEqual(fresh,{balance:0,stats:{orders_count:0,total:0},orders:[],reviews:[],reviews_count:0,reviews_next:null});
   assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM customers').get().n,count);
   app.db.prepare('UPDATE customers SET deleted=1 WHERE telegram_id=202').run();
   assert.deepEqual((await profile({init_data:signedProfileUser(202)})).data,fresh);

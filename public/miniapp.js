@@ -641,6 +641,37 @@ function openInfo(type) {
   }
 }
 let profileState = { key: '', status: 'idle' }, profileRequestVersion = 0;
+let headerBalanceState = { key:null, value:null, loading:false }, balanceRequestVersion = 0;
+function renderHeaderBalance() {
+  const value = headerBalanceState.value, known = Number.isFinite(value);
+  $('#header-balance-value').textContent = known ? new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(value) : '—';
+  $('#header-balance').setAttribute('aria-label', known ? `Баланс: ${money(value)}` : headerBalanceState.loading ? 'Баланс загружается' : 'Баланс недоступен');
+}
+function applyHeaderBalance(key, value) {
+  if (key !== (telegram?.initData || '') || !Number.isFinite(value)) return;
+  balanceRequestVersion++;
+  headerBalanceState = { key, value, loading:false };
+  renderHeaderBalance();
+}
+async function loadHeaderBalance(force = false) {
+  const key = telegram?.initData || '';
+  if (headerBalanceState.key !== key) { headerBalanceState = { key, value:null, loading:false }; renderHeaderBalance(); }
+  if (!key || headerBalanceState.loading || (!force && headerBalanceState.value !== null)) return;
+  headerBalanceState.loading = true; renderHeaderBalance();
+  const version = ++balanceRequestVersion, controller = new AbortController(), timeout = setTimeout(() => controller.abort(),15000);
+  try {
+    const response = await fetch('/api/storefront/balance',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({init_data:key})});
+    if (!response.ok) throw new Error('balance');
+    const result = await response.json();
+    if (version !== balanceRequestVersion || key !== (telegram?.initData || '')) return;
+    applyHeaderBalance(key,result.balance);
+  } catch {
+    if (version === balanceRequestVersion && key === (telegram?.initData || '')) headerBalanceState.value = null;
+  } finally {
+    clearTimeout(timeout);
+    if (version === balanceRequestVersion) { headerBalanceState.loading = false; renderHeaderBalance(); }
+  }
+}
 function currentProfile() {
   const key = telegram?.initData || '';
   if (profileState.key !== key) profileState = { key, status: 'idle' };
@@ -682,6 +713,7 @@ async function loadProfile(more = false) {
     if (version !== profileRequestVersion || currentProfile() !== state) return;
     const reviews = more ? [...state.reviews, ...result.reviews] : result.reviews;
     Object.assign(state, result, { reviews, status:'ready', loadedAt:Date.now() });
+    applyHeaderBalance(state.key, result.balance);
   } catch (error) {
     if (version !== profileRequestVersion || currentProfile() !== state) return;
     state.status = more ? 'ready' : 'error';
@@ -779,7 +811,7 @@ async function toggleRecentOrders(button) {
 function userPhotoUrl(){try{const value=typeof user?.photo_url==='string'?user.photo_url:'';const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:'';}catch{return '';}}
 function avatarPhoto(){const src=userPhotoUrl();return src?`<img class="client-avatar-photo" src="${escape(src)}" alt="Аватар клиента" referrerpolicy="no-referrer" decoding="async">`:'';}
 function bindAvatarFallbacks(root=document){root.querySelectorAll('.client-avatar-photo').forEach(image=>image.addEventListener('error',()=>image.remove(),{once:true}));}
-function updateClientAvatar(){const button=$('#profile-button');button.querySelector('.client-avatar-photo')?.remove();button.insertAdjacentHTML('beforeend',avatarPhoto());bindAvatarFallbacks(button);}
+function updateClientAvatar(){const avatar=$('#profile-button .header-profile-avatar');avatar.querySelector('.client-avatar-photo')?.remove();avatar.insertAdjacentHTML('beforeend',avatarPhoto());bindAvatarFallbacks(avatar);}
 function renderProfile(tab = 'overview') {
   const text = key => typeof user?.[key] === 'string' ? user[key].slice(0, 80) : '';
   const name = [text('first_name'), text('last_name')].filter(Boolean).join(' ') || text('username') || 'Гость';
@@ -1007,6 +1039,7 @@ $('#telegram-sdk')?.addEventListener('load', () => {
   if($('#details').open&&['product','checkout'].includes($('#details').dataset.view))holdTelegramSwipes();
   user = telegram?.initDataUnsafe?.user;
   updateClientAvatar();
+  void loadHeaderBalance();
   if(data)openStartProduct();
   const nextKey = cartKeyFor(user);
   if (nextKey !== cartKey) {
@@ -1022,9 +1055,11 @@ $('#telegram-sdk')?.addEventListener('load', () => {
   refreshProfileView();
 });
 updateClientAvatar();
+void loadHeaderBalance();
 load();
 configureTelegram();
 signalReadyWithoutSdk();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void loadHeaderBalance(true);});
 
 document.addEventListener('click',event=>{const button=event.target.closest('button');if(!event.isTrusted||!button||button.disabled)return;try{if(telegram?.HapticFeedback?.impactOccurred)telegram.HapticFeedback.impactOccurred('light');else if(telegram||window.TelegramWebviewProxy)postTelegramEvent('web_app_trigger_haptic_feedback',{type:'impact',impact_style:'light'});else navigator.vibrate?.(8);}catch{}});
 document.addEventListener('touchmove',event=>{if(event.touches.length>1&&event.cancelable)event.preventDefault();},{passive:false});

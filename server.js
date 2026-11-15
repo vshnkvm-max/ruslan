@@ -12,7 +12,7 @@ import { recordProductView } from './lib/product-views.js';
 import { createStorefrontOrders } from './lib/storefront-orders.js';
 import { createOrderNotifier } from './lib/order-notifications.js';
 import { verifiedTelegramUser } from './lib/telegram-auth.js';
-import { loadStorefrontProfile } from './lib/storefront-profile.js';
+import { loadStorefrontProfile, loadStorefrontBalance } from './lib/storefront-profile.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const sessionDuration = 12 * 60 * 60 * 1000;
@@ -143,10 +143,11 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
           return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.visible=1 AND p.stock>0 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
-        if(path==='/api/storefront/profile'&&method==='POST') {
+        if(['/api/storefront/profile','/api/storefront/balance'].includes(path)&&method==='POST') {
           if(!botToken)fail(503,'Профиль временно недоступен.');
           const b=await body(req),user=verifiedTelegramUser(b.init_data,botToken);
           if(!user)fail(401,'Откройте магазин заново через Telegram, чтобы загрузить профиль.');
+          if(path==='/api/storefront/balance')return json(res,200,{balance:loadStorefrontBalance(db,user.id)});
           if(b.reviews_before!==undefined&&(!Number.isSafeInteger(b.reviews_before)||b.reviews_before<=0))fail(400,'Неверная страница отзывов.');
           return json(res,200,loadStorefrontProfile(db,user.id,b.reviews_before??null));
         }

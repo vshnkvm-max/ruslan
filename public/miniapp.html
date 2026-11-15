@@ -15,9 +15,11 @@
   <div class="miniapp">
     <header class="topbar">
       <button class="profile-button" id="profile-button" aria-label="Открыть профиль" aria-haspopup="dialog">
-        <svg class="shop-mark" viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="21" r="19"/><text x="21" y="25" text-anchor="middle">GAS</text></svg>
+        <span class="header-profile-avatar"><svg viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="14" r="7"/><path d="M7 42V32a14 14 0 0 1 28 0v10Z"/></svg></span>
+        <span class="header-profile-label">Мой профиль</span>
+        <svg class="profile-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
       </button>
-      <strong id="shop-name">GAS SHOP</strong>
+      <div class="header-balance" id="header-balance" role="group" aria-label="Баланс загружается"><strong id="header-balance-value" aria-live="polite">—</strong><span class="header-currency" aria-hidden="true">₽</span></div>
       <button id="fullscreen-button" class="fullscreen-button" aria-label="На весь экран" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg></button>
     </header>
 

@@ -22,7 +22,9 @@ button, a { -webkit-user-select: none; user-select: none; }
 svg { display: block; }
 .miniapp { max-width: var(--app-width); min-height: 100dvh; margin: auto; padding-top: max(6px, env(safe-area-inset-top)); background: var(--page); }
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 54px; margin: 0 10px 22px; padding: 5px 8px; background: #fff; border-radius: 32px; }
-#shop-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; }
+.header-balance { display: flex; align-items: center; justify-content: flex-end; gap: 7px; min-width: 0; margin-left: auto; color: #111; }
+#header-balance-value { font-size: clamp(15px, 4.6vw, 23px); font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.header-currency { display: grid; place-items: center; flex: 0 0 34px; height: 34px; border-radius: 50%; background: var(--red); color: #fff; font-size: 25px; font-weight: 750; }
 .bottom-tab svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 main { padding: 0 20px 110px; }
 .stories { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin: 0 14px 10px; }
@@ -101,10 +103,12 @@ button:focus:not(:focus-visible), a:focus:not(:focus-visible), input:focus:not(:
   .product { border-radius: 20px; }
   .price { font-size: 14px; }
 }
-.profile-button { flex: 0 0 42px; height: 42px; display: grid; place-items: center; border: 0; border-radius: 50%; color: var(--red); background: #151012; padding: 0; border: 1px solid var(--red); }
+.profile-button { flex: 0 1 auto; display: flex; align-items: center; gap: 8px; min-width: 0; height: 42px; padding: 3px 11px 3px 3px; border: 0; border-radius: 26px; color: #fff; background: var(--red); }
 .profile-button svg { width: 100%; height: 100%; }
-.shop-mark circle { fill: none; stroke: #fff; stroke-width: 1; }
-.shop-mark text { fill: #fff; font-size: 12px; font-weight: 900; letter-spacing: -.5px; }
+.header-profile-avatar { position: relative; display: block; overflow: hidden; flex: 0 0 36px; height: 36px; border-radius: 50%; background: #b7b9b8; color: #181818; }
+.header-profile-avatar > svg { fill: currentColor; }
+.header-profile-label { font-size: clamp(11px, 3.2vw, 14px); font-weight: 700; white-space: nowrap; }
+.profile-button .profile-chevron { flex: 0 0 13px; width: 13px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .story img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; transition: transform .4s cubic-bezier(.2,.8,.2,1); }
 .product-open { display: flex; flex-direction: column; width: 100%; height: 100%; padding: 10px 10px 20px; border: 0; background: transparent; color: inherit; text-align: left; border-radius: inherit; }
 .primary-button svg, .banner-link svg, .profile-link svg, .quantity-control svg, .remove-item svg, .close svg, .cart-flight svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -215,7 +219,7 @@ dialog[data-closing]::backdrop { animation: backdrop-out .17s ease both; }
 }
 @media (hover: hover) {
   .story:hover img { transform: scale(1.05); }
-  .profile-button:hover { background: #351015; }
+  .profile-button:hover { background: #dc001a; }
   .product-open:hover .photo { filter: brightness(.98); }
 }
 @media (prefers-reduced-motion: reduce) {
