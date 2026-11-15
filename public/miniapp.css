@@ -124,7 +124,7 @@ button:disabled { cursor: default; }
 .primary-button:disabled { color: #a4929b; background: #f1e9ed; box-shadow: none; }
 .primary-button svg { flex-shrink: 0; }
 .secondary-button { background: #fff7fa; color: #6e4d5b; box-shadow: none; }
-dialog[data-view="checkout"] { position: fixed; inset: auto 0 0; width: 100%; max-width: var(--app-width); max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); margin: 0 auto; border: 0; border-radius: 24px 24px 0 0; padding-bottom: max(28px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+dialog[data-view="checkout"] { position: fixed; inset: auto 0 0; width: 100%; max-width: var(--app-width); max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); margin: 0 auto; border: 0; border-radius: 24px 24px 0 0; padding-bottom: max(28px, env(safe-area-inset-bottom)); background: #fff9fb; overscroll-behavior: contain; }
 dialog[data-view="checkout"] > .close { display: none; }
 .checkout-items { margin-top: 24px; }
 .checkout-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #6e4d5b20; }
@@ -133,6 +133,15 @@ dialog[data-view="checkout"] > .close { display: none; }
 .checkout-item strong { white-space: nowrap; }
 .checkout-note { font-size: 13px; line-height: 1.5; color: #76636c; }
 .checkout-error { color: #b00025; font-size: 13px; line-height: 1.5; }
+.checkout-subtotal { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 16px; font-size: 13px; }
+.checkout-subtotal > strong { white-space: nowrap; }
+.checkout-rubles { margin-top: 18px; padding: 14px; border-radius: 16px; background: #f8edf2; }
+.checkout-rubles .primary-button { margin-top: 0; }
+.checkout-rubles .checkout-note { margin: 10px 0 0; font-size: 12px; }
+#checkout-rubles-panel { padding-top: 16px; }
+#checkout-rubles-panel label { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+#checkout-rubles-output { color: var(--red); font-weight: 700; white-space: nowrap; }
+#checkout-rubles { display: block; width: 100%; margin: 12px 0 0; min-height: 30px; accent-color: var(--red); touch-action: pan-x; }
 .detail-stock { color: var(--muted); }
 .profile-card { padding: 20px; border: 1px solid #fff; border-radius: 20px; background: #ffffffed; }
 .profile-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }

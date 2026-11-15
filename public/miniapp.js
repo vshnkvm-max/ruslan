@@ -652,6 +652,7 @@ function applyHeaderBalance(key, value) {
   balanceRequestVersion++;
   headerBalanceState = { key, value, loading:false };
   renderHeaderBalance();
+  refreshCheckoutPayment();
 }
 async function loadHeaderBalance(force = false) {
   const key = telegram?.initData || '';
@@ -851,7 +852,7 @@ function renderCart() {
     ${items.length || pendingCheckout() ? '<button class="primary-button" data-checkout>'+ (pendingCheckout() ? 'Проверить заказ' : 'Оформить заказ') + icons.bag + '</button>' : ''}
     <button class="primary-button secondary-button" data-continue>${items.length ? 'Продолжить покупки' : 'Перейти в каталог'}${icons.arrow}</button>`;
 }
-let checkoutDraft, checkoutSubmitting = false;
+let checkoutDraft, checkoutSubmitting = false, checkoutSpendPanelOpen = false, checkoutLocked = false;
 const checkoutPending = new Map();
 function pendingCheckout() {
   try {
@@ -859,36 +860,77 @@ function pendingCheckout() {
     return pending && typeof pending.request_key === 'string' && Array.isArray(pending.items) && pending.items.length ? pending : null;
   } catch { return checkoutPending.get(cartKey) || null; }
 }
+function checkoutTotal() { return checkoutDraft?.items.reduce((sum,item)=>sum+item.price*item.quantity,0) || 0; }
+function checkoutSpendLimit() {
+  const balance = headerBalanceState.key === (telegram?.initData || '') && Number.isFinite(headerBalanceState.value) ? headerBalanceState.value : 0;
+  return Math.max(0,Math.min(Math.floor(balance),Math.floor(checkoutTotal()/2)));
+}
+function refreshCheckoutPayment() {
+  if (!checkoutDraft || !$('#details').open || $('#details').dataset.view !== 'checkout' || !$('#checkout-rubles')) return;
+  const max = checkoutSpendLimit();
+  if (!checkoutLocked) checkoutDraft.balance_spend = Math.min(max,Math.max(0,Math.floor(Number(checkoutDraft.balance_spend)||0)));
+  const spent = Number(checkoutDraft.balance_spend)||0, toggle = $('[data-toggle-rubles]'), slider = $('#checkout-rubles');
+  toggle.hidden = checkoutLocked;
+  toggle.disabled = checkoutSubmitting || max === 0;
+  toggle.textContent = checkoutSpendPanelOpen ? 'Не списывать' : 'Списать рубли';
+  toggle.setAttribute('aria-expanded',String(checkoutSpendPanelOpen && !checkoutLocked));
+  $('#checkout-rubles-panel').hidden = !checkoutSpendPanelOpen || checkoutLocked;
+  slider.max = String(checkoutLocked ? Math.max(max,spent) : max); slider.value = String(spent); slider.disabled = checkoutSubmitting || checkoutLocked || max === 0;
+  slider.setAttribute('aria-valuetext',money(spent));
+  $('#checkout-rubles-output').textContent = money(spent);
+  $('#checkout-rubles-limit').textContent = checkoutLocked ? `Выбрано к списанию: ${money(spent)}.` : Number.isFinite(headerBalanceState.value) ? `На балансе ${money(headerBalanceState.value)}. Можно списать до ${money(max)} — не более 50% заказа.` : 'Баланс пока недоступен. Можно оформить заказ без списания рублей.';
+  $('#checkout-wallet-row').hidden = spent === 0;
+  $('#checkout-wallet-amount').textContent = '−' + money(spent);
+  $('#checkout-payable').textContent = money(checkoutTotal()-spent);
+}
+function toggleCheckoutRubles() {
+  if (checkoutSubmitting || checkoutLocked || !checkoutDraft || checkoutSpendLimit() === 0) return;
+  checkoutSpendPanelOpen = !checkoutSpendPanelOpen;
+  checkoutDraft.balance_spend = checkoutSpendPanelOpen ? checkoutSpendLimit() : 0;
+  refreshCheckoutPayment();
+}
 function openCheckout() {
   if (checkoutSubmitting) return;
   const pending = pendingCheckout();
   const items = pending?.items || cartItems().map(({ product, quantity }) => ({ product_id: product.id, name: product.name, price: product.price, quantity }));
   if (!items.length) return;
-  checkoutDraft = pending || { request_key: crypto.randomUUID(), items };
+  checkoutDraft = pending || { request_key: crypto.randomUUID(), items, balance_spend:0 };
+  checkoutLocked = Boolean(pending); checkoutSpendPanelOpen = false;
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   show(`<h2>Подтверждение заказа</h2>
     ${pending ? '<p>Проверим, сохранился ли предыдущий заказ. Повторного списания не будет.</p>' : ''}
     <div class="checkout-items">${items.map(item => `<div class="checkout-item"><span>${escape(item.name)}<small>${item.quantity} шт. × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity * item.price)}</strong></div>`).join('')}</div>
-    <div class="cart-total"><span>Итого</span><strong>${moneyMarkup(total)}</strong></div>
+    <div class="checkout-subtotal"><span>Товары</span><strong>${moneyMarkup(total)}</strong></div>
+    <div class="checkout-rubles"><button class="primary-button secondary-button" data-toggle-rubles aria-expanded="false" aria-controls="checkout-rubles-panel">Списать рубли</button>
+      <p id="checkout-rubles-limit" class="checkout-note"></p>
+      <div id="checkout-rubles-panel" hidden><label for="checkout-rubles">Списать с баланса <output id="checkout-rubles-output" for="checkout-rubles">0 ₽</output></label><input id="checkout-rubles" type="range" min="0" max="0" step="1" value="0"></div>
+    </div>
+    <div class="checkout-subtotal" id="checkout-wallet-row" hidden><span>Оплата рублями</span><strong id="checkout-wallet-amount"></strong></div>
+    <div class="cart-total"><span>К оплате</span><strong id="checkout-payable">${moneyMarkup(total)}</strong></div>
     <p class="checkout-error" role="alert" hidden></p>
     <button class="primary-button" data-confirm-checkout>${pending ? 'Проверить заказ' : 'Подтвердить'}</button>
     <button class="primary-button secondary-button" data-cancel-checkout>Отмена</button>`, 'checkout');
+  refreshCheckoutPayment();
+  void loadHeaderBalance(true);
 }
 async function confirmCheckout() {
   if (checkoutSubmitting || !checkoutDraft) return;
   const errorElement = $('.checkout-error');
   if (!telegram?.initData) { errorElement.hidden = false; errorElement.textContent = 'Откройте магазин через Telegram, чтобы оформить заказ.'; return; }
-  const draft = checkoutDraft, ownerKey = cartKey, dialogVersion = modalVersion;
+  const draft = checkoutDraft, ownerKey = cartKey, dialogVersion = modalVersion, initData = telegram.initData;
   const confirm = $('[data-confirm-checkout]'), cancel = $('[data-cancel-checkout]');
   checkoutSubmitting = true; confirm.disabled = true; cancel.disabled = true; confirm.textContent = 'Подтверждаем…'; errorElement.hidden = true;
+  checkoutLocked = true; refreshCheckoutPayment();
   checkoutPending.set(ownerKey, draft);
   try { localStorage.setItem(ownerKey + ':checkout', JSON.stringify(draft)); } catch { /* Retain the in-memory request key on retry. */ }
   const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const response = await fetch('/api/storefront/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ ...draft, init_data: telegram.initData }) });
+    const response = await fetch('/api/storefront/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ ...draft, init_data: initData }) });
     const result = await response.json();
     if (!response.ok) {
-      if (response.status >= 400 && response.status < 500) {
+      if ([400,409,429].includes(response.status)) {
+        checkoutLocked = false;
+        void loadHeaderBalance(true);
         checkoutPending.delete(ownerKey);
         try { localStorage.removeItem(ownerKey + ':checkout'); } catch { /* Storage can be unavailable. */ }
       }
@@ -905,8 +947,9 @@ async function confirmCheckout() {
     }
     checkoutDraft = undefined;
     profileState = { key:'', status:'idle' };
-    if ($('#details').open && modalVersion === dialogVersion) show(`<h2>Заказ #${result.order.id} принят</h2><div class="cart-total"><span>Итого</span><strong>${moneyMarkup(result.order.total)}</strong></div><button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
-    else notify(`Заказ #${result.order.id} принят`);
+    applyHeaderBalance(initData,result.order.balance_after);
+    if ($('#details').open && modalVersion === dialogVersion) show(`<h2>Заказ #${result.order.id} ${result.order.status==='cancelled'?'отменён':'принят'}</h2>${result.order.balance_spent ? `<div class="checkout-subtotal"><span>${result.order.status==='cancelled'?'Возвращено рублей':'Оплата рублями'}</span><strong>${moneyMarkup(result.order.balance_spent)}</strong></div>` : ''}<div class="cart-total"><span>К оплате</span><strong>${moneyMarkup(result.order.payable??result.order.total)}</strong></div><button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
+    else notify(`Заказ #${result.order.id} ${result.order.status==='cancelled'?'отменён':'принят'}`);
     void load();
   } catch (error) {
     if ($('#details').open && modalVersion === dialogVersion) {
@@ -916,6 +959,7 @@ async function confirmCheckout() {
   } finally {
     clearTimeout(timeout);
     checkoutSubmitting = false;
+    refreshCheckoutPayment();
     if (confirm.isConnected) { confirm.disabled = false; cancel.disabled = false; confirm.textContent = 'Подтвердить'; }
   }
 }
@@ -995,6 +1039,7 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ if(event.target.closest('[data-toggle-rubles]')){toggleCheckoutRubles();return;}
  if(event.target.closest('[data-my-reviews]')){renderMyReviews();return;}
  if(event.target.closest('[data-back-profile]')){renderProfile();return;}
  if(event.target.closest('[data-retry-profile]')){void loadProfile();return;}
@@ -1024,6 +1069,7 @@ function handleCartAction(event) {
   else if (event.target.closest('[data-continue]')) void continueShopping();
 }
 $('#detail-content').onclick = handleCartAction;
+$('#detail-content').addEventListener('input',event=>{if(event.target.id!=='checkout-rubles'||!checkoutDraft||checkoutSubmitting||checkoutLocked)return;checkoutDraft.balance_spend=Math.max(0,Math.min(checkoutSpendLimit(),Math.round(Number(event.target.value)||0)));refreshCheckoutPayment();});
 $('#cart-content').onclick = handleCartAction;
 $('#detail-content').addEventListener('keydown', event => {
   if (!event.target.closest('[role="tablist"]') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;

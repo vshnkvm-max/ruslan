@@ -13,6 +13,7 @@ db.prepare("INSERT INTO products(id,name,sku,category,price,cost,stock,image) VA
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
 const user = { id: 97531, first_name: 'Тестовый', last_name: 'Покупатель', username: 'testbuyer' };
+db.prepare("INSERT INTO customers(name,username,email,city,joined,referral_code,telegram_id,balance) VALUES ('Тестовый Покупатель','testbuyer','','','now','WALLET-TEST',97531,1540)").run();
 const params = new URLSearchParams({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify(user) });
 const text = [...params].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join('\n');
 params.set('hash', createHmac('sha256', createHmac('sha256', 'WebAppData').update(botToken).digest()).update(text).digest('hex'));
@@ -22,34 +23,48 @@ try {
   await context.addInitScript(({ user, initData }) => { window.Telegram = { WebApp: { platform: 'ios', initData, initDataUnsafe: { user }, ready() {}, expand() {} } }; }, { user, initData: params.toString() });
   await context.route('https://telegram.org/**', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
   const page = await context.newPage(), errors = []; page.on('pageerror', error => errors.push(error.message));
-  await page.goto(base + '/miniapp'); await page.locator('[data-product="1"]').click();
+  await page.goto(base + '/miniapp'); await page.waitForFunction(()=>document.querySelector('#header-balance-value')?.textContent==='1 540'); await page.locator('[data-product="1"]').click();
   await page.locator('[data-add="1"]').click(); await page.locator('[data-open-cart]').click();
   await page.locator('[data-checkout]').click();
   assert.match(await page.locator('dialog').innerText(), /Тестовый товар/);
   assert.match(await page.locator('dialog').innerText(), /2\s*300/);
   const sheet = await page.locator('dialog').evaluate(element => ({ bottom: element.getBoundingClientRect().bottom, viewport: innerHeight }));
   assert.equal(sheet.bottom, sheet.viewport);
+  await page.locator('[data-toggle-rubles]').click();
+  assert.equal(await page.locator('#checkout-rubles').getAttribute('max'),'1150');
+  await page.locator('#checkout-rubles').press('Home'); await page.locator('#checkout-rubles').press('ArrowRight');
+  assert.equal(await page.locator('#checkout-rubles').inputValue(),'1');
+  await page.locator('#checkout-rubles').press('End');assert.match(await page.locator('#checkout-payable').innerText(),/1\s*150/);
+  assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,1540);
   await page.screenshot({ path: '/tmp/shop-checkout-confirmation.png' });
   await page.locator('[data-cancel-checkout]').click();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 0);
   assert.match(await page.locator('#cart-content').innerText(), /Тестовый товар/);
   await page.locator('[data-checkout]').click();
+  await page.locator('[data-toggle-rubles]').click();
+  await page.locator('#checkout-rubles').evaluate(element=>{element.value='700';element.dispatchEvent(new Event('input',{bubbles:true}));});
+  assert.match(await page.locator('#checkout-payable').innerText(),/1\s*600/);
   const saved = page.waitForResponse(response => response.url().endsWith('/api/storefront/orders'));
   await page.locator('[data-confirm-checkout]').click(); await saved;
   await page.getByRole('heading', { name: 'Заказ #1 принят', exact: true }).waitFor();
   assert.doesNotMatch(await page.locator('dialog').innerText(), /Менеджер свяжется/);
   assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
+  assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,840);
+  assert.equal(db.prepare('SELECT balance_spent FROM orders WHERE id=1').get().balance_spent,700);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 1);
   await page.locator('dialog [data-continue]').click();
 
   // Server commits but the response is lost: reload and retry the stored key.
   await page.locator('[data-product="1"]').click(); await page.locator('[data-add="1"]').click(); await page.locator('[data-open-cart]').click();
   await page.locator('[data-checkout]').click();
+  await page.locator('[data-toggle-rubles]').click();assert.equal(await page.locator('#checkout-rubles').inputValue(),'840');
   await page.route('**/api/storefront/orders', async route => { await route.fetch(); await route.abort('failed'); });
   await page.locator('[data-confirm-checkout]').click(); await page.locator('.checkout-error:not([hidden])').waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2);
+  assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,0);
   await page.unroute('**/api/storefront/orders'); await page.reload(); await page.locator('[data-product="1"]').waitFor();
   await page.locator('#cart-tab').click(); await page.getByRole('button', { name: 'Проверить заказ', exact: true }).click();
+  assert.match(await page.locator('#checkout-rubles-limit').innerText(),/840/);assert.equal(await page.locator('#checkout-rubles-panel').isHidden(),true);
   await page.locator('[data-confirm-checkout]').click(); await page.getByRole('heading', { name: 'Заказ #2 принят', exact: true }).waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 2);
 
@@ -60,7 +75,9 @@ try {
   assert.match(await admin.locator('.modal').innerText(), /Не задан ORDER_BOT_TOKEN/);
   await admin.locator('#order-status').selectOption('cancelled'); await admin.locator('#order-form [type=submit]').click();
   await admin.locator('.modal').waitFor({ state: 'detached' }); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
+  assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,840);
+  await page.bringToFront();await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await page.waitForFunction(()=>document.querySelector('#header-balance-value')?.textContent==='840');
   assert.deepEqual(errors, []);
-  console.log('PASS: mobile confirmation sheet, cancel preserves cart, checkout creates admin order, lost-response retry survives reload without duplicate, cancellation restores stock');
+  console.log('PASS: mobile wallet slider and 50% cap, cancel preserves balance, actual debit and payable amount, lost-response retry with zero balance, admin cancellation refunds rubles and restores stock, header balance refresh');
   await context.close();
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, { recursive: true, force: true }); }
