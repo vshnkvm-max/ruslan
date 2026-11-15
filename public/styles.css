@@ -113,3 +113,5 @@ h1,h2,h3{letter-spacing:-.025em}button:focus-visible,a:focus-visible{outline-col
 .category-manager strong { min-width: 0; }
 .operations-table td { white-space: normal; }
 .operations-table td:first-child { white-space: nowrap; }
+
+.customer-balance-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.customer-balance-row>strong{font-size:24px}.balance-adjustment-history{margin-top:20px;font-size:13px}.balance-adjustment-history>summary{cursor:pointer}.balance-adjustment{display:grid;gap:5px;padding:12px 0;border-bottom:1px solid #e7ebe2}.balance-adjustment>small{color:#77816d}

@@ -13,6 +13,7 @@ import { createStorefrontOrders } from './lib/storefront-orders.js';
 import { createOrderNotifier } from './lib/order-notifications.js';
 import { verifiedTelegramUser } from './lib/telegram-auth.js';
 import { loadStorefrontProfile, loadStorefrontBalance } from './lib/storefront-profile.js';
+import { createCustomerBalances } from './lib/customer-balances.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const sessionDuration = 12 * 60 * 60 * 1000;
@@ -55,6 +56,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const documents=createInventoryDocuments(db,{fail,str,num,bool,token});
   const serveStatic=createStaticAssets(root);
   const storefrontOrders=createStorefrontOrders(db,{botToken,fail});
+  const customerBalances=createCustomerBalances(db,{fail,num});
   const notifier=createOrderNotifier(db,{token:orderBotToken,chatId:orderChatId,usernames:orderManagerUsernames,fetchImpl:telegramFetch});
   const attempts=new Map();
   let activePasswordWork=0;
@@ -190,6 +192,13 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/auth/logout'&&method==='POST') {db.prepare('DELETE FROM sessions WHERE token=?').run(session.token);return json(res,200,{ok:true},{'Set-Cookie':`session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie?'; Secure':''}`});}
         if(path==='/api/bootstrap'&&method==='GET') return json(res,200,{...bootstrap(),user:{username:session.username,csrf:session.csrf}});
         if(path==='/api/images'&&method==='POST') return json(res,201,{image:productImages.upload((await body(req)).image)});
+        const customerBalance=path.match(/^\/api\/customers\/(\d+)\/balance$/);
+        if(customerBalance){
+          const id=Number(customerBalance[1]);
+          if(method==='GET')return json(res,200,customerBalances.read(id));
+          if(method==='PATCH')return json(res,200,customerBalances.set(id,await body(req),session.admin_id));
+          fail(405,'Метод не поддерживается.');
+        }
         const match=path.match(/^\/api\/(products|customers|orders|reviews|banners)\/(\d+)$/);
         if(match) {
           const [,table,idText]=match; const id=Number(idText);
