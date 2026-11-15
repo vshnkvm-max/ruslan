@@ -67,7 +67,7 @@ dialog[data-view="important"] > .close { position: sticky; top: 0; float: right;
 .important-info h2 { margin: 10px 0 18px; font-size: 27px; line-height: 1.15; letter-spacing: -.6px; }
 .important-info p { margin: 10px 0; white-space: normal; line-height: 1.6; }
 .important-info .important-welcome { font-size: 17px; font-weight: 700; }
-.important-reminder { margin: 20px 0 24px; padding: 14px 16px; border-left: 3px solid #e43b58; border-radius: 0 14px 14px 0; background: #fbe7ee; color: #823449; font-size: 13px; line-height: 1.6; }
+.important-reminder { margin: 20px 0 24px; padding: 14px 16px; border-left: 3px solid #e43b58; border-radius: 6px 18px 18px 6px; background: #fbe7ee; color: #823449; font-size: 13px; line-height: 1.6; }
 .important-card { --info-accent: #986a20; --info-tint: #fff3dc; margin-top: 16px; padding: 18px 16px; border-left: 3px solid var(--info-accent); border-radius: 6px 18px 18px 6px; background: var(--info-tint); color: #382f35; }
 .important-delivery { --info-accent: #34786b; --info-tint: #e8f4ef; }
 .important-returns { --info-accent: #ae4b60; --info-tint: #fcebf0; }
