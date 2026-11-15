@@ -263,7 +263,9 @@ try {
   assert.equal(await page.locator('dialog .review').count(), 3);
   await close();
   await page.locator('[data-info="important"]').click();
-  await page.getByText('Информация о магазине скоро появится.', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Важная информация', exact: true }).waitFor();
+  assert.equal(await page.locator('.important-card').count(), 4);
+  await page.getByText('Исключительно наличные!', { exact: true }).waitFor();
   await close();
 
   for (const width of [320, 390, 480, 1280]) {

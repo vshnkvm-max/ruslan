@@ -586,14 +586,50 @@ function referralContent() {
     : '<div class="empty-inline">Реферальная программа пока не действует.</div>';
 }
 function openInfo(type) {
-  if (!data) { show('<h2>Информация недоступна</h2><p>Сначала загрузите каталог.</p>'); return; }
   if (type === 'important') {
-    const shop = data.shop;
-    const information = formatted(shop.headline) + formatted(shop.description)
-      + [shop.phone, shop.address, shop.hours].filter(Boolean).map(value => `<p>${escape(value)}</p>`).join('');
-    show(`<h2>Важно прочитать</h2>${[shop.headline, shop.description, shop.phone, shop.address, shop.hours].some(Boolean)
-      ? information : '<p>Информация о магазине скоро появится.</p>'}`);
-  } else if (type === 'referral') {
+    show(`<div class="important-info">
+      <span class="important-eyebrow">GAS SHOP · ПЕРЕД ПЕРВЫМ ЗАКАЗОМ</span>
+      <h2>Важная информация</h2>
+      <p class="important-welcome">👋 Приветствую!</p>
+      <p>Здесь собрана основная информация для удобного сотрудничества и ответы на большинство вопросов при первом обращении.</p>
+      <blockquote class="important-reminder">Ознакомление с этим разделом <strong>обязательно перед обращением</strong>.</blockquote>
+
+      <section class="important-card important-payment" aria-labelledby="important-payment-title">
+        <h3 id="important-payment-title"><span aria-hidden="true">01</span> Оплата</h3>
+        <p><strong>Исключительно наличные!</strong></p>
+        <p>Переводы, крипта, NFT и б/у устройства не принимаются.</p>
+        <div class="important-inset"><strong>Когда возможен перевод</strong><p>Для предзаказа, долгосрочной брони товара и перед отправкой доставки сторонними службами.</p></div>
+      </section>
+
+      <section class="important-card important-delivery" aria-labelledby="important-delivery-title">
+        <h3 id="important-delivery-title"><span aria-hidden="true">02</span> Получение заказов</h3>
+        <p>Заказ можно получить при личной встрече в месте самовывоза или оформить доставку.</p>
+        <div class="important-inset"><strong>Самовывоз · бесплатно</strong><p>Новосибирск, метро «Площадь Маркса», <strong>выход № 4</strong>, ТЦ «Грани».</p></div>
+        <ul><li><strong>По линии метро — 100 ₽.</strong> Возможны исключения.</li><li><strong>Вне линии метро</strong> — стоимость рассчитывается отдельно.</li></ul>
+      </section>
+
+      <section class="important-card important-returns" aria-labelledby="important-returns-title">
+        <h3 id="important-returns-title"><span aria-hidden="true">03</span> Возврат и брак</h3>
+        <p>Бракованное устройство, которое не работает после вскрытия покупателем, можно заменить на <strong>новое</strong>.</p>
+        <div class="important-inset"><strong>Обязательно сохраните упаковку и товарный вид.</strong><p>Для замены обратитесь в течение <strong>24 часов с момента покупки</strong>. После истечения этого срока тоже идём навстречу.</p></div>
+        <p>Замена товаров из категорий «Расходники», «Снюс» и «Жидкости», как правило, не производится в связи с отсутствием брака.</p>
+        <p><strong>Будьте внимательны!</strong></p>
+      </section>
+
+      <section class="important-card important-balance" aria-labelledby="important-balance-title">
+        <h3 id="important-balance-title"><span aria-hidden="true">04</span> Баланс бота</h3>
+        <div class="important-inset"><strong>Баланс не обналичивается.</strong><p>Виртуальные средства в кошельке используются исключительно для оплаты товаров внутри бота.</p></div>
+        <p>Баланс пополняется за счёт:</p>
+        <ul><li>Кэшбека.</li><li>Вознаграждений за выполнение заданий и розыгрыши.</li><li>Внесения денежных средств на баланс.</li></ul>
+        <p>При серьёзном нарушении правил возможны <strong>обнуление баланса и блокировка</strong>.</p>
+      </section>
+
+      <footer class="important-footer"><p>❤️ Спасибо, что нашли время ознакомиться с этой информацией. Это первый и самый важный шаг к комфортному и долгосрочному взаимодействию.</p><p><strong>С уважением, GAS 😁</strong></p></footer>
+    </div>`, 'important');
+    return;
+  }
+  if (!data) { show('<h2>Информация недоступна</h2><p>Сначала загрузите каталог.</p>'); return; }
+  if (type === 'referral') {
     show(`<h2>Реферальная программа</h2>${referralContent()}`);
   } else {
     show(`<h2>Отзывы</h2>${data.reviews.map(review => `<article class="review">

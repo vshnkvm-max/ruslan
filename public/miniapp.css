@@ -60,6 +60,29 @@ dialog::backdrop { background: #3b263c45; animation: backdrop-in .3s ease-out; }
 .close { position: absolute; right: 12px; top: 10px; display: grid; place-items: center; border: 0; background: #f5eff1; color: #8f6b79; border-radius: 50%; width: 32px; height: 32px; font-size: 24px; }
 dialog h2 { margin: 15px 0 20px; font-size: 22px; overflow-wrap: anywhere; }
 dialog p { line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.important-info { text-align: left; }
+dialog[data-view="important"] { background: #fff9fb; }
+dialog[data-view="important"] > .close { position: sticky; top: 0; float: right; margin-top: -32px; margin-right: -12px; }
+.important-eyebrow { display: block; padding-right: 12px; color: #986576; font-size: 9px; font-weight: 700; letter-spacing: 1.1px; line-height: 1.6; }
+.important-info h2 { margin: 10px 0 18px; font-size: 27px; line-height: 1.15; letter-spacing: -.6px; }
+.important-info p { margin: 10px 0; white-space: normal; line-height: 1.6; }
+.important-info .important-welcome { font-size: 17px; font-weight: 700; }
+.important-reminder { margin: 20px 0 24px; padding: 14px 16px; border-left: 3px solid #e43b58; border-radius: 0 14px 14px 0; background: #fbe7ee; color: #823449; font-size: 13px; line-height: 1.6; }
+.important-card { --info-accent: #986a20; --info-tint: #fff3dc; margin-top: 16px; padding: 18px 16px; border-left: 3px solid var(--info-accent); border-radius: 6px 18px 18px 6px; background: var(--info-tint); color: #382f35; }
+.important-delivery { --info-accent: #34786b; --info-tint: #e8f4ef; }
+.important-returns { --info-accent: #ae4b60; --info-tint: #fcebf0; }
+.important-balance { --info-accent: #76609d; --info-tint: #f0ebf8; }
+.important-card h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 17px; line-height: 1.3; }
+.important-card h3 > span { display: grid; flex: 0 0 28px; place-items: center; height: 28px; border-radius: 9px; background: #ffffffb3; color: var(--info-accent); font-size: 11px; font-weight: 800; }
+.important-card > p:last-child { margin-bottom: 0; }
+.important-inset { margin-top: 14px; padding: 13px; border-radius: 12px; background: #ffffffa8; font-size: 13px; line-height: 1.6; }
+.important-inset > strong { color: var(--info-accent); }
+.important-inset p { margin: 6px 0 0; font-size: 13px; }
+.important-info ul { margin: 14px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.65; }
+.important-info li + li { margin-top: 8px; }
+.important-info li::marker { color: var(--info-accent); }
+.important-footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #98657626; color: #78636d; }
+.important-footer p { font-size: 13px; }
 dialog .photo { margin-top: 18px; }
 .review { border-bottom: 1px solid #eee; padding: 14px 0; }
 .review strong { color: var(--red); letter-spacing: 2px; }
