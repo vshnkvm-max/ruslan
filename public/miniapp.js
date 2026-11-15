@@ -54,6 +54,8 @@ const icons = {
   plus: icon('<path d="M12 5v14M5 12h14"/>'),
   minus: icon('<path d="M5 12h14"/>'),
   user: icon('<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'),
+  wallet: icon('<path d="M20 8V5H5a2 2 0 0 0 0 4h16v11H5a2 2 0 0 1-2-2V7m18 5h-5v5h5M17 14.5h.01"/>'),
+  reviews: icon('<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9H13a8.5 8.5 0 0 1 8 8v.5ZM8 11h8M8 15h5"/>'),
   bag: icon('<path d="M4 7h16l-1 14H5ZM8 8V6a4 4 0 0 1 8 0v2"/>'),
   package: icon('<path d="m12 3 9 5v9l-9 5-9-5V8ZM3 8l9 5 9-5M12 13v9M8 5l9 5"/>'),
   trash: icon('<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>'),
@@ -638,12 +640,65 @@ function openInfo(type) {
       </article>`).join('') || '<p>Опубликованных отзывов пока нет.</p>'}`);
   }
 }
+let profileState = { key: '', status: 'idle' }, profileRequestVersion = 0;
+function currentProfile() {
+  const key = telegram?.initData || '';
+  if (profileState.key !== key) profileState = { key, status: 'idle' };
+  return profileState;
+}
+function profileMessage() {
+  const state = currentProfile();
+  if (!state.key) return '<p class="profile-hint">Откройте магазин через Telegram, чтобы увидеть свои заказы и отзывы.</p>';
+  if (state.error) return `<div class="profile-error" role="status"><p>${escape(state.error)}</p><button class="primary-button secondary-button" data-retry-profile>Повторить</button></div>`;
+  return state.status === 'loading' ? '<p class="profile-hint" role="status">Загружаем профиль…</p>' : '';
+}
 function profileContent(tab) {
-  return tab === 'overview' ? `<button class="profile-link" data-open-cart>${icons.bag}<span>Моя корзина</span>${icons.arrow}</button>
+  if (tab !== 'overview') return referralContent();
+  const state = currentProfile(), statuses = { new:'Новый', accepted:'В работе', completed:'Выполнен', cancelled:'Отменён' };
+  return `<button class="profile-link" data-my-reviews>${icons.reviews}<span>Мои отзывы</span>${icons.arrow}</button>
+    ${profileMessage()}
     <div class="recent-orders">
       <button class="recent-orders-toggle" data-toggle-orders aria-expanded="false" aria-controls="recent-orders-list">${icons.package}<span>Последние заказы</span>${icons.chevron}</button>
-      <div class="recent-orders-list" id="recent-orders-list" hidden><p>История заказов пока недоступна.</p></div>
-    </div><p class="profile-hint">Выбранные товары сохраняются на этом устройстве.</p>` : referralContent();
+      <div class="recent-orders-list" id="recent-orders-list" hidden>${state.status === 'ready'
+        ? state.orders.length ? state.orders.map(order => `<div class="profile-order"><div><strong>Заказ #${order.id}</strong><small>${escape(statuses[order.status] || order.status)} · ${new Date(order.created_at).toLocaleDateString('ru-RU')}</small></div><strong>${moneyMarkup(order.total)}</strong></div>`).join('') : '<p>Заказов пока нет.</p>'
+        : '<p>История появится после загрузки профиля.</p>'}</div>
+    </div>`;
+}
+function refreshProfileView() {
+  if (!$('#details').open) return;
+  if ($('#details').dataset.view === 'profile') renderProfile(profileTab);
+  else if ($('#details').dataset.view === 'my-reviews') renderMyReviews();
+}
+async function loadProfile(more = false) {
+  const state = currentProfile();
+  if (!state.key || state.status === 'loading' || state.loadingMore) return;
+  const version = ++profileRequestVersion, controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 15000);
+  state.error = ''; if (more) state.loadingMore = true; else state.status = 'loading';
+  refreshProfileView();
+  try {
+    const response = await fetch('/api/storefront/profile', { method:'POST', headers:{'Content-Type':'application/json'}, signal:controller.signal, body:JSON.stringify({init_data:state.key,...(more ? {reviews_before:state.reviews_next} : {})}) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Не удалось загрузить профиль.');
+    if (version !== profileRequestVersion || currentProfile() !== state) return;
+    const reviews = more ? [...state.reviews, ...result.reviews] : result.reviews;
+    Object.assign(state, result, { reviews, status:'ready', loadedAt:Date.now() });
+  } catch (error) {
+    if (version !== profileRequestVersion || currentProfile() !== state) return;
+    state.status = more ? 'ready' : 'error';
+    state.error = ['AbortError','TypeError'].includes(error.name) ? 'Не удалось загрузить профиль. Проверьте соединение и повторите.' : error.message;
+  } finally {
+    clearTimeout(timeout); state.loadingMore = false;
+    if (version === profileRequestVersion && currentProfile() === state) refreshProfileView();
+  }
+}
+function renderMyReviews() {
+  const state = currentProfile(), statuses = { pending:'На модерации', published:'Опубликован', hidden:'Скрыт' };
+  show(`<h2>Мои отзывы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button>${profileMessage()}
+    ${state.status === 'ready' ? state.reviews.length ? `<div class="my-reviews-list">${state.reviews.map(review => {
+      const rating = Math.max(0,Math.min(5,Math.trunc(Number(review.rating)||0)));
+      return `<article class="review my-review"><div class="my-review-heading"><strong>${escape(review.product_name)}</strong><span class="my-review-status">${escape(statuses[review.status]||review.status)}</span></div><div class="my-review-stars" aria-label="Оценка ${rating} из 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</div><p>${escape(review.text)}</p><small>${new Date(review.created_at).toLocaleDateString('ru-RU')}</small></article>`;
+    }).join('')}</div>${state.reviews_next ? `<button class="primary-button secondary-button" data-more-reviews ${state.loadingMore?'disabled':''}>${state.loadingMore?'Загружаем…':'Показать ещё'}</button>` : ''}` : '<div class="empty-inline">У вас пока нет отзывов.</div>' : ''}`, 'my-reviews', false);
+  if (state.status === 'idle') void loadProfile();
 }
 function stopProfileTransition() {
   if (!profileTransition) return;
@@ -729,11 +784,11 @@ function renderProfile(tab = 'overview') {
   const text = key => typeof user?.[key] === 'string' ? user[key].slice(0, 80) : '';
   const name = [text('first_name'), text('last_name')].filter(Boolean).join(' ') || text('username') || 'Гость';
   const initials = [text('first_name'), text('last_name')].filter(Boolean).map(value => [...value][0]).join('').toUpperCase();
-  const { count, amount } = cartSummary();
+  const state = currentProfile(), ready = state.status === 'ready';
   profileTab = tab;
   show(`<div class="profile-card">
       <div class="profile-identity"><span class="profile-avatar">${initials ? escape(initials) : icons.user}${avatarPhoto()}</span><div><h2>${escape(name)}</h2>${text('username') ? `<span class="profile-username">@${escape(text('username'))}</span>` : ''}</div></div>
-      <div class="profile-stats"><div><span>В КОРЗИНЕ</span><strong>${count}</strong></div><div><span>СУММА</span><strong>${moneyMarkup(amount)}</strong></div></div>
+      <div class="profile-stats" aria-busy="${state.status==='loading'}"><div>${icons.bag}<strong data-profile-order-count>${ready ? state.stats.orders_count : '—'}</strong><span>Кол-во заказов</span></div><div>${icons.wallet}<strong data-profile-order-total>${ready ? moneyMarkup(state.stats.total) : '—'}</strong><span>Общая сумма</span></div></div>
     </div>
     <div class="profile-tabs" role="tablist" aria-label="Разделы профиля" data-active="${tab}">
       <span class="profile-tab-indicator" aria-hidden="true"></span>
@@ -742,6 +797,7 @@ function renderProfile(tab = 'overview') {
     </div>
     <div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-${tab}"><div class="profile-body" id="profile-body">${profileContent(tab)}</div></div>`, 'profile', false);
   bindAvatarFallbacks($('#detail-content'));
+  if (state.status === 'idle' || (ready && Date.now()-state.loadedAt > 30000)) void loadProfile();
 }
 
 function renderCart() {
@@ -816,6 +872,7 @@ async function confirmCheckout() {
       saveCart(); updateBadge(); renderCart();
     }
     checkoutDraft = undefined;
+    profileState = { key:'', status:'idle' };
     if ($('#details').open && modalVersion === dialogVersion) show(`<h2>Заказ #${result.order.id} принят</h2><div class="cart-total"><span>Итого</span><strong>${moneyMarkup(result.order.total)}</strong></div><button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
     else notify(`Заказ #${result.order.id} принят`);
     void load();
@@ -906,6 +963,10 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ if(event.target.closest('[data-my-reviews]')){renderMyReviews();return;}
+ if(event.target.closest('[data-back-profile]')){renderProfile();return;}
+ if(event.target.closest('[data-retry-profile]')){void loadProfile();return;}
+ if(event.target.closest('[data-more-reviews]')){void loadProfile(true);return;}
  if(event.target.closest('[data-checkout]')){openCheckout();return;}
  if(event.target.closest('[data-confirm-checkout]')){void confirmCheckout();return;}
  if(event.target.closest('[data-cancel-checkout]')){void closeDetails();return;}
@@ -958,7 +1019,7 @@ $('#telegram-sdk')?.addEventListener('load', () => {
       updateProductAddButton();
     }
   }
-  if ($('#details').open && $('#details').dataset.view === 'profile') renderProfile(profileTab);
+  refreshProfileView();
 });
 updateClientAvatar();
 load();

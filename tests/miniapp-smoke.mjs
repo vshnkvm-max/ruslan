@@ -113,9 +113,9 @@ try {
   }
   await page.locator('#profile-button').click();
   await page.getByRole('heading', { name: 'Александр Морозов' }).waitFor();
-  assert.equal(await page.locator('.profile-stats strong').first().textContent(), '0');
+  assert.equal(await page.locator('.profile-stats strong').first().textContent(), '—');
   await page.locator('[data-toggle-orders]').click();
-  await page.getByText('История заказов пока недоступна.', { exact: true }).waitFor();
+  await page.getByText('История появится после загрузки профиля.', { exact: true }).waitFor();
   await settle();
   const profileMotion = await page.evaluate(async () => {
     const card = document.querySelector('.profile-card');
@@ -155,10 +155,10 @@ try {
   assert.equal(await page.locator('.product').count(), 11);
   // Banner visibility and content follow the admin data, including removing the final active banner.
   const banners = db.prepare('SELECT * FROM banners ORDER BY id').all();
-  await page.locator('#banner h2').filter({ hasText: banners[0].title }).waitFor();
+  await page.locator('#banner .banner-slide[aria-hidden="false"] h2').filter({ hasText: banners[0].title }).waitFor();
   db.prepare('UPDATE banners SET active=0 WHERE id=?').run(banners[0].id);
   await page.reload();
-  await page.locator('#banner h2').filter({ hasText: banners[1].title }).waitFor();
+  await page.locator('#banner .banner-slide[aria-hidden="false"] h2').filter({ hasText: banners[1].title }).waitFor();
   db.prepare('UPDATE banners SET active=0').run();
   await page.reload();
   await page.locator('#banner').waitFor({ state: 'hidden' });
@@ -236,10 +236,11 @@ try {
   await page.locator('.product').first().waitFor();
   assert.equal(await page.locator('#cart-badge').textContent(), '2');
   await page.locator('#profile-button').click();
-  assert.equal(await page.locator('.profile-stats strong').first().textContent(), '2');
+  assert.equal(await page.locator('.profile-stats strong').first().textContent(), '—');
   await settle();
   await page.screenshot({ path: '/tmp/gas-profile.png' });
-  await page.locator('[data-open-cart]').click();
+  await close();
+  await page.locator('#cart-tab').click();
   await page.locator('[data-remove="2"]').click();
   await page.getByText('Корзина пока пуста', { exact: true }).waitFor();
   assert.ok(await page.locator('#cart-badge').isHidden());
@@ -409,7 +410,9 @@ try {
     await late.getByRole('heading',{name:'Гость',exact:true}).waitFor();
     releaseSdk();
     await late.getByRole('heading',{name:'Поздний SDK',exact:true}).waitFor();
-    await late.locator('[data-open-cart]').click();
+    await late.locator('dialog > .close').click();
+    await late.locator('dialog').waitFor({state:'hidden'});
+    await late.locator('#cart-tab').click();
     await late.locator('[data-cart-item="2"]').waitFor();
     assert.equal(await late.locator('#cart-badge').textContent(),'1');
     assert.equal(await late.evaluate(() => localStorage.getItem('gas-cart:v1:guest')),'[]');

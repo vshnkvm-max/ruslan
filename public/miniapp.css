@@ -138,9 +138,24 @@ dialog[data-view="checkout"] > .close { display: none; }
 .profile-identity h2 { font-size: 18px; margin: 0; }
 .profile-username { display: block; margin-top: 4px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .profile-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
-.profile-stats > div { display: grid; gap: 7px; padding: 14px 8px; border: 1px solid #eee5e9; border-radius: 14px; text-align: center; }
-.profile-stats > div > span { font-size: 9px; color: var(--muted); letter-spacing: .5px; }
-.profile-stats strong { font-size: 15px; overflow-wrap: anywhere; }
+.profile-stats > div { display: grid; align-content: start; gap: 10px; padding: 16px 12px; border: 1px solid #eee5e9; border-radius: 18px; text-align: left; min-width: 0; }
+.profile-stats svg { width: 23px; height: 23px; margin-bottom: 5px; fill: none; stroke: #97818d; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.profile-stats > div > span { font-size: 11px; color: #897682; line-height: 1.4; }
+.profile-stats strong { font-size: clamp(17px, 5vw, 25px); line-height: 1.2; letter-spacing: -.5px; overflow-wrap: anywhere; }
+.profile-stats .currency-symbol { font-size: .85em; }
+.profile-error { margin: 12px 0; padding: 12px; border-radius: 14px; background: #fff0f3; color: #9c3e58; }
+.profile-error p { margin: 0; font-size: 12px; }
+.profile-error .primary-button { margin-top: 10px; }
+.profile-order { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid #9c82901c; font-size: 12px; }
+.profile-order > div { min-width: 0; }
+.profile-order small { display: block; margin-top: 5px; color: #897682; font-size: 10px; }
+.profile-order > strong { white-space: nowrap; }
+.profile-back { display: flex; align-items: center; gap: 4px; margin: -4px 0 20px; padding: 6px 0; border: 0; color: #986576; background: transparent; font-size: 12px; }
+.profile-back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.my-review-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.my-review-heading > strong { color: #382f35; }
+.my-review-status { padding: 4px 8px; border-radius: 12px; background: #f0e9ef; color: #78636d; font-size: 10px; }
+.my-review-stars { margin-top: 12px; color: #b66b22; }
 .profile-tabs { position: relative; display: flex; gap: 7px; margin: 18px 0; padding: 4px; border-radius: 17px; background: #e7dce36b; }
 .profile-tabs button { position: relative; flex: 1; border: 0; border-radius: 13px; padding: 12px 5px; background: #ffffffad; font-size: 11px; color: #8c7080; }
 .profile-tabs [aria-selected="true"] { color: #fff; background: transparent; }
