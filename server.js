@@ -13,6 +13,8 @@ import { createStorefrontOrders } from './lib/storefront-orders.js';
 import { createOrderNotifier } from './lib/order-notifications.js';
 import { verifiedTelegramUser } from './lib/telegram-auth.js';
 import { loadStorefrontProfile, loadStorefrontBalance } from './lib/storefront-profile.js';
+import { createStorefrontReviews } from './lib/storefront-reviews.js';
+import { createReviewMedia } from './lib/review-media.js';
 import { createCustomerBalances } from './lib/customer-balances.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +59,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const serveStatic=createStaticAssets(root);
   const storefrontOrders=createStorefrontOrders(db,{botToken,fail});
   const customerBalances=createCustomerBalances(db,{fail,num});
+  const reviewMedia=createReviewMedia(db,{directory:resolve(dirname(dbPath),'review-media'),botToken,fail});
+  const storefrontReviews=createStorefrontReviews(db,{botToken,fail,serialize:rows=>reviewMedia.serialize(rows,{publicView:true})});
   const notifier=createOrderNotifier(db,{token:orderBotToken,chatId:orderChatId,usernames:orderManagerUsernames,fetchImpl:telegramFetch});
   const attempts=new Map();
   let activePasswordWork=0;
@@ -78,7 +82,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const bootstrap=()=>({
     products:products(),...loadOrderHistory(db),orderDelivery:db.prepare('SELECT order_id,delivered_at,last_error FROM order_notifications').all(),categories:categories(),
     orderNotifications:{error:notifier.error,configured:notifier.configured,registrationEnabled:notifier.registrationEnabled,recipientCount:notifier.recipientCount,pending:db.prepare('SELECT COUNT(*) AS count FROM order_notifications WHERE delivered_at IS NULL').get().count},
-    reviews:db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all(),
+    reviews:reviewMedia.serialize(db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all()),
     sales:db.prepare('SELECT * FROM sales WHERE deleted=0 ORDER BY id DESC').all().map(row=>({...row,items:JSON.parse(row.items)})),
     purchases:db.prepare('SELECT * FROM purchases WHERE deleted=0 ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
     referrals:db.prepare('SELECT r.*,c.name AS inviter_name,c.referral_code,i.name AS invitee_name FROM referrals r JOIN customers c ON c.id=r.inviter_id JOIN customers i ON i.id=r.invitee_id ORDER BY r.created_at DESC').all(),
@@ -101,6 +105,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
       const miniPage=['/miniapp','/miniapp/'].includes(path);
       if(!miniPage)res.setHeader('X-Frame-Options','DENY');
       res.setHeader('Content-Security-Policy',`default-src 'self'; script-src 'self' ${miniPage ? 'https://telegram.org' : ''}; style-src 'self' 'unsafe-inline'; img-src 'self' data: ${miniPage?'https:':''}; connect-src 'self'; frame-ancestors ${miniPage ? 'https://web.telegram.org https://*.telegram.org' : "'none'"}; base-uri 'self'; form-action 'self'`);
+      const reviewFile=path.match(/^\/api\/review-media\/([a-f0-9-]{36})$/);
+      if(reviewFile){if(!['GET','HEAD'].includes(method))fail(405,'Метод не поддерживается.');await reviewMedia.serve(req,res,reviewFile[1],url.searchParams,Boolean(getSession(req)));return;}
       const bannerMatch=path.match(/^\/api\/banner-images\/(\d+)$/);
       if(bannerMatch) {
         if(!['GET','HEAD'].includes(method))fail(405,'Метод не поддерживается.');
@@ -143,7 +149,26 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/storefront'&&method==='GET') {
           const shop=getSettings('shop');
           const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
-          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:db.prepare("SELECT r.id,r.product_id,r.rating,r.text,r.created_at,p.name AS product_name FROM reviews r JOIN products p ON p.id=r.product_id WHERE r.status='published' AND p.active=1 AND p.visible=1 AND p.stock>0 AND p.deleted=0 ORDER BY r.created_at DESC").all(),products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
+          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:storefrontReviews.list({limit:100}).items,products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
+        }
+        if(path==='/api/storefront/reviews'&&method==='GET'){
+          const productId=url.searchParams.has('product_id')?num(Number(url.searchParams.get('product_id')),'Товар'):null;
+          const offset=num(Number(url.searchParams.get('offset')||0),'Страница'),limit=num(Number(url.searchParams.get('limit')||20),'Количество',20);
+          if(limit<1)fail(400,'Неверное количество отзывов.');
+          return json(res,200,storefrontReviews.list({productId,sort:url.searchParams.get('sort')||'newest',media:url.searchParams.get('media')==='1',offset,limit}));
+        }
+        if(path==='/api/storefront/reviews/eligible'&&method==='POST'){
+          const b=await body(req),productId=b.product_id===undefined?null:num(b.product_id,'Товар'),offset=num(b.offset??0,'Страница');
+          return json(res,200,storefrontReviews.eligible(b.init_data,productId,offset));
+        }
+        if(path==='/api/storefront/reviews'&&method==='POST'){
+          const result=storefrontReviews.create(await body(req));return json(res,result.repeated?200:201,result);
+        }
+        const uploadReview=path.match(/^\/api\/storefront\/reviews\/(\d+)\/(\d+)\/media$/);
+        if(uploadReview&&method==='POST'){
+          const c=storefrontReviews.customer(req.headers['x-telegram-init-data']);
+          const file=await reviewMedia.upload(req,c,Number(uploadReview[1]),Number(uploadReview[2]),storefrontReviews.purchase);
+          return json(res,201,{media:file});
         }
         if(['/api/storefront/profile','/api/storefront/balance'].includes(path)&&method==='POST') {
           if(!botToken)fail(503,'Профиль временно недоступен.');
@@ -151,7 +176,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           if(!user)fail(401,'Откройте магазин заново через Telegram, чтобы загрузить профиль.');
           if(path==='/api/storefront/balance')return json(res,200,{balance:loadStorefrontBalance(db,user.id)});
           if(b.reviews_before!==undefined&&(!Number.isSafeInteger(b.reviews_before)||b.reviews_before<=0))fail(400,'Неверная страница отзывов.');
-          return json(res,200,loadStorefrontProfile(db,user.id,b.reviews_before??null));
+          return json(res,200,loadStorefrontProfile(db,user.id,b.reviews_before??null,rows=>reviewMedia.serialize(rows,{privateAccess:true})));
         }
         if(path==='/api/storefront/orders'&&method==='POST') {
           const result=storefrontOrders.create(await body(req));
@@ -318,10 +343,10 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
       json(res,status,{error:conflict?'Этот артикул уже используется.':status===500?'Ошибка сервера. Повторите попытку.':error.message});
     }
   });
-  server.requestTimeout=20000;
+  server.requestTimeout=90000;
   server.headersTimeout=20000;
   server.on('listening',()=>notifier.start());
-  server.on('close',()=>{notifier.stop();db.close();});
+  server.on('close',()=>{notifier.stop();reviewMedia.stop();db.close();});
   return {server,db,notifier};
 }
 

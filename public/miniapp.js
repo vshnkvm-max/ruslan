@@ -214,7 +214,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   stopBannerAuto();
   if(view==='checkout'){clearTimeout(toastTimer);$('#toast').classList.remove('visible');}
   resetSheetGesture();
-  if(['product','checkout','important'].includes(view))holdTelegramSwipes();else releaseTelegramSwipes();
+  if(['product','checkout','important','reviews','review-form','reviews-sent'].includes(view))holdTelegramSwipes();else releaseTelegramSwipes();
   stopProfileTransition();
   ordersTransition?.cancel();
   ordersTransition = undefined;
@@ -233,7 +233,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   if (!wasOpen) {
     dialog.showModal();
     document.body.style.overflow = 'hidden';
-    void animate(dialog, ['product','checkout','important'].includes(view)?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
+    void animate(dialog, ['product','checkout','important','reviews','review-form','reviews-sent'].includes(view)?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
   } else if (shouldAnimate) {
     void animate(content, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180 });
   }
@@ -248,7 +248,7 @@ async function closeDetails() {
   const version = ++modalVersion;
   dialog.dataset.closing = 'true';
   if(dialog.dataset.view==='promotion'){dialog.close();return;}
-  await animate(dialog,['product','checkout','important'].includes(dialog.dataset.view)?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
+  await animate(dialog,['product','checkout','important','reviews','review-form','reviews-sent'].includes(dialog.dataset.view)?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
   if (version !== modalVersion) return;
   dialog.close();
 }
@@ -262,11 +262,11 @@ function holdTelegramSwipes(){
 }
 function releaseTelegramSwipes(){const owner=swipeOwner;swipeOwner=null;try{owner?.enableVerticalSwipes?.();}catch{/* Keep closing available without the SDK. */}}
 window.addEventListener('pagehide',releaseTelegramSwipes);
-window.addEventListener('pageshow',()=>{if($('#details').open&&['product','checkout','important'].includes($('#details').dataset.view))holdTelegramSwipes();});
+window.addEventListener('pageshow',()=>{if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent'].includes($('#details').dataset.view))holdTelegramSwipes();});
 function resetSheetGesture(){sheetGesture=null;const dialog=$('#details');dialog.style.removeProperty('transform');delete dialog.dataset.dragging;}
 function startSheetGesture(x,y,target,pointerId=null){
  const dialog=$('#details');
- if(!dialog.open||!['product','checkout','important'].includes(dialog.dataset.view)||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
+ if(!dialog.open||!['product','checkout','important','reviews','review-form','reviews-sent'].includes(dialog.dataset.view)||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
  if(dialog.scrollTop>1&&!target.closest('.sheet-handle'))return;
  sheetGesture={x,y,dy:0,axis:null,dragging:false,time:performance.now(),samples:[],version:modalVersion,pointerId};
 }
@@ -563,9 +563,10 @@ function openProduct(id) {
   show(`${productGallery(product)}<div class="product-title-row"><h2>${escape(product.name)}</h2><div class="product-title-actions"><button type="button" class="product-share" data-share-product="${product.id}" aria-label="Поделиться товаром">${icons.telegram}<span>Поделиться</span></button><button type="button" class="product-close" data-product-close aria-label="Закрыть товар">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div></div><strong class="price">${moneyMarkup(product.price)}</strong>
     <p class="detail-stock">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</p>
     ${formatted(product.short_description)}${formatted(product.description)}
-    <button class="primary-button" id="product-add" data-add="${product.id}"></button><button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>`, 'product');
+    <button class="primary-button" id="product-add" data-add="${product.id}"></button><button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button><section class="product-review-section" id="product-reviews"><h3>Отзывы</h3><p>Загружаем отзывы…</p></section>`, 'product');
   $('#gallery-track')?.addEventListener('scroll',updateGallery,{passive:true});
   updateProductAddButton();
+  void loadProductReviews(id);
   fetch(`/api/storefront/products/${product.id}/view`,{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitor_id:visitorId(),init_data:telegram?.initData||''})}).catch(()=>{});
 }
 function updateProductAddButton() {
@@ -580,6 +581,149 @@ function updateProductAddButton() {
     : quantity ? `${icons.check}<span>В корзине: ${quantity}${button.disabled ? '' : ' · Добавить ещё'}</span>`
     : `${icons.bag}<span>Добавить в корзину</span>`;
 }
+async function reviewRequest(url,options={},timeout=15000){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
+ try{const response=await fetch(url,{...options,signal:controller.signal}),result=await response.json();if(!response.ok){const error=new Error(result.error||'Не удалось выполнить запрос.');error.status=response.status;throw error;}return result;}
+ catch(error){if(error.name==='AbortError')throw new Error('Сервер не ответил. Проверьте соединение и повторите.');if(error instanceof TypeError)throw new Error('Нет соединения с сервером. Повторите запрос.');throw error;}finally{clearTimeout(timer);}
+}
+let reviewIdentity=telegram?.initData||'';
+let reviewFeed={productId:null,sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};
+let reviewDraft=null,reviewEligibility={key:null,items:[],next:null,loaded:false},reviewExpiryTimer;
+const reviewDate=value=>new Date(value).toLocaleDateString('ru-RU');
+const reviewCountLabel=value=>`${value} ${{one:'отзыв',few:'отзыва',many:'отзывов',other:'отзывов'}[new Intl.PluralRules('ru').select(value)]}`;
+function reviewMediaMarkup(review){return review.media?.length?`<div class="review-media-list">${review.media.map(file=>file.type==='video'?`<video src="${escape(file.url)}" controls playsinline preload="none" aria-label="Видео к отзыву"></video>`:`<img src="${escape(file.url)}" alt="Фото к отзыву о товаре ${escape(review.product_name)}" loading="lazy" decoding="async">`).join('')}</div>`:'';}
+function reviewCard(review,own=false){
+ const rating=Math.max(0,Math.min(5,Math.trunc(Number(review.rating)||0))),statuses={pending:'На модерации',published:'Опубликован',hidden:'Скрыт'};
+ return `<article class="review review-card${own?' my-review':''}"><div class="review-author-row"><strong>${escape(review.author_name||'Покупатель')}</strong><time datetime="${escape(review.created_at)}">${reviewDate(review.created_at)}</time></div><div class="review-stars" aria-label="Оценка ${rating} из 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</div><div class="review-product-name">${escape(review.product_name)}</div>${own?`<span class="my-review-status">${escape(statuses[review.status]||review.status)}</span>`:''}${review.text?`<p>${escape(review.text)}</p>`:''}${reviewMediaMarkup(review)}</article>`;
+}
+function pendingReview(owner=cartKey){try{const item=JSON.parse(localStorage.getItem('gas-review-pending:'+owner));return item&&typeof item.request_key==='string'&&Number.isSafeInteger(item.order_id)&&Number.isSafeInteger(item.product_id)?item:null;}catch{return null;}}
+function validReviewChoices(){return reviewEligibility.key===(telegram?.initData||'')?reviewEligibility.items.filter(item=>Date.parse(item.expires_at)>Date.now()):[];}
+function reviewWriteButton(productId=null){
+ const pending=pendingReview(),choices=validReviewChoices().filter(item=>!productId||item.product_id===productId);
+ if(pending)return `<button class="primary-button" data-write-review="${productId||''}">Проверить отправку отзыва</button>`;
+ if(!choices.length)return '';
+ const expires=new Date(Math.max(...choices.map(item=>Date.parse(item.expires_at)))).toISOString();
+ return `<button class="primary-button" data-write-review="${productId||''}" data-review-expires="${expires}">Оставить отзыв</button>`;
+}
+function scheduleReviewExpiry(){
+ clearTimeout(reviewExpiryTimer);
+ const dates=[...document.querySelectorAll('[data-review-expires]')].map(node=>Date.parse(node.dataset.reviewExpires)).filter(Number.isFinite);
+ if(!dates.length)return;
+ reviewExpiryTimer=setTimeout(()=>{
+  document.querySelectorAll('[data-review-expires]').forEach(node=>{if(Date.parse(node.dataset.reviewExpires)<=Date.now())node.remove();});
+  if(reviewDraft&&$('#details').open&&$('#details').dataset.view==='review-form'&&!reviewDraft.locked&&!reviewDraft.busy)renderReviewForm();
+  scheduleReviewExpiry();
+ },Math.max(20,Math.min(...dates)-Date.now()+20));
+}
+async function loadReviewEligibility(productId=null,append=false){
+ const key=telegram?.initData||'';if(!key)return {items:[],next_offset:null};
+ const result=await reviewRequest('/api/storefront/reviews/eligible',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({init_data:key,...(productId?{product_id:productId}:{}),...(append?{offset:typeof append==='number'?append:reviewEligibility.next}: {})})});
+ if(key!==(telegram?.initData||''))return {items:[],next_offset:null};
+ if(!productId){reviewEligibility={key,items:append?[...reviewEligibility.items,...result.items]:result.items,next:result.next_offset,loaded:true};}
+ return result;
+}
+function renderReviewFeed(){
+ const state=reviewFeed;
+ show(`<h2>${state.productId?'Отзывы о товаре':'Отзывы'}</h2>${state.productId?`<p class="review-context">${escape(data?.products.find(p=>p.id===state.productId)?.name||'')}</p>`:''}
+ <div class="review-filters"><label for="review-sort">Сортировка<select id="review-sort"><option value="newest" ${state.sort==='newest'?'selected':''}>Сначала новые</option><option value="oldest" ${state.sort==='oldest'?'selected':''}>Сначала старые</option><option value="rating_asc" ${state.sort==='rating_asc'?'selected':''}>Сначала с низкой оценкой</option><option value="rating_desc" ${state.sort==='rating_desc'?'selected':''}>Сначала с высокой оценкой</option></select></label><label class="review-media-filter"><input id="review-media-only" type="checkbox" ${state.media?'checked':''}>С медиа</label></div>
+ <div id="review-write-slot">${reviewWriteButton(state.productId)}</div>
+ <p class="review-rule">Отзывы о купленных товарах можно оставить в течение 7 дней после выполнения заказа.</p>
+ ${state.total?`<p class="review-summary">${reviewCountLabel(state.total)} · ${Number(state.average).toLocaleString('ru-RU',{maximumFractionDigits:1})} ★</p>`:''}
+ ${state.error?`<div class="profile-error" role="alert"><p>${escape(state.error)}</p><button class="secondary-button" data-review-retry>Повторить</button></div>`:''}
+ <div class="reviews-feed">${state.items.map(review=>reviewCard(review)).join('')||(!state.loading&&!state.error?'<p>Отзывов пока нет.</p>':'')}</div>
+ ${state.loading?'<p role="status">Загружаем отзывы…</p>':''}${state.next!==null?`<button class="secondary-button" data-review-more ${state.loading?'disabled':''}>Показать ещё</button>`:''}`, 'reviews',false);
+ scheduleReviewExpiry();
+}
+async function loadReviewFeed(more=false){
+ const state=reviewFeed,version=++state.version;state.loading=true;state.error='';if(!more){state.items=[];state.next=null;}
+ renderReviewFeed();
+ try{
+  const query=new URLSearchParams({sort:state.sort,media:state.media?'1':'0',offset:String(more?state.next||state.items.length:0)});if(state.productId)query.set('product_id',state.productId);
+  const result=await reviewRequest('/api/storefront/reviews?'+query);
+  if(reviewFeed!==state||state.version!==version)return;
+  state.items=more?[...state.items,...result.items]:result.items;state.total=result.total;state.average=result.average;state.next=result.next_offset;
+ }catch(error){if(reviewFeed===state&&state.version===version)state.error=error.name==='TimeoutError'?'Сервер не ответил. Повторите загрузку.':error.message;}
+ finally{if(reviewFeed===state&&state.version===version){state.loading=false;if($('#details').open&&$('#details').dataset.view==='reviews')renderReviewFeed();}}
+}
+function openReviewFeed(productId=null){
+ reviewFeed={productId,sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};void loadReviewFeed();
+ void loadReviewEligibility().then(()=>{if($('#details').open&&$('#details').dataset.view==='reviews'){const slot=$('#review-write-slot');if(slot)slot.innerHTML=reviewWriteButton(reviewFeed.productId);scheduleReviewExpiry();}}).catch(()=>{});
+}
+async function loadProductReviews(id){
+ const container=$('#product-reviews');if(!container)return;
+ try{
+  const result=await reviewRequest(`/api/storefront/reviews?product_id=${id}&limit=3`);
+  if(!container.isConnected||$('#details').dataset.view!=='product')return;
+  container.innerHTML=`<h3>Отзывы ${result.total?`<span>${result.total} · ${Number(result.average).toLocaleString('ru-RU',{maximumFractionDigits:1})} ★</span>`:''}</h3>${result.items.map(review=>reviewCard(review)).join('')||'<p>Об этом товаре пока нет отзывов.</p>'}<button class="secondary-button" data-product-reviews="${id}">Все отзывы о товаре</button><div class="product-write-review"></div>`;
+  const eligible=await loadReviewEligibility(id);
+  if(container.isConnected&&eligible.items.length){const expires=eligible.items.reduce((last,item)=>item.expires_at>last?item.expires_at:last,'');container.querySelector('.product-write-review').innerHTML=`<button class="primary-button" data-write-review="${id}" data-review-expires="${expires}">Оставить отзыв</button>`;scheduleReviewExpiry();}
+ }catch{if(container.isConnected)container.innerHTML=`<h3>Отзывы</h3><button class="secondary-button" data-product-reviews="${id}">Открыть отзывы о товаре</button>`;}
+}
+async function openReviewForm(productId=null){
+ const pending=pendingReview();
+ reviewFeed.version++;
+ reviewDraft=pending?{...pending,files:[],choices:[],next:null,locked:true,busy:false,productId,error:''}:{request_key:crypto.randomUUID(),rating:0,text:'',files:[],choices:[],next:null,locked:false,busy:false,productId,error:'',loading:true};
+ const draft=reviewDraft;renderReviewForm();
+ if(pending)return;
+ try{const result=await loadReviewEligibility(productId);if(reviewDraft!==draft)return;draft.choices=result.items;draft.next=result.next_offset;draft.loading=false;draft.selected=draft.choices[0]?`${draft.choices[0].order_id}:${draft.choices[0].product_id}`:'';}
+ catch(error){if(reviewDraft===draft){draft.loading=false;draft.error=error.message;}}
+ if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();
+}
+function renderReviewForm(){
+ const draft=reviewDraft;if(!draft)return;
+ draft.choices=draft.choices.filter(choice=>Date.parse(choice.expires_at)>Date.now());
+ if(!draft.choices.some(choice=>`${choice.order_id}:${choice.product_id}`===draft.selected)&&!draft.locked){if(draft.selected){draft.error='Срок для выбранного товара истёк. Выберите другой купленный товар.';draft.files=[];}draft.selected='';}
+ show(`<h2>Оставить отзыв</h2><button class="profile-back" data-review-back>${icons.previousPhoto}К отзывам</button>
+ ${draft.error?`<div class="profile-error" role="alert">${escape(draft.error)}</div>`:''}
+ ${draft.locked?'<p>Проверим отправленный отзыв. Повторная отправка не создаст второй отзыв.</p>':draft.loading?'<p role="status">Проверяем выполненные заказы…</p>':!draft.choices.length?'<p>Сейчас нет товаров, доступных для отзыва. Отзыв можно оставить в течение 7 дней после выполнения заказа.</p>':''}
+ ${!draft.locked&&draft.choices.length?`<label class="review-field" for="review-purchase">Купленный товар<select id="review-purchase" ${draft.busy?'disabled':''}><option value="" ${!draft.selected?'selected':''}>Выберите купленный товар</option>${draft.choices.map(choice=>`<option value="${choice.order_id}:${choice.product_id}" data-review-expires="${choice.expires_at}" ${draft.selected===`${choice.order_id}:${choice.product_id}`?'selected':''}>${escape(choice.product_name)} · заказ #${choice.order_id}</option>`).join('')}</select></label>${draft.selected?`<p class="review-rule">Доступно до ${new Date(draft.choices.find(choice=>`${choice.order_id}:${choice.product_id}`===draft.selected).expires_at).toLocaleString('ru-RU')}</p>`:''}
+ <div class="review-rating" role="group" aria-label="Оценка товара">${[1,2,3,4,5].map(value=>`<button type="button" data-review-rating="${value}" aria-label="Оценка ${value} из 5" aria-pressed="${draft.rating===value}" ${draft.busy?'disabled':''} class="${value<=draft.rating?'selected':''}">★</button>`).join('')}</div>
+ <label class="review-field" for="review-text">Ваш отзыв<textarea id="review-text" maxlength="2000" rows="4" placeholder="Поделитесь впечатлениями (необязательно)" ${draft.busy?'disabled':''}>${escape(draft.text)}</textarea></label>
+ <label class="review-file-label">Добавить фото или видео<input id="review-files" type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime" multiple ${draft.busy?'disabled':''}></label><p class="review-rule">До 5 файлов. Видео — до 20 МБ, все файлы вместе — до 40 МБ.</p>
+ <div class="review-draft-media">${draft.files.map((file,index)=>`<div>${file.type==='video'?`<video src="${escape(file.url)}" controls playsinline preload="none"></video>`:`<img src="${escape(file.url)}" alt="Приложенное фото">`}<button type="button" class="secondary-button" data-remove-review-file="${index}" ${draft.busy?'disabled':''}>Убрать</button></div>`).join('')}</div>`:''}
+ ${draft.next!==null&&!draft.locked?`<button class="secondary-button" data-review-more-choices ${draft.busy?'disabled':''}>Показать ещё купленные товары</button>`:''}
+ ${draft.choices.length||draft.locked?`<button class="primary-button" data-review-submit ${draft.busy||(!draft.locked&&!draft.selected)?'disabled':''}>${draft.busy?escape(draft.progress||'Отправляем…'):draft.locked?'Проверить отправку':'Отправить отзыв'}</button>`:''}`, 'review-form',false);
+ scheduleReviewExpiry();
+}
+async function prepareReviewFile(file){
+ if(file.type.startsWith('image/')){
+  const bitmap=await createImageBitmap(file);
+  try{const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('Не удалось подготовить фото.')),'image/jpeg',.82));}finally{bitmap.close();}
+ }
+ if(!['video/mp4','video/webm','video/quicktime'].includes(file.type))throw new Error('Выберите фото JPG, PNG, WebP или видео MP4, WebM, MOV.');
+ if(file.size>20*1024*1024)throw new Error('Видео должно быть не больше 20 МБ.');return file;
+}
+async function uploadReviewFiles(files){
+ const draft=reviewDraft;if(!draft||draft.busy||draft.locked)return;
+ if(draft.files.length+files.length>5){draft.error='Можно добавить до 5 фото или видео.';renderReviewForm();return;}
+ const choice=draft.choices.find(item=>`${item.order_id}:${item.product_id}`===draft.selected);if(!choice)return;
+ draft.busy=true;draft.error='';
+ try{for(let index=0;index<files.length;index++){
+   draft.progress=`Загружаем файл ${index+1} из ${files.length}…`;if($('#details').dataset.view==='review-form')renderReviewForm();
+   const blob=await prepareReviewFile(files[index]);if(reviewDraft!==draft)return;if(draft.files.reduce((sum,file)=>sum+file.size,0)+blob.size>40*1024*1024)throw new Error('Общий размер медиа — не более 40 МБ.');
+   const result=await reviewRequest(`/api/storefront/reviews/${choice.order_id}/${choice.product_id}/media`,{method:'POST',headers:{'Content-Type':blob.type,'X-Telegram-Init-Data':telegram?.initData||''},body:blob},75000);
+   if(reviewDraft!==draft)return;draft.files.push(result.media);
+  }}catch(error){draft.error=error.message;}
+ finally{draft.busy=false;if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();}
+}
+async function submitReview(){
+ const draft=reviewDraft;if(!draft||draft.busy)return;
+ if(!draft.locked&&!draft.rating){draft.error='Выберите оценку от 1 до 5 звёзд.';renderReviewForm();return;}
+ const selected=draft.choices.find(choice=>`${choice.order_id}:${choice.product_id}`===draft.selected);
+ if(!draft.locked&&!selected)return;
+ const body=draft.locked?{request_key:draft.request_key,order_id:draft.order_id,product_id:draft.product_id,rating:draft.rating,text:draft.text,media_ids:draft.media_ids}:{request_key:draft.request_key,order_id:selected.order_id,product_id:selected.product_id,rating:draft.rating,text:draft.text,media_ids:draft.files.map(file=>file.id)};
+ const owner=cartKey;draft.busy=true;draft.error='';draft.progress='Отправляем отзыв…';renderReviewForm();
+ try{localStorage.setItem('gas-review-pending:'+owner,JSON.stringify(body));}catch{}
+ try{
+  const result=await reviewRequest('/api/storefront/reviews',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,init_data:telegram?.initData||''})},20000);
+  try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}
+  if(owner!==cartKey||reviewDraft!==draft)return;
+  profileState={key:'',status:'idle'};reviewEligibility={key:null,items:[],next:null,loaded:false};reviewDraft=null;
+  if($('#details').open&&$('#details').dataset.view==='review-form')show(`<h2>Отзыв отправлен</h2><p>${result.review.status==='published'?'Отзыв опубликован.':'Отзыв появится после модерации.'}</p><button class="primary-button" data-my-reviews>Мои отзывы</button><button class="secondary-button" data-review-back>Все отзывы</button>`,'reviews-sent');
+ }catch(error){draft.error=error.message;if(error.status>=400&&error.status<500&&error.status!==401){try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}}if(pendingReview(owner)){Object.assign(draft,body,{locked:true});}}
+ finally{draft.busy=false;if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();}
+}
+
 function referralContent() {
   const referral = data?.referral;
   if (!referral) return '<p>Информация пока недоступна. Обновите каталог.</p>';
@@ -634,10 +778,7 @@ function openInfo(type) {
   if (type === 'referral') {
     show(`<h2>Реферальная программа</h2>${referralContent()}`);
   } else {
-    show(`<h2>Отзывы</h2>${data.reviews.map(review => `<article class="review">
-      <strong aria-label="Оценка ${review.rating} из 5">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</strong>
-      <p>${escape(review.text)}</p><small>${escape(review.product_name)} · ${new Date(review.created_at).toLocaleDateString('ru-RU')}</small>
-      </article>`).join('') || '<p>Опубликованных отзывов пока нет.</p>'}`);
+    openReviewFeed();
   }
 }
 let profileState = { key: '', status: 'idle' }, profileRequestVersion = 0;
@@ -725,13 +866,12 @@ async function loadProfile(more = false) {
   }
 }
 function renderMyReviews() {
-  const state = currentProfile(), statuses = { pending:'На модерации', published:'Опубликован', hidden:'Скрыт' };
-  show(`<h2>Мои отзывы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button>${profileMessage()}
-    ${state.status === 'ready' ? state.reviews.length ? `<div class="my-reviews-list">${state.reviews.map(review => {
-      const rating = Math.max(0,Math.min(5,Math.trunc(Number(review.rating)||0)));
-      return `<article class="review my-review"><div class="my-review-heading"><strong>${escape(review.product_name)}</strong><span class="my-review-status">${escape(statuses[review.status]||review.status)}</span></div><div class="my-review-stars" aria-label="Оценка ${rating} из 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</div><p>${escape(review.text)}</p><small>${new Date(review.created_at).toLocaleDateString('ru-RU')}</small></article>`;
-    }).join('')}</div>${state.reviews_next ? `<button class="primary-button secondary-button" data-more-reviews ${state.loadingMore?'disabled':''}>${state.loadingMore?'Загружаем…':'Показать ещё'}</button>` : ''}` : '<div class="empty-inline">У вас пока нет отзывов.</div>' : ''}`, 'my-reviews', false);
+  const state = currentProfile();
+  show(`<h2>Мои отзывы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button><div id="my-review-write-slot">${reviewWriteButton()}</div>${profileMessage()}
+    ${state.status === 'ready' ? state.reviews.length ? `<div class="my-reviews-list">${state.reviews.map(review=>reviewCard(review,true)).join('')}</div>${state.reviews_next ? `<button class="primary-button secondary-button" data-more-reviews ${state.loadingMore?'disabled':''}>${state.loadingMore?'Загружаем…':'Показать ещё'}</button>` : ''}` : '<div class="empty-inline">У вас пока нет отзывов.</div>' : ''}`, 'my-reviews', false);
   if (state.status === 'idle') void loadProfile();
+  scheduleReviewExpiry();
+  if(!reviewEligibility.loaded||reviewEligibility.key!==(telegram?.initData||''))void loadReviewEligibility().then(()=>{const slot=$('#my-review-write-slot');if(slot){slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}).catch(()=>{});
 }
 function stopProfileTransition() {
   if (!profileTransition) return;
@@ -1039,6 +1179,16 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ const feed=event.target.closest('[data-product-reviews]');if(feed){openReviewFeed(Number(feed.dataset.productReviews));return;}
+ const write=event.target.closest('[data-write-review]');if(write){void openReviewForm(Number(write.dataset.writeReview)||null);return;}
+ const rating=event.target.closest('[data-review-rating]');if(rating&&reviewDraft&&!reviewDraft.busy){reviewDraft.rating=Number(rating.dataset.reviewRating);document.querySelectorAll('[data-review-rating]').forEach(button=>{button.classList.toggle('selected',Number(button.dataset.reviewRating)<=reviewDraft.rating);button.setAttribute('aria-pressed',String(Number(button.dataset.reviewRating)===reviewDraft.rating));});return;}
+ if(event.target.closest('[data-review-submit]')){void submitReview();return;}
+ if(event.target.closest('[data-review-back]')){reviewDraft=null;openReviewFeed(reviewFeed.productId);return;}
+ if(event.target.closest('[data-review-retry]')){void loadReviewFeed();return;}
+ if(event.target.closest('[data-review-more]')){if(!reviewFeed.loading)void loadReviewFeed(true);return;}
+ const removeReview=event.target.closest('[data-remove-review-file]');if(removeReview&&reviewDraft&&!reviewDraft.busy){reviewDraft.files.splice(Number(removeReview.dataset.removeReviewFile),1);renderReviewForm();return;}
+ if(event.target.closest('[data-review-more-choices]')&&reviewDraft&&!reviewDraft.busy){const draft=reviewDraft;draft.busy=true;void loadReviewEligibility(draft.productId,draft.next).then(result=>{if(reviewDraft===draft){draft.choices.push(...result.items);draft.next=result.next_offset;}}).catch(error=>{draft.error=error.message;}).finally(()=>{draft.busy=false;if(reviewDraft===draft&&$('#details').dataset.view==='review-form')renderReviewForm();});return;}
+
  if(event.target.closest('[data-toggle-rubles]')){toggleCheckoutRubles();return;}
  if(event.target.closest('[data-my-reviews]')){renderMyReviews();return;}
  if(event.target.closest('[data-back-profile]')){renderProfile();return;}
@@ -1069,6 +1219,13 @@ function handleCartAction(event) {
   else if (event.target.closest('[data-continue]')) void continueShopping();
 }
 $('#detail-content').onclick = handleCartAction;
+$('#detail-content').addEventListener('change',event=>{
+ if(event.target.id==='review-sort'){reviewFeed.sort=event.target.value;void loadReviewFeed();}
+ if(event.target.id==='review-media-only'){reviewFeed.media=event.target.checked;void loadReviewFeed();}
+ if(event.target.id==='review-files')void uploadReviewFiles([...event.target.files]);
+ if(event.target.id==='review-purchase'&&reviewDraft&&!reviewDraft.busy){reviewDraft.selected=event.target.value;reviewDraft.files=[];renderReviewForm();}
+});
+$('#detail-content').addEventListener('input',event=>{if(event.target.id==='review-text'&&reviewDraft)reviewDraft.text=event.target.value;});
 $('#detail-content').addEventListener('input',event=>{if(event.target.id!=='checkout-rubles'||!checkoutDraft||checkoutSubmitting||checkoutLocked)return;checkoutDraft.balance_spend=Math.max(0,Math.min(checkoutSpendLimit(),Math.round(Number(event.target.value)||0)));refreshCheckoutPayment();});
 $('#cart-content').onclick = handleCartAction;
 $('#detail-content').addEventListener('keydown', event => {
@@ -1082,7 +1239,7 @@ document.addEventListener('click', event => { if (event.target.id === 'retry') l
 $('#telegram-sdk')?.addEventListener('load', () => {
   telegram = window.Telegram?.WebApp;
   configureTelegram();
-  if($('#details').open&&['product','checkout','important'].includes($('#details').dataset.view))holdTelegramSwipes();
+  if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent'].includes($('#details').dataset.view))holdTelegramSwipes();
   user = telegram?.initDataUnsafe?.user;
   updateClientAvatar();
   void loadHeaderBalance();
@@ -1098,6 +1255,7 @@ $('#telegram-sdk')?.addEventListener('load', () => {
       updateProductAddButton();
     }
   }
+  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
   refreshProfileView();
 });
 updateClientAvatar();
