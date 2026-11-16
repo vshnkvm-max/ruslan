@@ -214,7 +214,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   stopBannerAuto();
   if(view==='checkout'){clearTimeout(toastTimer);$('#toast').classList.remove('visible');}
   resetSheetGesture();
-  if(['product','checkout','important','reviews','review-form','reviews-sent'].includes(view))holdTelegramSwipes();else releaseTelegramSwipes();
+  if(['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(view))holdTelegramSwipes();else releaseTelegramSwipes();
   stopProfileTransition();
   ordersTransition?.cancel();
   ordersTransition = undefined;
@@ -233,7 +233,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   if (!wasOpen) {
     dialog.showModal();
     document.body.style.overflow = 'hidden';
-    void animate(dialog, ['product','checkout','important','reviews','review-form','reviews-sent'].includes(view)?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
+    void animate(dialog, ['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(view)?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
   } else if (shouldAnimate) {
     void animate(content, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180 });
   }
@@ -248,7 +248,7 @@ async function closeDetails() {
   const version = ++modalVersion;
   dialog.dataset.closing = 'true';
   if(dialog.dataset.view==='promotion'){dialog.close();return;}
-  await animate(dialog,['product','checkout','important','reviews','review-form','reviews-sent'].includes(dialog.dataset.view)?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
+  await animate(dialog,['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(dialog.dataset.view)?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
   if (version !== modalVersion) return;
   dialog.close();
 }
@@ -262,11 +262,11 @@ function holdTelegramSwipes(){
 }
 function releaseTelegramSwipes(){const owner=swipeOwner;swipeOwner=null;try{owner?.enableVerticalSwipes?.();}catch{/* Keep closing available without the SDK. */}}
 window.addEventListener('pagehide',releaseTelegramSwipes);
-window.addEventListener('pageshow',()=>{if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent'].includes($('#details').dataset.view))holdTelegramSwipes();});
+window.addEventListener('pageshow',()=>{if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes($('#details').dataset.view))holdTelegramSwipes();});
 function resetSheetGesture(){sheetGesture=null;const dialog=$('#details');dialog.style.removeProperty('transform');delete dialog.dataset.dragging;}
 function startSheetGesture(x,y,target,pointerId=null){
  const dialog=$('#details');
- if(!dialog.open||!['product','checkout','important','reviews','review-form','reviews-sent'].includes(dialog.dataset.view)||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
+ if(!dialog.open||!['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(dialog.dataset.view)||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
  if(dialog.scrollTop>1&&!target.closest('.sheet-handle'))return;
  sheetGesture={x,y,dy:0,axis:null,dragging:false,time:performance.now(),samples:[],version:modalVersion,pointerId};
 }
@@ -613,6 +613,7 @@ function scheduleReviewExpiry(){
  reviewExpiryTimer=setTimeout(()=>{
   document.querySelectorAll('[data-review-expires]').forEach(node=>{if(Date.parse(node.dataset.reviewExpires)<=Date.now())node.remove();});
   if(reviewDraft&&$('#details').open&&$('#details').dataset.view==='review-form'&&!reviewDraft.locked&&!reviewDraft.busy)renderReviewForm();
+  if($('#details').open&&$('#details').dataset.view==='review-opportunities')renderReviewOpportunities();
   scheduleReviewExpiry();
  },Math.max(20,Math.min(...dates)-Date.now()+20));
 }
@@ -623,7 +624,7 @@ function renderReviewBadge(){
  const count=eligible?reviewEligibility.total||0:0,expires=Date.parse(reviewEligibility.next_expiry);
  const current=count>0&&expires>Date.now();
  badge.hidden=!current;badge.textContent=current?String(count):'';
- button.setAttribute('aria-label',current?`Мои отзывы. Можно оставить: ${count}`:'Мои отзывы');
+ button.setAttribute('aria-label',current?`Написать отзыв. Доступно: ${count}`:'Написать отзыв');
  if(current)reviewBadgeTimer=setTimeout(()=>{renderReviewBadge();void refreshReviewBadge();},Math.max(30,Math.min(2147483647,expires-Date.now()+30)));
 }
 async function refreshReviewBadge(){
@@ -662,6 +663,28 @@ async function loadReviewFeed(more=false){
  }catch(error){if(reviewFeed===state&&state.version===version)state.error=error.name==='TimeoutError'?'Сервер не ответил. Повторите загрузку.':error.message;}
  finally{if(reviewFeed===state&&state.version===version){state.loading=false;if($('#details').open&&$('#details').dataset.view==='reviews')renderReviewFeed();}}
 }
+let reviewOpportunities=null;
+function renderReviewOpportunities(){
+ const state=reviewOpportunities;if(!state||state.key!==(telegram?.initData||''))return;
+ state.items=state.items.filter(item=>Date.parse(item.expires_at)>Date.now());
+ show(`<h2>Оставить отзыв</h2><p class="review-rule">Выберите купленный товар. Отзыв можно оставить в течение 7 дней после выполнения заказа.</p>
+ ${!state.key?'<p>Откройте магазин через Telegram, чтобы увидеть товары, на которые можно оставить отзыв.</p>':''}
+ ${pendingReview()?'<button class="primary-button" data-write-review="">Проверить отправку отзыва</button>':''}
+ ${state.error?`<div class="profile-error" role="alert"><p>${escape(state.error)}</p><button class="secondary-button" data-review-opportunities>Повторить</button></div>`:''}
+ <div class="review-opportunities">${state.items.map(item=>`<article class="review-opportunity" data-review-expires="${item.expires_at}"><strong>${escape(item.product_name)}</strong><p>Заказ #${item.order_id} · выполнен ${reviewDate(item.completed_at)}</p><p>Можно оставить до ${new Date(item.expires_at).toLocaleString('ru-RU')}</p><button class="primary-button" data-review-purchase="${item.order_id}:${item.product_id}">Написать отзыв</button></article>`).join('')}</div>
+ ${state.loading?'<p role="status">Проверяем выполненные заказы…</p>':state.key&&!state.error&&!state.items.length?'<p>Сейчас нет товаров, на которые можно оставить отзыв.</p>':''}
+ ${state.next!==null?`<button class="secondary-button" data-more-review-opportunities ${state.loading?'disabled':''}>Показать ещё</button>`:''}`, 'review-opportunities',false);
+ scheduleReviewExpiry();
+}
+async function openReviewOpportunities(more=false){
+ if(more&&reviewOpportunities?.loading)return;
+ const state=more?reviewOpportunities:{key:telegram?.initData||'',items:[],next:null,loading:false,error:''};reviewOpportunities=state;
+ state.loading=Boolean(state.key);state.error='';renderReviewOpportunities();if(!state.key)return;
+ try{const result=await loadReviewEligibility(null,more?state.next:false);if(reviewOpportunities!==state||state.key!==(telegram?.initData||''))return;state.items=more?[...state.items,...result.items]:result.items;state.next=result.next_offset;}
+ catch(error){if(reviewOpportunities===state)state.error=error.message;}
+ finally{state.loading=false;if(reviewOpportunities===state&&$('#details').open&&$('#details').dataset.view==='review-opportunities')renderReviewOpportunities();}
+}
+
 function openReviewFeed(productId=null){
  reviewFeed={productId,sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};void loadReviewFeed();
  void loadReviewEligibility().then(()=>{if($('#details').open&&$('#details').dataset.view==='reviews'){const slot=$('#review-write-slot');if(slot)slot.innerHTML=reviewWriteButton(reviewFeed.productId);scheduleReviewExpiry();}}).catch(()=>{});
@@ -676,13 +699,14 @@ async function loadProductReviews(id){
   if(container.isConnected&&eligible.items.length){const expires=eligible.items.reduce((last,item)=>item.expires_at>last?item.expires_at:last,'');container.querySelector('.product-write-review').innerHTML=`<button class="primary-button" data-write-review="${id}" data-review-expires="${expires}">Оставить отзыв</button>`;scheduleReviewExpiry();}
  }catch{if(container.isConnected)container.innerHTML=`<h3>Отзывы</h3><button class="secondary-button" data-product-reviews="${id}">Открыть отзывы о товаре</button>`;}
 }
-async function openReviewForm(productId=null){
+async function openReviewForm(productId=null,orderId=null){
+ const origin=$('#details').dataset.view==='review-opportunities'?'opportunities':'reviews';
  const pending=pendingReview();
  reviewFeed.version++;
  reviewDraft=pending?{...pending,files:[],choices:[],next:null,locked:true,busy:false,productId,error:''}:{request_key:crypto.randomUUID(),rating:0,text:'',files:[],choices:[],next:null,locked:false,busy:false,productId,error:'',loading:true};
- const draft=reviewDraft;renderReviewForm();
+ const draft=reviewDraft;draft.origin=origin;renderReviewForm();
  if(pending)return;
- try{const result=await loadReviewEligibility(productId);if(reviewDraft!==draft)return;draft.choices=result.items;draft.next=result.next_offset;draft.loading=false;draft.selected=draft.choices[0]?`${draft.choices[0].order_id}:${draft.choices[0].product_id}`:'';}
+ try{let result=await loadReviewEligibility(productId);while(orderId&&!result.items.some(item=>item.order_id===orderId)&&result.next_offset!==null){const page=await loadReviewEligibility(productId,result.next_offset);if(reviewDraft!==draft)return;result={...page,items:[...result.items,...page.items]};}if(reviewDraft!==draft)return;draft.choices=result.items;draft.next=result.next_offset;draft.loading=false;const selected=orderId?draft.choices.find(item=>item.order_id===orderId&&item.product_id===productId):draft.choices[0];draft.selected=selected?`${selected.order_id}:${selected.product_id}`:'';if(orderId&&!selected)draft.error='Этот товар больше недоступен для отзыва.';}
  catch(error){if(reviewDraft===draft){draft.loading=false;draft.error=error.message;}}
  if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();
 }
@@ -736,7 +760,7 @@ async function submitReview(){
   try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}
   if(owner!==cartKey||reviewDraft!==draft)return;
   profileState={key:'',status:'idle'};reviewEligibilityVersion++;reviewEligibility={key:null,items:[],next:null,loaded:false};renderReviewBadge();void refreshReviewBadge();reviewDraft=null;
-  if($('#details').open&&$('#details').dataset.view==='review-form')show(`<h2>Отзыв отправлен</h2><p>${result.review.status==='published'?'Отзыв опубликован.':'Отзыв появится после модерации.'}</p><button class="primary-button" data-my-reviews>Мои отзывы</button><button class="secondary-button" data-review-back>Все отзывы</button>`,'reviews-sent');
+  if($('#details').open&&$('#details').dataset.view==='review-form')show(`<h2>Отзыв отправлен</h2><p>${result.review.status==='published'?'Отзыв опубликован.':'Отзыв появится после модерации.'}</p>${draft.origin==='opportunities'?'<button class="primary-button" data-review-opportunities>К доступным отзывам</button>':'<button class="primary-button" data-my-reviews>Мои отзывы</button><button class="secondary-button" data-review-back>Все отзывы</button>'}`,'reviews-sent');
  }catch(error){draft.error=error.message;if(error.status>=400&&error.status<500&&error.status!==401){try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}}if(pendingReview(owner)){Object.assign(draft,body,{locked:true});}}
  finally{draft.busy=false;if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();}
 }
@@ -749,7 +773,7 @@ function referralContent() {
     : '<div class="empty-inline">Реферальная программа пока не действует.</div>';
 }
 function openInfo(type) {
-  if(type==='reviews'){renderMyReviews();void refreshReviewBadge();return;}
+  if(type==='reviews'){void openReviewOpportunities();return;}
   if (type === 'important') {
     show(`<div class="important-info">
       <span class="important-eyebrow">GAS SHOP · ПЕРЕД ПЕРВЫМ ЗАКАЗОМ</span>
@@ -1250,6 +1274,9 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ if(event.target.closest('[data-review-opportunities]')){void openReviewOpportunities();return;}
+ if(event.target.closest('[data-more-review-opportunities]')){void openReviewOpportunities(true);return;}
+ const purchase=event.target.closest('[data-review-purchase]');if(purchase){const [orderId,productId]=purchase.dataset.reviewPurchase.split(':').map(Number);void openReviewForm(productId,orderId);return;}
  const ownOrder=event.target.closest('[data-customer-order]');if(ownOrder){void openCustomerOrder(Number(ownOrder.dataset.customerOrder),ownOrder.dataset.orderOrigin||'orders');return;}
  if(event.target.closest('[data-customer-orders],[data-retry-orders]')){void openCustomerOrders();return;}
  if(event.target.closest('[data-more-orders]')){void openCustomerOrders(true);return;}
@@ -1265,7 +1292,7 @@ function handleCartAction(event) {
  const write=event.target.closest('[data-write-review]');if(write){void openReviewForm(Number(write.dataset.writeReview)||null);return;}
  const rating=event.target.closest('[data-review-rating]');if(rating&&reviewDraft&&!reviewDraft.busy){reviewDraft.rating=Number(rating.dataset.reviewRating);document.querySelectorAll('[data-review-rating]').forEach(button=>{button.classList.toggle('selected',Number(button.dataset.reviewRating)<=reviewDraft.rating);button.setAttribute('aria-pressed',String(Number(button.dataset.reviewRating)===reviewDraft.rating));});return;}
  if(event.target.closest('[data-review-submit]')){void submitReview();return;}
- if(event.target.closest('[data-review-back]')){reviewDraft=null;openReviewFeed(reviewFeed.productId);return;}
+ if(event.target.closest('[data-review-back]')){const origin=reviewDraft?.origin;reviewDraft=null;if(origin==='opportunities')void openReviewOpportunities();else openReviewFeed(reviewFeed.productId);return;}
  if(event.target.closest('[data-review-retry]')){void loadReviewFeed();return;}
  if(event.target.closest('[data-review-more]')){if(!reviewFeed.loading)void loadReviewFeed(true);return;}
  const removeReview=event.target.closest('[data-remove-review-file]');if(removeReview&&reviewDraft&&!reviewDraft.busy){reviewDraft.files.splice(Number(removeReview.dataset.removeReviewFile),1);renderReviewForm();return;}
@@ -1321,7 +1348,7 @@ document.addEventListener('click', event => { if (event.target.id === 'retry') l
 $('#telegram-sdk')?.addEventListener('load', () => {
   telegram = window.Telegram?.WebApp;
   configureTelegram();
-  if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent'].includes($('#details').dataset.view))holdTelegramSwipes();
+  if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes($('#details').dataset.view))holdTelegramSwipes();
   user = telegram?.initDataUnsafe?.user;
   updateClientAvatar();
   void loadHeaderBalance();
@@ -1339,6 +1366,7 @@ $('#telegram-sdk')?.addEventListener('load', () => {
   }
   if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
   if($('#details').open&&['my-orders','order-detail'].includes($('#details').dataset.view))void openCustomerOrders();
+  if($('#details').open&&$('#details').dataset.view==='review-opportunities')void openReviewOpportunities();
   renderReviewBadge();void refreshReviewBadge();
   refreshProfileView();
 });
