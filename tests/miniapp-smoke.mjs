@@ -262,6 +262,8 @@ try {
   await close();
   assert.equal(await page.locator('[data-product="6"]').count(),0);
   await page.locator('[data-info="reviews"]').click();
+  await page.getByRole('heading',{name:'Мои отзывы',exact:true}).waitFor();
+  await page.locator('[data-all-reviews]').click();
   await page.waitForFunction(()=>document.querySelectorAll('dialog .review').length===4);
   assert.equal(await page.locator('dialog .review').count(), 4, 'reviews of unavailable products remain readable');
   await close();

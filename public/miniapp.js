@@ -589,6 +589,7 @@ async function reviewRequest(url,options={},timeout=15000){
 let reviewIdentity=telegram?.initData||'';
 let reviewFeed={productId:null,sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};
 let reviewDraft=null,reviewEligibility={key:null,items:[],next:null,loaded:false},reviewExpiryTimer;
+let reviewEligibilityVersion=0,reviewBadgeTimer;
 const reviewDate=value=>new Date(value).toLocaleDateString('ru-RU');
 const reviewCountLabel=value=>`${value} ${{one:'отзыв',few:'отзыва',many:'отзывов',other:'отзывов'}[new Intl.PluralRules('ru').select(value)]}`;
 function reviewMediaMarkup(review){return review.media?.length?`<div class="review-media-list">${review.media.map(file=>file.type==='video'?`<video src="${escape(file.url)}" controls playsinline preload="none" aria-label="Видео к отзыву"></video>`:`<img src="${escape(file.url)}" alt="Фото к отзыву о товаре ${escape(review.product_name)}" loading="lazy" decoding="async">`).join('')}</div>`:'';}
@@ -615,11 +616,27 @@ function scheduleReviewExpiry(){
   scheduleReviewExpiry();
  },Math.max(20,Math.min(...dates)-Date.now()+20));
 }
+function renderReviewBadge(){
+ clearTimeout(reviewBadgeTimer);
+ const badge=$('#review-count-badge'),button=$('[data-info="reviews"]');
+ const eligible=reviewEligibility.key===(telegram?.initData||'')&&reviewEligibility.loaded;
+ const count=eligible?reviewEligibility.total||0:0,expires=Date.parse(reviewEligibility.next_expiry);
+ const current=count>0&&expires>Date.now();
+ badge.hidden=!current;badge.textContent=current?String(count):'';
+ button.setAttribute('aria-label',current?`Мои отзывы. Можно оставить: ${count}`:'Мои отзывы');
+ if(current)reviewBadgeTimer=setTimeout(()=>{renderReviewBadge();void refreshReviewBadge();},Math.max(30,Math.min(2147483647,expires-Date.now()+30)));
+}
+async function refreshReviewBadge(){
+ const key=telegram?.initData||'',version=reviewEligibilityVersion+1;
+ if(!telegram?.initData){renderReviewBadge();return;}
+ try{await loadReviewEligibility();}catch{if(key===(telegram?.initData||'')&&version===reviewEligibilityVersion){reviewEligibility={key:null,items:[],next:null,loaded:false};renderReviewBadge();}}
+}
 async function loadReviewEligibility(productId=null,append=false){
- const key=telegram?.initData||'';if(!key)return {items:[],next_offset:null};
+ const key=telegram?.initData||'';if(!key)return {items:[],next_offset:null,total:0,next_expiry:null};
+ const version=productId?null:++reviewEligibilityVersion;
  const result=await reviewRequest('/api/storefront/reviews/eligible',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({init_data:key,...(productId?{product_id:productId}:{}),...(append?{offset:typeof append==='number'?append:reviewEligibility.next}: {})})});
- if(key!==(telegram?.initData||''))return {items:[],next_offset:null};
- if(!productId){reviewEligibility={key,items:append?[...reviewEligibility.items,...result.items]:result.items,next:result.next_offset,loaded:true};}
+ if(key!==(telegram?.initData||''))return {items:[],next_offset:null,total:0,next_expiry:null};
+ if(!productId&&version===reviewEligibilityVersion){reviewEligibility={key,items:append?[...reviewEligibility.items,...result.items]:result.items,next:result.next_offset,loaded:true,total:result.total,next_expiry:result.next_expiry};renderReviewBadge();const slot=$('#my-review-write-slot');if(slot){slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}
  return result;
 }
 function renderReviewFeed(){
@@ -718,7 +735,7 @@ async function submitReview(){
   const result=await reviewRequest('/api/storefront/reviews',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,init_data:telegram?.initData||''})},20000);
   try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}
   if(owner!==cartKey||reviewDraft!==draft)return;
-  profileState={key:'',status:'idle'};reviewEligibility={key:null,items:[],next:null,loaded:false};reviewDraft=null;
+  profileState={key:'',status:'idle'};reviewEligibilityVersion++;reviewEligibility={key:null,items:[],next:null,loaded:false};renderReviewBadge();void refreshReviewBadge();reviewDraft=null;
   if($('#details').open&&$('#details').dataset.view==='review-form')show(`<h2>Отзыв отправлен</h2><p>${result.review.status==='published'?'Отзыв опубликован.':'Отзыв появится после модерации.'}</p><button class="primary-button" data-my-reviews>Мои отзывы</button><button class="secondary-button" data-review-back>Все отзывы</button>`,'reviews-sent');
  }catch(error){draft.error=error.message;if(error.status>=400&&error.status<500&&error.status!==401){try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}}if(pendingReview(owner)){Object.assign(draft,body,{locked:true});}}
  finally{draft.busy=false;if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();}
@@ -732,6 +749,7 @@ function referralContent() {
     : '<div class="empty-inline">Реферальная программа пока не действует.</div>';
 }
 function openInfo(type) {
+  if(type==='reviews'){renderMyReviews();void refreshReviewBadge();return;}
   if (type === 'important') {
     show(`<div class="important-info">
       <span class="important-eyebrow">GAS SHOP · ПЕРЕД ПЕРВЫМ ЗАКАЗОМ</span>
@@ -935,9 +953,9 @@ async function loadProfile(more = false) {
 }
 function renderMyReviews() {
   const state = currentProfile();
-  show(`<h2>Мои отзывы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button><div id="my-review-write-slot">${reviewWriteButton()}</div>${profileMessage()}
+  show(`<h2>Мои отзывы</h2><button class="secondary-button" data-all-reviews>Все отзывы</button><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button><div id="my-review-write-slot">${reviewWriteButton()}</div>${profileMessage()}
     ${state.status === 'ready' ? state.reviews.length ? `<div class="my-reviews-list">${state.reviews.map(review=>reviewCard(review,true)).join('')}</div>${state.reviews_next ? `<button class="primary-button secondary-button" data-more-reviews ${state.loadingMore?'disabled':''}>${state.loadingMore?'Загружаем…':'Показать ещё'}</button>` : ''}` : '<div class="empty-inline">У вас пока нет отзывов.</div>' : ''}`, 'my-reviews', false);
-  if (state.status === 'idle') void loadProfile();
+  if (state.status === 'idle'||(state.status==='ready'&&Date.now()-state.loadedAt>30000)) void loadProfile();
   scheduleReviewExpiry();
   if(!reviewEligibility.loaded||reviewEligibility.key!==(telegram?.initData||''))void loadReviewEligibility().then(()=>{const slot=$('#my-review-write-slot');if(slot){slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}).catch(()=>{});
 }
@@ -1254,6 +1272,7 @@ function handleCartAction(event) {
  if(event.target.closest('[data-review-more-choices]')&&reviewDraft&&!reviewDraft.busy){const draft=reviewDraft;draft.busy=true;void loadReviewEligibility(draft.productId,draft.next).then(result=>{if(reviewDraft===draft){draft.choices.push(...result.items);draft.next=result.next_offset;}}).catch(error=>{draft.error=error.message;}).finally(()=>{draft.busy=false;if(reviewDraft===draft&&$('#details').dataset.view==='review-form')renderReviewForm();});return;}
 
  if(event.target.closest('[data-toggle-rubles]')){toggleCheckoutRubles();return;}
+ if(event.target.closest('[data-all-reviews]')){openReviewFeed();return;}
  if(event.target.closest('[data-my-reviews]')){renderMyReviews();return;}
  if(event.target.closest('[data-back-profile]')){renderProfile();return;}
  if(event.target.closest('[data-retry-profile]')){void loadProfile();return;}
@@ -1318,16 +1337,19 @@ $('#telegram-sdk')?.addEventListener('load', () => {
       updateProductAddButton();
     }
   }
-  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
+  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
   if($('#details').open&&['my-orders','order-detail'].includes($('#details').dataset.view))void openCustomerOrders();
+  renderReviewBadge();void refreshReviewBadge();
   refreshProfileView();
 });
 updateClientAvatar();
 void loadHeaderBalance();
+void refreshReviewBadge();
 load();
 configureTelegram();
 signalReadyWithoutSdk();
-document.addEventListener('visibilitychange',()=>{if(!document.hidden)void loadHeaderBalance(true);});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){void loadHeaderBalance(true);void refreshReviewBadge();}});
+setInterval(()=>{if(!document.hidden)void refreshReviewBadge();},60000);
 
 document.addEventListener('click',event=>{const button=event.target.closest('button');if(!event.isTrusted||!button||button.disabled)return;try{if(telegram?.HapticFeedback?.impactOccurred)telegram.HapticFeedback.impactOccurred('light');else if(telegram||window.TelegramWebviewProxy)postTelegramEvent('web_app_trigger_haptic_feedback',{type:'impact',impact_style:'light'});else navigator.vibrate?.(8);}catch{}});
 document.addEventListener('touchmove',event=>{if(event.touches.length>1&&event.cancelable)event.preventDefault();},{passive:false});

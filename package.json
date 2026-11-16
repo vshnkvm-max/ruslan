@@ -26,6 +26,7 @@
     "test:profile": "node tests/profile-smoke.mjs",
     "test:customer-balance": "node tests/customer-balance-smoke.mjs",
     "test:reviews": "node tests/reviews-smoke.mjs",
+    "test:review-badge": "node tests/review-badge-smoke.mjs",
     "test:customer-history": "node tests/customer-history-smoke.mjs"
   }
 }

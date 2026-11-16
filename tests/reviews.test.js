@@ -89,3 +89,10 @@ test('public product feed sorts, paginates and retains reviews after a product r
  app.db.prepare('UPDATE products SET stock=0,active=0 WHERE id=?').run(b.product);assert.equal((await request(`/storefront/reviews?product_id=${b.product}`)).data.total,3);
  app.db.prepare('UPDATE products SET deleted=1 WHERE id=?').run(b.product);assert.equal((await request(`/storefront/reviews?product_id=${b.product}`)).data.total,0);
 });
+
+test('review badge totals count all eligible purchases beyond the first page and exclude sent or expired reviews',async()=>{
+ const b=buyer();for(let i=0;i<201;i++)reviewOrder(app.db,b.id,b.product);
+ const page=(await eligible(b)).data;assert.equal(page.total,202);assert.equal(page.items.length,200);assert.equal(page.next_offset,200);assert.ok(Date.parse(page.next_expiry)>Date.now());
+ assert.equal((await request('/storefront/reviews',payload(b))).status,201);assert.equal((await eligible(b)).data.total,201);
+ app.db.prepare("UPDATE orders SET completed_at='2000-01-01' WHERE customer_id=?").run(b.id);const expired=(await eligible(b)).data;assert.equal(expired.total,0);assert.equal(expired.next_expiry,null);
+});

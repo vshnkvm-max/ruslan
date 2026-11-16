@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {createApp} from '../server.js';
+import {profileBotToken,signedProfileUser} from './fixtures/profile.js';
+import {reviewBuyer,reviewProduct,reviewOrder} from './fixtures/reviews.js';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright');
+const directory=mkdtempSync(join(tmpdir(),'shop-review-badge-')),{server,db}=createApp({dbPath:join(directory,'shop.db'),botToken:profileBotToken,orderBotToken:''});
+const buyer=reviewBuyer(db),other=reviewBuyer(db,202),product=reviewProduct(db);
+const orders=[reviewOrder(db,buyer,product),reviewOrder(db,buyer,product)];reviewOrder(db,buyer,product,{age:8*86400000});reviewOrder(db,buyer,product,{status:'new'});
+db.prepare("INSERT INTO reviews(customer_id,product_id,rating,text,status,created_at) VALUES (?,?,5,'Чужой отзыв','published','2026-11-01')").run(other,product);
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
+const browser=await chromium.launch({executablePath:'/usr/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage']});
+try{
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,reducedMotion:'reduce'});
+ await context.addInitScript(initData=>{window.Telegram={WebApp:{initData,initDataUnsafe:{user:{id:101,first_name:'Покупатель'}},ready(){},expand(){}}};},signedProfileUser());
+ await context.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:''}));const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.goto(base+'/miniapp');await page.waitForFunction(()=>document.querySelector('#review-count-badge')?.textContent==='2');
+ assert.equal(await page.locator('#review-count-badge').isVisible(),true);await page.screenshot({path:'/tmp/shop-review-badge.png'});
+ await page.locator('[data-info="reviews"]').click();await page.getByRole('heading',{name:'Мои отзывы',exact:true}).waitFor();await page.getByText('У вас пока нет отзывов.',{exact:true}).waitFor();assert.equal(await page.getByText('Чужой отзыв',{exact:true}).count(),0);
+ await page.locator('[data-write-review]').click();await page.locator('#review-purchase').waitFor();assert.equal(await page.locator('#review-purchase option:not([value=""])').count(),2);await page.locator('[data-review-rating="5"]').click();await page.locator('[data-review-submit]').click();await page.getByText('Отзыв отправлен',{exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('#review-count-badge')?.textContent==='1');
+ await page.locator('dialog > .close').click();await page.locator('[data-info="reviews"]').click();await page.getByText('На модерации',{exact:true}).waitFor();assert.equal(await page.locator('.my-review').count(),1);
+ const sent=db.prepare('SELECT order_id FROM reviews WHERE customer_id=?').get(buyer),remaining=orders.find(id=>id!==sent.order_id);db.prepare('UPDATE orders SET completed_at=? WHERE id=?').run(new Date(Date.now()-7*86400000+2500).toISOString(),remaining);
+ await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await page.waitForFunction(()=>document.querySelector('#review-count-badge')?.hidden===true);assert.equal(await page.locator('.my-review').count(),1);assert.equal(await page.locator('[data-write-review]').count(),0);
+ await page.locator('[data-all-reviews]').click();await page.getByText('Чужой отзыв',{exact:true}).waitFor();
+ await page.evaluate(initData=>{window.Telegram.WebApp.initData=initData;window.Telegram.WebApp.initDataUnsafe.user={id:202,first_name:'Другой'};document.querySelector('#telegram-sdk').dispatchEvent(new Event('load'));},signedProfileUser(202));assert.equal(await page.locator('#review-count-badge').isVisible(),false);
+ await page.locator('dialog > .close').click();await page.locator('[data-info="reviews"]').click();await page.getByText('Чужой отзыв',{exact:true}).waitFor();assert.equal(await page.getByText('На модерации',{exact:true}).count(),0);
+ assert.deepEqual(errors,[]);await context.close();console.log('PASS: reviews shortcut opens only own reviews, eligible count 2 → 1 → hidden, automatic expiry, submitted review persistence, public feed access and account isolation');
+}finally{await browser.close();await new Promise(resolve=>server.close(resolve));rmSync(directory,{recursive:true,force:true});}
