@@ -16,6 +16,7 @@ import { loadStorefrontProfile, loadStorefrontBalance } from './lib/storefront-p
 import { createStorefrontReviews } from './lib/storefront-reviews.js';
 import { createReviewMedia } from './lib/review-media.js';
 import { createCustomerBalances } from './lib/customer-balances.js';
+import { createCustomerHistory } from './lib/customer-history.js';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const sessionDuration = 12 * 60 * 60 * 1000;
@@ -58,6 +59,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const documents=createInventoryDocuments(db,{fail,str,num,bool,token});
   const serveStatic=createStaticAssets(root);
   const storefrontOrders=createStorefrontOrders(db,{botToken,fail});
+  const customerHistory=createCustomerHistory(db,{botToken,fail,orders:storefrontOrders});
   const customerBalances=createCustomerBalances(db,{fail,num});
   const reviewMedia=createReviewMedia(db,{directory:resolve(dirname(dbPath),'review-media'),botToken,fail});
   const storefrontReviews=createStorefrontReviews(db,{botToken,fail,serialize:rows=>reviewMedia.serialize(rows,{publicView:true})});
@@ -177,6 +179,19 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           if(path==='/api/storefront/balance')return json(res,200,{balance:loadStorefrontBalance(db,user.id)});
           if(b.reviews_before!==undefined&&(!Number.isSafeInteger(b.reviews_before)||b.reviews_before<=0))fail(400,'Неверная страница отзывов.');
           return json(res,200,loadStorefrontProfile(db,user.id,b.reviews_before??null,rows=>reviewMedia.serialize(rows,{privateAccess:true})));
+        }
+        if(path==='/api/storefront/orders/list'&&method==='POST'){
+          const b=await body(req);if(b.before!==undefined&&(!Number.isSafeInteger(b.before)||b.before<=0))fail(400,'Неверная страница заказов.');
+          return json(res,200,customerHistory.list(b.init_data,b.before??null));
+        }
+        const ownOrder=path.match(/^\/api\/storefront\/orders\/(\d+)(\/cancel)?$/);
+        if(ownOrder&&method==='POST'){
+          const b=await body(req),id=Number(ownOrder[1]);if(!Number.isSafeInteger(id)||id<=0)fail(400,'Неверный заказ.');
+          return json(res,200,{order:ownOrder[2]?customerHistory.cancel(id,b.init_data):customerHistory.order(id,b.init_data)});
+        }
+        if(path==='/api/storefront/transactions'&&method==='POST'){
+          const b=await body(req);if(b.before!==undefined&&(typeof b.before!=='string'||b.before.length>300))fail(400,'Неверная страница начислений.');
+          return json(res,200,customerHistory.balanceHistory(b.init_data,b.before??null));
         }
         if(path==='/api/storefront/orders'&&method==='POST') {
           const result=storefrontOrders.create(await body(req));

@@ -22,13 +22,13 @@ try{
   assert.equal(await page.locator('dialog [data-open-cart]').count(),0);assert.equal(await page.getByText('Моя корзина',{exact:true}).count(),0);
   await page.getByText('Кол-во заказов',{exact:true}).waitFor();await page.getByText('Общая сумма',{exact:true}).waitFor();
   await page.screenshot({path:'/tmp/shop-profile-orders.png'});
-  await page.locator('[data-toggle-orders]').click();await page.getByText('Заказ #3',{exact:true}).waitFor();assert.equal(await page.getByText('Заказ #5',{exact:true}).count(),0);
-  await page.locator('[data-my-reviews]').click();assert.equal(await page.locator('.my-review').count(),20);assert.equal(await page.getByText('Чужой отзыв',{exact:true}).count(),0);
+  await page.locator('[data-customer-orders]').click();await page.getByText('Заказ #3',{exact:true}).waitFor();assert.equal(await page.getByText('Заказ #5',{exact:true}).count(),0);
+  await page.locator('[data-back-profile]').click();await page.locator('[data-my-reviews]').click();assert.equal(await page.locator('.my-review').count(),20);assert.equal(await page.getByText('Чужой отзыв',{exact:true}).count(),0);
   await page.locator('[data-more-reviews]').click();await page.waitForFunction(()=>document.querySelectorAll('.my-review').length===23);
   assert.equal(await page.locator('.my-review img').count(),0);assert.equal(await page.locator('[data-more-reviews]').count(),0);
   await page.locator('dialog').evaluate(element=>element.scrollTop=0);await page.screenshot({path:'/tmp/shop-profile-reviews.png'});
   await page.locator('[data-back-profile]').click();assert.equal(await page.locator('[data-profile-order-count]').innerText(),'2');
-  await page.locator('#profile-referral').click();await page.getByText('Реферальная программа пока не действует.',{exact:true}).waitFor();await page.locator('#profile-overview').click();
+  await page.locator('#profile-accruals').click();await page.getByText('Начислений и списаний пока нет.',{exact:true}).waitFor();await page.locator('#profile-overview').click();
   for(const width of [320,1280]){
     await page.setViewportSize({width,height:844});
     assert.ok(await page.locator('.profile-stats').evaluate(element=>element.scrollWidth<=element.clientWidth+1));

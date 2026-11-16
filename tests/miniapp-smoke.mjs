@@ -114,13 +114,14 @@ try {
   await page.locator('#profile-button').click();
   await page.getByRole('heading', { name: 'Александр Морозов' }).waitFor();
   assert.equal(await page.locator('.profile-stats strong').first().textContent(), '—');
-  await page.locator('[data-toggle-orders]').click();
-  await page.getByText('История появится после загрузки профиля.', { exact: true }).waitFor();
+  await page.locator('[data-customer-orders]').click();
+  await page.getByText('Откройте магазин через Telegram, чтобы увидеть свои заказы.', { exact: true }).waitFor();
+  await page.locator('[data-back-profile]').click();
   await settle();
   const profileMotion = await page.evaluate(async () => {
     const card = document.querySelector('.profile-card');
     const cardTop = card.getBoundingClientRect().top;
-    document.querySelector('#profile-referral').click();
+    document.querySelector('#profile-accruals').click();
     const animations = document.getAnimations().filter(animation => animation.playState !== 'finished');
     await Promise.all(animations.map(animation => animation.ready));
     animations.forEach(animation => { animation.currentTime = 120; });
@@ -131,7 +132,7 @@ try {
   assert.ok(Math.abs(profileMotion.headerShift) < 1, 'profile header stays in place');
   assert.ok(profileMotion.outgoing);
   assert.ok(profileMotion.opacity > 0 && profileMotion.opacity < 1);
-  await page.getByText('Реферальная программа пока не действует.', { exact: true }).waitFor();
+  await page.getByText('Откройте магазин через Telegram, чтобы увидеть начисления и списания.', { exact: true }).waitFor();
   await page.keyboard.press('ArrowLeft');
   await settle();
   assert.equal(await page.getByRole('tab', { name: 'Обзор' }).getAttribute('aria-selected'), 'true');
@@ -356,7 +357,7 @@ try {
   assert.equal(await page.locator('.outgoing-catalog-page').count(), 0);
   assert.equal(await page.locator('#catalog-viewport').getAttribute('aria-busy'), null);
   await page.locator('#profile-button').click();
-  await page.getByRole('tab', { name: 'Реферальная программа' }).click();
+  await page.getByRole('tab', { name: 'Начисления' }).click();
   await page.getByRole('tab', { name: 'Обзор' }).click();
   assert.equal(await page.locator('.outgoing-profile-body').count(), 0);
   await close();

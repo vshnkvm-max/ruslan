@@ -814,6 +814,81 @@ async function loadHeaderBalance(force = false) {
     if (version === balanceRequestVersion) { headerBalanceState.loading = false; renderHeaderBalance(); }
   }
 }
+let customerHistoryState={key:null};
+const orderStatus=status=>({new:'Новый',accepted:'В работе',completed:'Выполнен',cancelled:'Отменён'}[status]||status);
+function currentCustomerHistory(){
+ const key=telegram?.initData||'';
+ if(customerHistoryState.key!==key)customerHistoryState={key,orders:[],ordersNext:null,ordersLoading:false,ordersError:'',order:null,orderError:'',orderLoading:false,orderVersion:0,cancelling:false,cancelConfirm:false,transactions:[],transactionsNext:null,transactionsLoading:false,transactionsVersion:0,transactionsLoaded:false,transactionsError:''};
+ return customerHistoryState;
+}
+function historyRequest(path,body={}){return reviewRequest('/api/storefront/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,init_data:telegram?.initData||''})});}
+function historyError(message,action){return `<div class="profile-error" role="alert"><p>${escape(message)}</p><button class="secondary-button" ${action}>Повторить</button></div>`;}
+function accrualsContent(){
+ const state=currentCustomerHistory();
+ if(!state.key)return '<p class="profile-hint">Откройте магазин через Telegram, чтобы увидеть начисления и списания.</p>';
+ return `<h3>Начисления и списания</h3>${state.transactionsError?historyError(state.transactionsError,'data-retry-accruals'):''}
+ <div class="balance-history">${state.transactions.map(item=>`<article class="balance-history-row" data-balance-event="${escape(item.id)}"><div><strong>${escape(item.title)}</strong><time datetime="${escape(item.created_at)}">${new Date(item.created_at).toLocaleString('ru-RU')}</time>${item.order_id?`<button class="text-link" data-customer-order="${item.order_id}" data-order-origin="accruals">Открыть заказ</button>`:''}</div><strong class="${item.amount>0?'balance-credit':'balance-debit'}">${item.amount>0?'+':'−'}${moneyMarkup(Math.abs(item.amount))}</strong></article>`).join('')}</div>
+ ${state.transactionsLoading?'<p role="status">Загружаем операции…</p>':state.transactionsLoaded&&!state.transactions.length&&!state.transactionsError?'<p class="profile-hint">Начислений и списаний пока нет.</p>':''}
+ ${state.transactionsNext?`<button class="secondary-button" data-more-accruals ${state.transactionsLoading?'disabled':''}>Показать ещё</button>`:''}`;
+}
+function refreshAccrualsView(){
+ if($('#details').open&&$('#details').dataset.view==='profile'&&profileTab==='accruals'){stopProfileTransition();$('#profile-body').innerHTML=accrualsContent();}
+}
+async function loadAccruals(more=false,refresh=true){
+ const state=currentCustomerHistory();if(!state.key||state.transactionsLoading)return;
+ const version=++state.transactionsVersion;state.transactionsLoading=true;state.transactionsError='';if(refresh)refreshAccrualsView();else if($('#profile-body')&&profileTab==='accruals')$('#profile-body').innerHTML=accrualsContent();
+ try{
+  const result=await historyRequest('transactions',more?{before:state.transactionsNext}:{});
+  if(currentCustomerHistory()!==state||state.transactionsVersion!==version)return;
+  state.transactions=more?[...state.transactions,...result.items]:result.items;state.transactionsNext=result.next;state.transactionsLoaded=true;state.transactionsAt=Date.now();applyHeaderBalance(state.key,result.balance);
+ }catch(error){if(currentCustomerHistory()===state&&state.transactionsVersion===version)state.transactionsError=error.message;}
+ finally{if(state.transactionsVersion===version){state.transactionsLoading=false;if(currentCustomerHistory()===state)refreshAccrualsView();}}
+}
+function renderCustomerOrders(){
+ const state=currentCustomerHistory();
+ show(`<h2>Заказы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button>
+ ${!state.key?'<p>Откройте магазин через Telegram, чтобы увидеть свои заказы.</p>':''}
+ ${state.ordersError?historyError(state.ordersError,'data-retry-orders'):''}
+ <div class="customer-order-list">${state.orders.map(order=>`<button class="profile-order customer-order-button" data-customer-order="${order.id}"><div><strong>Заказ #${order.id}</strong><small>${escape(orderStatus(order.status))} · ${reviewDate(order.created_at)}</small></div><strong>${moneyMarkup(order.total)} ${icons.arrow}</strong></button>`).join('')}</div>
+ ${state.ordersLoading?'<p role="status">Загружаем заказы…</p>':state.key&&!state.ordersError&&!state.orders.length?'<p>Заказов пока нет.</p>':''}
+ ${state.ordersNext?`<button class="secondary-button" data-more-orders ${state.ordersLoading?'disabled':''}>Показать ещё</button>`:''}`, 'my-orders',false);
+}
+async function openCustomerOrders(more=false){
+ const state=currentCustomerHistory();if(state.ordersLoading){renderCustomerOrders();return;}
+ if(!state.key){renderCustomerOrders();return;}
+ state.ordersLoading=true;state.ordersError='';if(!more)state.orders=[];renderCustomerOrders();
+ try{const result=await historyRequest('orders/list',more?{before:state.ordersNext}:{});if(currentCustomerHistory()!==state)return;state.orders=more?[...state.orders,...result.items]:result.items;state.ordersNext=result.next;}
+ catch(error){if(currentCustomerHistory()===state)state.ordersError=error.message;}
+ finally{state.ordersLoading=false;if(currentCustomerHistory()===state&&$('#details').open&&$('#details').dataset.view==='my-orders')renderCustomerOrders();}
+}
+function renderCustomerOrder(id){
+ const state=currentCustomerHistory(),order=state.order?.id===id?state.order:null;
+ show(`<h2>Заказ #${id}</h2><button class="profile-back" data-back-customer-orders>${icons.previousPhoto}${state.orderOrigin==='accruals'?'К начислениям':'К заказам'}</button>
+ ${state.orderError?historyError(state.orderError,`data-retry-order="${id}"`):''}${state.orderLoading?'<p role="status">Загружаем заказ…</p>':''}
+ ${order?`<p class="customer-order-status">${escape(orderStatus(order.status))} · ${reviewDate(order.created_at)}</p>
+ <div class="customer-order-items">${order.items.map(item=>`<div><span>${escape(item.name)}<small>${item.quantity} × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity*item.price)}</strong></div>`).join('')}</div>
+ <div class="customer-order-totals"><div><span>Стоимость товаров</span><strong>${moneyMarkup(order.total)}</strong></div>${order.balance_spent?`<div><span>${order.status==='cancelled'?'Рубли возвращены':'Списано рублей'}</span><strong>${moneyMarkup(order.balance_spent)}</strong></div>`:''}<div><span>${order.status==='cancelled'?'К оплате':'Итого к оплате'}</span><strong>${moneyMarkup(order.payable)}</strong></div></div>
+ ${order.can_cancel?state.cancelConfirm?`<div class="profile-error"><p>Отменить заказ? Товары вернутся на склад${order.balance_spent?', списанные рубли — на баланс':''}.</p><button class="primary-button" data-confirm-order-cancel="${id}" ${state.cancelling?'disabled':''}>${state.cancelling?'Отменяем…':'Да, отменить'}</button><button class="secondary-button" data-keep-order="${id}" ${state.cancelling?'disabled':''}>Оставить заказ</button></div>`:`<button class="secondary-button customer-cancel-order" data-cancel-customer-order="${id}">Отменить заказ</button>`:''}`:''}`, 'order-detail',false);
+}
+async function openCustomerOrder(id,origin){
+ const state=currentCustomerHistory(),version=++state.orderVersion;state.order=null;state.orderLoading=true;state.orderError='';state.cancelConfirm=false;state.orderOrigin=origin||state.orderOrigin||'orders';renderCustomerOrder(id);
+ try{const result=await historyRequest('orders/'+id);if(currentCustomerHistory()!==state||state.orderVersion!==version)return;state.order=result.order;applyHeaderBalance(state.key,result.order.balance_after);profileState={key:'',status:'idle'};state.transactionsVersion++;state.transactionsLoading=false;state.transactionsLoaded=false;}
+ catch(error){if(currentCustomerHistory()===state&&state.orderVersion===version)state.orderError=error.message;}
+ finally{if(state.orderVersion===version){state.orderLoading=false;if(currentCustomerHistory()===state&&$('#details').open&&$('#details').dataset.view==='order-detail')renderCustomerOrder(id);}}
+}
+async function cancelCustomerOrder(id){
+ const state=currentCustomerHistory();if(state.cancelling||state.order?.id!==id||!state.cancelConfirm)return;
+ const version=state.orderVersion;state.cancelling=true;state.orderError='';renderCustomerOrder(id);
+ try{
+  const result=await historyRequest('orders/'+id+'/cancel');if(currentCustomerHistory()!==state)return;
+  if(state.orderVersion===version){state.order=result.order;state.cancelConfirm=false;}
+  state.transactionsVersion++;state.transactionsLoading=false;state.transactionsLoaded=false;state.transactions=[];state.transactionsNext=null;
+  profileState={key:'',status:'idle'};applyHeaderBalance(state.key,result.order.balance_after);
+  if(data)void load();
+ }catch(error){if(currentCustomerHistory()===state&&state.orderVersion===version){state.orderError=error.message;if(error.status===409){try{const updated=await historyRequest('orders/'+id);if(currentCustomerHistory()===state&&state.orderVersion===version){state.order=updated.order;state.cancelConfirm=false;}}catch{}}}}
+ finally{state.cancelling=false;if(currentCustomerHistory()===state&&state.orderVersion===version&&$('#details').open&&$('#details').dataset.view==='order-detail')renderCustomerOrder(id);}
+}
+
 function currentProfile() {
   const key = telegram?.initData || '';
   if (profileState.key !== key) profileState = { key, status: 'idle' };
@@ -826,16 +901,9 @@ function profileMessage() {
   return state.status === 'loading' ? '<p class="profile-hint" role="status">Загружаем профиль…</p>' : '';
 }
 function profileContent(tab) {
-  if (tab !== 'overview') return referralContent();
-  const state = currentProfile(), statuses = { new:'Новый', accepted:'В работе', completed:'Выполнен', cancelled:'Отменён' };
+  if (tab !== 'overview') return accrualsContent();
   return `<button class="profile-link" data-my-reviews>${icons.reviews}<span>Мои отзывы</span>${icons.arrow}</button>
-    ${profileMessage()}
-    <div class="recent-orders">
-      <button class="recent-orders-toggle" data-toggle-orders aria-expanded="false" aria-controls="recent-orders-list">${icons.package}<span>Последние заказы</span>${icons.chevron}</button>
-      <div class="recent-orders-list" id="recent-orders-list" hidden>${state.status === 'ready'
-        ? state.orders.length ? state.orders.map(order => `<div class="profile-order"><div><strong>Заказ #${order.id}</strong><small>${escape(statuses[order.status] || order.status)} · ${new Date(order.created_at).toLocaleDateString('ru-RU')}</small></div><strong>${moneyMarkup(order.total)}</strong></div>`).join('') : '<p>Заказов пока нет.</p>'
-        : '<p>История появится после загрузки профиля.</p>'}</div>
-    </div>`;
+    <button class="profile-link" data-customer-orders>${icons.package}<span>Заказы</span>${icons.arrow}</button>${profileMessage()}`;
 }
 function refreshProfileView() {
   if (!$('#details').open) return;
@@ -888,13 +956,13 @@ function stopProfileTransition() {
   if (body) body.inert = false;
 }
 async function switchProfileTab(tab) {
-  if (tab === profileTab || !['overview', 'referral'].includes(tab)) return;
+  if (tab === profileTab || !['overview', 'accruals'].includes(tab)) return;
   stopProfileTransition();
   ordersTransition?.cancel();
   ordersTransition = undefined;
   const panel = $('#profile-panel'), body = $('#profile-body');
   if (!panel || !body) return;
-  const direction = tab === 'referral' ? 1 : -1;
+  const direction = tab === 'accruals' ? 1 : -1;
   const dialog = $('#details');
   if (!dialog.hasAttribute('data-profile-anchored')) {
     dialog.style.setProperty('--profile-top', `${dialog.getBoundingClientRect().top}px`);
@@ -911,6 +979,7 @@ async function switchProfileTab(tab) {
     button.tabIndex = active ? 0 : -1;
   });
   body.innerHTML = profileContent(tab);
+  if(tab==='accruals'&&!currentCustomerHistory().transactionsLoading)void loadAccruals(false,false);
   $(`#profile-${tab}`).focus({ preventScroll: true });
   if (!body.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   outgoing.removeAttribute('id');
@@ -932,23 +1001,6 @@ async function switchProfileTab(tab) {
   await Promise.all(transition.animations.map(animation => animation.finished.catch(() => {})));
   if (profileTransition === transition) stopProfileTransition();
 }
-async function toggleRecentOrders(button) {
-  const list = $('#recent-orders-list');
-  if (!list) return;
-  const open = button.getAttribute('aria-expanded') !== 'true';
-  const from = list.hidden ? 0 : list.getBoundingClientRect().height;
-  ordersTransition?.cancel();
-  button.setAttribute('aria-expanded', String(open));
-  list.hidden = false;
-  if (!list.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) { list.hidden = !open; return; }
-  const animation = list.animate([{ height: `${from}px`, opacity: open ? 0 : 1 }, { height: open ? `${list.scrollHeight}px` : '0px', opacity: open ? 1 : 0 }], { duration: 260, easing: 'ease', fill: 'both' });
-  ordersTransition = animation;
-  await animation.finished.catch(() => {});
-  if (ordersTransition !== animation) return;
-  list.hidden = !open;
-  animation.cancel();
-  ordersTransition = undefined;
-}
 function userPhotoUrl(){try{const value=typeof user?.photo_url==='string'?user.photo_url:'';const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.href:'';}catch{return '';}}
 function avatarPhoto(){const src=userPhotoUrl();return src?`<img class="client-avatar-photo" src="${escape(src)}" alt="Аватар клиента" referrerpolicy="no-referrer" decoding="async">`:'';}
 function bindAvatarFallbacks(root=document){root.querySelectorAll('.client-avatar-photo').forEach(image=>image.addEventListener('error',()=>image.remove(),{once:true}));}
@@ -966,10 +1018,11 @@ function renderProfile(tab = 'overview') {
     <div class="profile-tabs" role="tablist" aria-label="Разделы профиля" data-active="${tab}">
       <span class="profile-tab-indicator" aria-hidden="true"></span>
       <button role="tab" id="profile-overview" aria-controls="profile-panel" aria-selected="${tab === 'overview'}" tabindex="${tab === 'overview' ? 0 : -1}" data-profile-tab="overview">Обзор</button>
-      <button role="tab" id="profile-referral" aria-controls="profile-panel" aria-selected="${tab === 'referral'}" tabindex="${tab === 'referral' ? 0 : -1}" data-profile-tab="referral">Реферальная программа</button>
+      <button role="tab" id="profile-accruals" aria-controls="profile-panel" aria-selected="${tab === 'accruals'}" tabindex="${tab === 'accruals' ? 0 : -1}" data-profile-tab="accruals">Начисления</button>
     </div>
     <div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-${tab}"><div class="profile-body" id="profile-body">${profileContent(tab)}</div></div>`, 'profile', false);
   bindAvatarFallbacks($('#detail-content'));
+  if(tab==='accruals'&&(!currentCustomerHistory().transactionsLoaded||Date.now()-currentCustomerHistory().transactionsAt>30000)&&!currentCustomerHistory().transactionsLoading&&!currentCustomerHistory().transactionsError)void loadAccruals(false,false);
   if (state.status === 'idle' || (ready && Date.now()-state.loadedAt > 30000)) void loadProfile();
 }
 
@@ -1179,6 +1232,17 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ const ownOrder=event.target.closest('[data-customer-order]');if(ownOrder){void openCustomerOrder(Number(ownOrder.dataset.customerOrder),ownOrder.dataset.orderOrigin||'orders');return;}
+ if(event.target.closest('[data-customer-orders],[data-retry-orders]')){void openCustomerOrders();return;}
+ if(event.target.closest('[data-more-orders]')){void openCustomerOrders(true);return;}
+ if(event.target.closest('[data-back-customer-orders]')){if(currentCustomerHistory().orderOrigin==='accruals')renderProfile('accruals');else void openCustomerOrders();return;}
+ const retryOrder=event.target.closest('[data-retry-order]');if(retryOrder){void openCustomerOrder(Number(retryOrder.dataset.retryOrder));return;}
+ const cancelOrder=event.target.closest('[data-cancel-customer-order]');if(cancelOrder){currentCustomerHistory().cancelConfirm=true;renderCustomerOrder(Number(cancelOrder.dataset.cancelCustomerOrder));return;}
+ const keepOrder=event.target.closest('[data-keep-order]');if(keepOrder){currentCustomerHistory().cancelConfirm=false;renderCustomerOrder(Number(keepOrder.dataset.keepOrder));return;}
+ const confirmCancel=event.target.closest('[data-confirm-order-cancel]');if(confirmCancel){void cancelCustomerOrder(Number(confirmCancel.dataset.confirmOrderCancel));return;}
+ if(event.target.closest('[data-retry-accruals]')){void loadAccruals();return;}
+ if(event.target.closest('[data-more-accruals]')){void loadAccruals(true);return;}
+
  const feed=event.target.closest('[data-product-reviews]');if(feed){openReviewFeed(Number(feed.dataset.productReviews));return;}
  const write=event.target.closest('[data-write-review]');if(write){void openReviewForm(Number(write.dataset.writeReview)||null);return;}
  const rating=event.target.closest('[data-review-rating]');if(rating&&reviewDraft&&!reviewDraft.busy){reviewDraft.rating=Number(rating.dataset.reviewRating);document.querySelectorAll('[data-review-rating]').forEach(button=>{button.classList.toggle('selected',Number(button.dataset.reviewRating)<=reviewDraft.rating);button.setAttribute('aria-pressed',String(Number(button.dataset.reviewRating)===reviewDraft.rating));});return;}
@@ -1214,7 +1278,6 @@ function handleCartAction(event) {
     changeCart(id, -(cart.get(id) || 0));
   } else if (product) openProduct(Number(product.dataset.openProduct));
   else if (tab) void switchProfileTab(tab.dataset.profileTab);
-  else if (event.target.closest('[data-toggle-orders]')) void toggleRecentOrders(event.target.closest('[data-toggle-orders]'));
   else if (event.target.closest('[data-open-cart]')) void navigateToPage('cart');
   else if (event.target.closest('[data-continue]')) void continueShopping();
 }
@@ -1232,7 +1295,7 @@ $('#detail-content').addEventListener('keydown', event => {
   if (!event.target.closest('[role="tablist"]') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
   const current = $('[role="tab"][aria-selected="true"]').dataset.profileTab;
-  const tab = event.key === 'Home' ? 'overview' : event.key === 'End' ? 'referral' : current === 'overview' ? 'referral' : 'overview';
+  const tab = event.key === 'Home' ? 'overview' : event.key === 'End' ? 'accruals' : current === 'overview' ? 'accruals' : 'overview';
   void switchProfileTab(tab);
 });
 document.addEventListener('click', event => { if (event.target.id === 'retry') load(); });
@@ -1256,6 +1319,7 @@ $('#telegram-sdk')?.addEventListener('load', () => {
     }
   }
   if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
+  if($('#details').open&&['my-orders','order-detail'].includes($('#details').dataset.view))void openCustomerOrders();
   refreshProfileView();
 });
 updateClientAvatar();
