@@ -589,13 +589,13 @@ async function reviewRequest(url,options={},timeout=15000){
 let reviewIdentity=telegram?.initData||'';
 let reviewFeed={productId:null,sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};
 let reviewDraft=null,reviewEligibility={key:null,items:[],next:null,loaded:false},reviewExpiryTimer;
-let reviewEligibilityVersion=0,reviewBadgeTimer;
+let reviewEligibilityVersion=0;
 const reviewDate=value=>new Date(value).toLocaleDateString('ru-RU');
 const reviewCountLabel=value=>`${value} ${{one:'отзыв',few:'отзыва',many:'отзывов',other:'отзывов'}[new Intl.PluralRules('ru').select(value)]}`;
 function reviewMediaMarkup(review){return review.media?.length?`<div class="review-media-list">${review.media.map(file=>file.type==='video'?`<video src="${escape(file.url)}" controls playsinline preload="none" aria-label="Видео к отзыву"></video>`:`<img src="${escape(file.url)}" alt="Фото к отзыву о товаре ${escape(review.product_name)}" loading="lazy" decoding="async">`).join('')}</div>`:'';}
 function reviewCard(review,own=false){
  const rating=Math.max(0,Math.min(5,Math.trunc(Number(review.rating)||0))),statuses={pending:'На модерации',published:'Опубликован',hidden:'Скрыт'};
- return `<article class="review review-card${own?' my-review':''}"><div class="review-author-row"><strong>${escape(review.author_name||'Покупатель')}</strong><time datetime="${escape(review.created_at)}">${reviewDate(review.created_at)}</time></div><div class="review-stars" aria-label="Оценка ${rating} из 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</div><div class="review-product-name">${escape(review.product_name)}</div>${own?`<span class="my-review-status">${escape(statuses[review.status]||review.status)}</span>`:''}${review.text?`<p>${escape(review.text)}</p>`:''}${reviewMediaMarkup(review)}</article>`;
+ return `<article class="review review-card${own?' my-review':''}"><div class="review-author-row"><strong>${escape(review.author_name||'Покупатель')}</strong><time datetime="${escape(review.created_at)}">${reviewDate(review.created_at)}</time></div><div class="review-stars" aria-label="Оценка ${rating} из 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</div><div class="review-product-name">${escape(review.product_name)}</div>${own?`<span class="my-review-status">${escape(statuses[review.status]||review.status)}</span>`:''}${reviewMediaMarkup(review)}${review.text?`<p>${escape(review.text)}</p>`:''}</article>`;
 }
 function pendingReview(owner=cartKey){try{const item=JSON.parse(localStorage.getItem('gas-review-pending:'+owner));return item&&typeof item.request_key==='string'&&Number.isSafeInteger(item.order_id)&&Number.isSafeInteger(item.product_id)?item:null;}catch{return null;}}
 function validReviewChoices(){return reviewEligibility.key===(telegram?.initData||'')?reviewEligibility.items.filter(item=>Date.parse(item.expires_at)>Date.now()):[];}
@@ -617,35 +617,24 @@ function scheduleReviewExpiry(){
   scheduleReviewExpiry();
  },Math.max(20,Math.min(...dates)-Date.now()+20));
 }
-function renderReviewBadge(){
- clearTimeout(reviewBadgeTimer);
- const badge=$('#review-count-badge'),button=$('[data-info="reviews"]');
- const eligible=reviewEligibility.key===(telegram?.initData||'')&&reviewEligibility.loaded;
- const count=eligible?reviewEligibility.total||0:0,expires=Date.parse(reviewEligibility.next_expiry);
- const current=count>0&&expires>Date.now();
- badge.hidden=!current;badge.textContent=current?String(count):'';
- button.setAttribute('aria-label',current?`Написать отзыв. Доступно: ${count}`:'Написать отзыв');
- if(current)reviewBadgeTimer=setTimeout(()=>{renderReviewBadge();void refreshReviewBadge();},Math.max(30,Math.min(2147483647,expires-Date.now()+30)));
-}
-async function refreshReviewBadge(){
+async function refreshReviewEligibility(){
  const key=telegram?.initData||'',version=reviewEligibilityVersion+1;
- if(!telegram?.initData){renderReviewBadge();return;}
- try{await loadReviewEligibility();}catch{if(key===(telegram?.initData||'')&&version===reviewEligibilityVersion){reviewEligibility={key:null,items:[],next:null,loaded:false};renderReviewBadge();}}
+ if(!key)return;
+ try{await loadReviewEligibility();}catch{if(key===(telegram?.initData||'')&&version===reviewEligibilityVersion)reviewEligibility={key:null,items:[],next:null,loaded:false};}
 }
 async function loadReviewEligibility(productId=null,append=false){
  const key=telegram?.initData||'';if(!key)return {items:[],next_offset:null,total:0,next_expiry:null};
  const version=productId?null:++reviewEligibilityVersion;
  const result=await reviewRequest('/api/storefront/reviews/eligible',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({init_data:key,...(productId?{product_id:productId}:{}),...(append?{offset:typeof append==='number'?append:reviewEligibility.next}: {})})});
  if(key!==(telegram?.initData||''))return {items:[],next_offset:null,total:0,next_expiry:null};
- if(!productId&&version===reviewEligibilityVersion){reviewEligibility={key,items:append?[...reviewEligibility.items,...result.items]:result.items,next:result.next_offset,loaded:true,total:result.total,next_expiry:result.next_expiry};renderReviewBadge();const slot=$('#my-review-write-slot');if(slot){slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}
+ if(!productId&&version===reviewEligibilityVersion){reviewEligibility={key,items:append?[...reviewEligibility.items,...result.items]:result.items,next:result.next_offset,loaded:true,total:result.total,next_expiry:result.next_expiry};const slot=$('#my-review-write-slot');if(slot){slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}
  return result;
 }
 function renderReviewFeed(){
  const state=reviewFeed;
  show(`<h2>${state.productId?'Отзывы о товаре':'Отзывы'}</h2>${state.productId?`<p class="review-context">${escape(data?.products.find(p=>p.id===state.productId)?.name||'')}</p>`:''}
  <div class="review-filters"><label for="review-sort">Сортировка<select id="review-sort"><option value="newest" ${state.sort==='newest'?'selected':''}>Сначала новые</option><option value="oldest" ${state.sort==='oldest'?'selected':''}>Сначала старые</option><option value="rating_asc" ${state.sort==='rating_asc'?'selected':''}>Сначала с низкой оценкой</option><option value="rating_desc" ${state.sort==='rating_desc'?'selected':''}>Сначала с высокой оценкой</option></select></label><label class="review-media-filter"><input id="review-media-only" type="checkbox" ${state.media?'checked':''}>С медиа</label></div>
- <div id="review-write-slot">${reviewWriteButton(state.productId)}</div>
- <p class="review-rule">Отзывы о купленных товарах можно оставить в течение 7 дней после выполнения заказа.</p>
+ ${state.productId?`<div id="review-write-slot">${reviewWriteButton(state.productId)}</div><p class="review-rule">Отзывы о купленных товарах можно оставить в течение 7 дней после выполнения заказа.</p>`:''}
  ${state.total?`<p class="review-summary">${reviewCountLabel(state.total)} · ${Number(state.average).toLocaleString('ru-RU',{maximumFractionDigits:1})} ★</p>`:''}
  ${state.error?`<div class="profile-error" role="alert"><p>${escape(state.error)}</p><button class="secondary-button" data-review-retry>Повторить</button></div>`:''}
  <div class="reviews-feed">${state.items.map(review=>reviewCard(review)).join('')||(!state.loading&&!state.error?'<p>Отзывов пока нет.</p>':'')}</div>
@@ -687,7 +676,7 @@ async function openReviewOpportunities(more=false){
 
 function openReviewFeed(productId=null){
  reviewFeed={productId,sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};void loadReviewFeed();
- void loadReviewEligibility().then(()=>{if($('#details').open&&$('#details').dataset.view==='reviews'){const slot=$('#review-write-slot');if(slot)slot.innerHTML=reviewWriteButton(reviewFeed.productId);scheduleReviewExpiry();}}).catch(()=>{});
+ if(productId)void loadReviewEligibility().then(()=>{if($('#details').open&&$('#details').dataset.view==='reviews'){const slot=$('#review-write-slot');if(slot)slot.innerHTML=reviewWriteButton(reviewFeed.productId);scheduleReviewExpiry();}}).catch(()=>{});
 }
 async function loadProductReviews(id){
  const container=$('#product-reviews');if(!container)return;
@@ -759,7 +748,7 @@ async function submitReview(){
   const result=await reviewRequest('/api/storefront/reviews',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,init_data:telegram?.initData||''})},20000);
   try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}
   if(owner!==cartKey||reviewDraft!==draft)return;
-  profileState={key:'',status:'idle'};reviewEligibilityVersion++;reviewEligibility={key:null,items:[],next:null,loaded:false};renderReviewBadge();void refreshReviewBadge();reviewDraft=null;
+  profileState={key:'',status:'idle'};reviewEligibilityVersion++;reviewEligibility={key:null,items:[],next:null,loaded:false};void refreshReviewEligibility();reviewDraft=null;
   if($('#details').open&&$('#details').dataset.view==='review-form')show(`<h2>Отзыв отправлен</h2><p>${result.review.status==='published'?'Отзыв опубликован.':'Отзыв появится после модерации.'}</p>${draft.origin==='opportunities'?'<button class="primary-button" data-review-opportunities>К доступным отзывам</button>':'<button class="primary-button" data-my-reviews>Мои отзывы</button><button class="secondary-button" data-review-back>Все отзывы</button>'}`,'reviews-sent');
  }catch(error){draft.error=error.message;if(error.status>=400&&error.status<500&&error.status!==401){try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}}if(pendingReview(owner)){Object.assign(draft,body,{locked:true});}}
  finally{draft.busy=false;if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();}
@@ -773,7 +762,7 @@ function referralContent() {
     : '<div class="empty-inline">Реферальная программа пока не действует.</div>';
 }
 function openInfo(type) {
-  if(type==='reviews'){void openReviewOpportunities();return;}
+  if(type==='reviews'){openReviewFeed();return;}
   if (type === 'important') {
     show(`<div class="important-info">
       <span class="important-eyebrow">GAS SHOP · ПЕРЕД ПЕРВЫМ ЗАКАЗОМ</span>
@@ -981,7 +970,7 @@ function renderMyReviews() {
     ${state.status === 'ready' ? state.reviews.length ? `<div class="my-reviews-list">${state.reviews.map(review=>reviewCard(review,true)).join('')}</div>${state.reviews_next ? `<button class="primary-button secondary-button" data-more-reviews ${state.loadingMore?'disabled':''}>${state.loadingMore?'Загружаем…':'Показать ещё'}</button>` : ''}` : '<div class="empty-inline">У вас пока нет отзывов.</div>' : ''}`, 'my-reviews', false);
   if (state.status === 'idle'||(state.status==='ready'&&Date.now()-state.loadedAt>30000)) void loadProfile();
   scheduleReviewExpiry();
-  if(!reviewEligibility.loaded||reviewEligibility.key!==(telegram?.initData||''))void loadReviewEligibility().then(()=>{const slot=$('#my-review-write-slot');if(slot){slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}).catch(()=>{});
+  void loadReviewEligibility().then(()=>{const slot=$('#my-review-write-slot');if(slot){slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}).catch(()=>{});
 }
 function stopProfileTransition() {
   if (!profileTransition) return;
@@ -1367,17 +1356,17 @@ $('#telegram-sdk')?.addEventListener('load', () => {
   if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
   if($('#details').open&&['my-orders','order-detail'].includes($('#details').dataset.view))void openCustomerOrders();
   if($('#details').open&&$('#details').dataset.view==='review-opportunities')void openReviewOpportunities();
-  renderReviewBadge();void refreshReviewBadge();
+  void refreshReviewEligibility();
   refreshProfileView();
 });
 updateClientAvatar();
 void loadHeaderBalance();
-void refreshReviewBadge();
+void refreshReviewEligibility();
 load();
 configureTelegram();
 signalReadyWithoutSdk();
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){void loadHeaderBalance(true);void refreshReviewBadge();}});
-setInterval(()=>{if(!document.hidden)void refreshReviewBadge();},60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){void loadHeaderBalance(true);void refreshReviewEligibility();}});
+setInterval(()=>{if(!document.hidden)void refreshReviewEligibility();},60000);
 
 document.addEventListener('click',event=>{const button=event.target.closest('button');if(!event.isTrusted||!button||button.disabled)return;try{if(telegram?.HapticFeedback?.impactOccurred)telegram.HapticFeedback.impactOccurred('light');else if(telegram||window.TelegramWebviewProxy)postTelegramEvent('web_app_trigger_haptic_feedback',{type:'impact',impact_style:'light'});else navigator.vibrate?.(8);}catch{}});
 document.addEventListener('touchmove',event=>{if(event.touches.length>1&&event.cancelable)event.preventDefault();},{passive:false});
