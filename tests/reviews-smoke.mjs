@@ -20,9 +20,21 @@ try{
  await context.addInitScript(initData=>{window.Telegram={WebApp:{platform:'ios',initData,initDataUnsafe:{user:{id:101,first_name:'Покупатель',username:'buyer'}},ready(){},expand(){},disableVerticalSwipes(){},enableVerticalSwipes(){}}};},signedProfileUser());
  await context.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:''}));
  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+ let productAttempts=0,feedPageFailures=0;
+ await page.route('**/api/storefront/reviews?*',route=>{
+  const query=new URL(route.request().url()).searchParams;
+  if(query.get('product_id')===String(product)&&query.get('offset')==='0'&&++productAttempts===1){
+   return route.fulfill({status:502,contentType:'text/html',body:'<h1>Bad Gateway</h1>'});
+  }
+  if(!query.has('product_id')&&query.get('offset')==='20'&&feedPageFailures++<2){
+   return route.abort('failed');
+  }
+  return route.continue();
+ });
  await page.goto(base+'/miniapp');await page.locator(`[data-product="${product}"]`).click();
  const productReviews=page.locator('#product-reviews');
  await productReviews.locator('.review-card').nth(19).waitFor();
+ assert.equal(productAttempts,2,'the first product page retries a proxy error');
  assert.equal(await productReviews.locator('.review-product-name').count(),0);
  assert.equal(await productReviews.getByRole('button',{name:'Все отзывы о товаре'}).count(),0);
  await productReviews.getByRole('button',{name:'Показать ещё отзывы'}).click();
@@ -31,6 +43,23 @@ try{
  await page.locator('[data-info="reviews"]').click();
  await page.locator('.reviews-feed .review-product-name').first().waitFor();
  assert.equal(await page.locator('.reviews-feed .review-card').count(),20);
+ assert.equal(await page.evaluate(initData=>{
+  const before=document.querySelector('.reviews-feed .review-card');
+  const saved=window.Telegram.WebApp.initData;
+  window.Telegram.WebApp.initData=initData;
+  document.querySelector('#telegram-sdk').dispatchEvent(new Event('load'));
+  window.Telegram.WebApp.initData=saved;
+  document.querySelector('#telegram-sdk').dispatchEvent(new Event('load'));
+  return before===document.querySelector('.reviews-feed .review-card');
+ },signedProfileUser(202)),true,'late Telegram data does not clear public reviews');
+ await page.locator('[data-review-more]').click();
+ await page.locator('[data-review-retry]').waitFor();
+ assert.equal(feedPageFailures,2);
+ assert.equal(await page.locator('.reviews-feed .review-card').count(),20);
+ await page.locator('[data-review-retry]').click();
+ await page.locator('.reviews-feed .review-card').nth(20).waitFor();
+ assert.equal(feedPageFailures,3,'retry resumes at the failed page');
+
  await page.selectOption('#review-sort','oldest');await page.waitForFunction(()=>document.querySelector('.reviews-feed .review-card p')?.textContent==='Первый отзыв');
  await page.selectOption('#review-sort','rating_desc');await page.waitForFunction(()=>document.querySelector('.reviews-feed .review-card p')?.textContent==='Второй отзыв');
  await page.selectOption('#review-sort','rating_asc');await page.waitForFunction(()=>document.querySelector('.reviews-feed .review-card p')?.textContent==='Первый отзыв');

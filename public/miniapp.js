@@ -582,8 +582,40 @@ function updateProductAddButton() {
 }
 async function reviewRequest(url,options={},timeout=15000){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
- try{const response=await fetch(url,{...options,signal:controller.signal}),result=await response.json();if(!response.ok){const error=new Error(result.error||'Не удалось выполнить запрос.');error.status=response.status;throw error;}return result;}
- catch(error){if(error.name==='AbortError')throw new Error('Сервер не ответил. Проверьте соединение и повторите.');if(error instanceof TypeError)throw new Error('Нет соединения с сервером. Повторите запрос.');throw error;}finally{clearTimeout(timer);}
+ try {
+  const response=await fetch(url,{...options,signal:controller.signal});
+  let result;
+  try{result=await response.json();}
+  catch(error){
+   if(error.name!=='SyntaxError')throw error;
+   const invalid=new Error(response.ok?'Сервер вернул неожиданный ответ.':'Сервер не смог выполнить запрос.');
+   if(!response.ok)invalid.status=response.status;
+   throw invalid;
+  }
+  if(!response.ok){
+   const error=new Error(result?.error||'Не удалось выполнить запрос.');
+   error.status=response.status;
+   throw error;
+  }
+  return result;
+ }catch(error){
+  if(error.name==='AbortError')throw new Error('Сервер не ответил. Проверьте соединение и повторите.');
+  if(error instanceof TypeError)throw new Error('Нет соединения с сервером. Повторите запрос.');
+  throw error;
+ }finally{clearTimeout(timer);}
+}
+async function requestPublicReviews(url,isCurrent){
+ try{return await reviewRequest(url,{},8000);}
+ catch(error){
+  if(!isCurrent()||(error.status&&![408,500,502,503,504].includes(error.status)))throw error;
+  await new Promise(resolve=>setTimeout(resolve,350));
+  if(!isCurrent())throw error;
+  return reviewRequest(url,{},8000);
+ }
+}
+function reviewViewOpen(view){
+ const dialog=$('#details');
+ return dialog.open&&dialog.dataset.view===view&&!dialog.dataset.closing;
 }
 let reviewIdentity=telegram?.initData||'';
 let reviewFeed={sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};
@@ -634,21 +666,26 @@ function renderReviewFeed(){
  show(`<h2>Отзывы</h2>
  <div class="review-filters"><label for="review-sort">Сортировка<select id="review-sort"><option value="newest" ${state.sort==='newest'?'selected':''}>Сначала новые</option><option value="oldest" ${state.sort==='oldest'?'selected':''}>Сначала старые</option><option value="rating_asc" ${state.sort==='rating_asc'?'selected':''}>Сначала с низкой оценкой</option><option value="rating_desc" ${state.sort==='rating_desc'?'selected':''}>Сначала с высокой оценкой</option></select></label><label class="review-media-filter"><input id="review-media-only" type="checkbox" ${state.media?'checked':''}>С медиа</label></div>
  ${state.total?`<p class="review-summary">${reviewCountLabel(state.total)} · ${Number(state.average).toLocaleString('ru-RU',{maximumFractionDigits:1})} ★</p>`:''}
- ${state.error?`<div class="profile-error" role="alert"><p>${escape(state.error)}</p><button class="secondary-button" data-review-retry>Повторить</button></div>`:''}
  <div class="reviews-feed">${state.items.map(review=>reviewCard(review)).join('')||(!state.loading&&!state.error?'<p>Отзывов пока нет.</p>':'')}</div>
- ${state.loading?'<p role="status">Загружаем отзывы…</p>':''}${state.next!==null?`<button class="secondary-button" data-review-more ${state.loading?'disabled':''}>Показать ещё</button>`:''}`, 'reviews',false);
+ ${state.error?`<div class="profile-error" role="alert"><p>${escape(state.error)}</p><button class="secondary-button" data-review-retry>Повторить</button></div>`:''}
+ ${state.loading?'<p role="status">Загружаем отзывы…</p>':''}${state.next!==null&&!state.error?`<button class="secondary-button" data-review-more ${state.loading?'disabled':''}>Показать ещё</button>`:''}`, 'reviews',false);
  scheduleReviewExpiry();
 }
 async function loadReviewFeed(more=false){
- const state=reviewFeed,version=++state.version;state.loading=true;state.error='';if(!more){state.items=[];state.next=null;}
+ const state=reviewFeed,version=++state.version;
+ state.loading=true;
+ state.error='';
+ if(!more){state.items=[];state.total=0;state.next=null;}
  renderReviewFeed();
+ const isCurrent=()=>reviewFeed===state&&state.version===version&&reviewViewOpen('reviews');
  try{
-  const query=new URLSearchParams({sort:state.sort,media:state.media?'1':'0',offset:String(more?state.next||state.items.length:0)});
-  const result=await reviewRequest('/api/storefront/reviews?'+query);
-  if(reviewFeed!==state||state.version!==version)return;
-  state.items=more?[...state.items,...result.items]:result.items;state.total=result.total;state.average=result.average;state.next=result.next_offset;
- }catch(error){if(reviewFeed===state&&state.version===version)state.error=error.name==='TimeoutError'?'Сервер не ответил. Повторите загрузку.':error.message;}
- finally{if(reviewFeed===state&&state.version===version){state.loading=false;if($('#details').open&&$('#details').dataset.view==='reviews')renderReviewFeed();}}
+  const query=new URLSearchParams({sort:state.sort,media:state.media?'1':'0',offset:String(more?state.next:0)});
+  const result=await requestPublicReviews('/api/storefront/reviews?'+query,isCurrent);
+  if(!isCurrent())return;
+  state.items=more?[...state.items,...result.items]:result.items;
+  state.total=result.total;state.average=result.average;state.next=result.next_offset;
+ }catch(error){if(isCurrent())state.error=error.message;}
+ finally{if(isCurrent()){state.loading=false;renderReviewFeed();}}
 }
 let reviewOpportunities=null;
 function renderReviewOpportunities(){
@@ -682,12 +719,12 @@ function loadProductReviews(id){
  container.innerHTML='<h3>Отзывы</h3><div class="product-review-list"></div><div class="product-review-pagination"></div><div class="product-write-review"></div>';
  const list=container.querySelector('.product-review-list');
  const pagination=container.querySelector('.product-review-pagination');
- const write=container.querySelector('.product-write-review');
+ const isCurrent=()=>list.isConnected&&reviewViewOpen('product');
  async function loadPage(offset){
   pagination.innerHTML='<p role="status">Загружаем отзывы…</p>';
   try {
-   const result=await reviewRequest(`/api/storefront/reviews?product_id=${id}&offset=${offset}`);
-   if(!list.isConnected)return;
+   const result=await requestPublicReviews(`/api/storefront/reviews?product_id=${id}&offset=${offset}`,isCurrent);
+   if(!isCurrent())return;
    if(offset===0 && result.total){
     const average=Number(result.average).toLocaleString('ru-RU',{maximumFractionDigits:1});
     container.querySelector('h3').innerHTML=`Отзывы <span>${result.total} · ${average} ★</span>`;
@@ -700,18 +737,25 @@ function loadProductReviews(id){
     pagination.firstElementChild.onclick=()=>void loadPage(result.next_offset);
    }
   } catch {
-   if(!list.isConnected)return;
+   if(!isCurrent())return;
    pagination.innerHTML='<p role="alert">Не удалось загрузить отзывы.</p><button class="secondary-button">Повторить</button>';
    pagination.querySelector('button').onclick=()=>void loadPage(offset);
   }
  }
  void loadPage(0);
- void loadReviewEligibility(id).then(eligible=>{
-  if(!write.isConnected||!eligible.items.length)return;
+ void updateProductReviewButton(id);
+}
+async function updateProductReviewButton(id){
+ const slot=$('#product-reviews .product-write-review');
+ if(!slot)return;
+ slot.replaceChildren();
+ try {
+  const eligible=await loadReviewEligibility(id);
+  if(!slot.isConnected||!reviewViewOpen('product')||!eligible.items.length)return;
   const expires=eligible.items.reduce((last,item)=>item.expires_at>last?item.expires_at:last,'');
-  write.innerHTML=`<button class="primary-button" data-write-review="${id}" data-review-expires="${expires}">Оставить отзыв</button>`;
+  slot.innerHTML=`<button class="primary-button" data-write-review="${id}" data-review-expires="${expires}">Оставить отзыв</button>`;
   scheduleReviewExpiry();
- }).catch(()=>{});
+ }catch{}
 }
 async function openReviewForm(productId=null,orderId=null,origin=$('#details').dataset.view){
  const pending=pendingReview();
@@ -1413,7 +1457,7 @@ function handleCartAction(event) {
   else renderMyReviews();
   return;
  }
- if(event.target.closest('[data-review-retry]')){void loadReviewFeed();return;}
+ if(event.target.closest('[data-review-retry]')){void loadReviewFeed(reviewFeed.next!==null);return;}
  if(event.target.closest('[data-review-more]')){if(!reviewFeed.loading)void loadReviewFeed(true);return;}
  const removeReview=event.target.closest('[data-remove-review-file]');if(removeReview&&reviewDraft&&!reviewDraft.busy){reviewDraft.files.splice(Number(removeReview.dataset.removeReviewFile),1);renderReviewForm();return;}
  if(event.target.closest('[data-review-more-choices]')&&reviewDraft&&!reviewDraft.busy){const draft=reviewDraft;draft.busy=true;void loadReviewEligibility(draft.productId,draft.next).then(result=>{if(reviewDraft===draft){draft.choices.push(...result.items);draft.next=result.next_offset;}}).catch(error=>{draft.error=error.message;}).finally(()=>{draft.busy=false;if(reviewDraft===draft&&$('#details').dataset.view==='review-form')renderReviewForm();});return;}
@@ -1486,7 +1530,7 @@ $('#telegram-sdk')?.addEventListener('load', () => {
       updateProductAddButton();
     }
   }
-  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;const draft=reviewDraft;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(draft?.productId,null,draft?.origin);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed();else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
+  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;const draft=reviewDraft;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(draft?.productId,null,draft?.origin);else if(reviewViewOpen('product'))void updateProductReviewButton(Number($('#details').dataset.productId));}
   if($('#details').open&&['my-orders','order-detail'].includes($('#details').dataset.view))void openCustomerOrders();
   if($('#details').open&&$('#details').dataset.view==='review-opportunities')void openReviewOpportunities();
   void refreshReviewEligibility();
