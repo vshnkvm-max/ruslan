@@ -57,3 +57,18 @@ test('concurrent edits apply one request, deleted clients reject changes, and au
  app.db.prepare('UPDATE customers SET deleted=1 WHERE id=?').run(b.id);
  assert.equal((await request(route,adjustment(0,1000))).status,404);assert.equal(balance(b),1000);
 });
+
+test('credits and debits use positive amounts and expose optional reasons to the customer',async()=>{
+ const b=buyer(),route=`/customers/${b.id}/balance`;
+ const credit={operation:'credit',amount:100,expected_balance:0,request_key:randomUUID(),reason:'  Бонус за покупку  '};
+ assert.equal((await request(route,{...credit,amount:0})).status,400);
+ assert.equal((await request(route,credit)).status,200);
+ const debit={operation:'debit',amount:25,expected_balance:100,request_key:randomUUID()};
+ assert.equal((await request(route,{...debit,amount:101})).status,400);
+ assert.equal((await request(route,debit)).status,200);
+ assert.equal((await request(route,credit)).data.repeated,true);
+ assert.equal((await request(route,{...credit,reason:'Другая причина'})).status,409);
+ assert.equal(balance(b),75);
+ const history=(await request('/storefront/transactions',{init_data:b.init_data},'POST','none')).data.items;
+ assert.deepEqual(history.map(row=>[row.amount,row.title]),[[-25,'Списано администратором'],[100,'Бонус за покупку']]);
+});

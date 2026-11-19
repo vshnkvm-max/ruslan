@@ -60,7 +60,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const serveStatic=createStaticAssets(root);
   const storefrontOrders=createStorefrontOrders(db,{botToken,fail});
   const customerHistory=createCustomerHistory(db,{botToken,fail,orders:storefrontOrders});
-  const customerBalances=createCustomerBalances(db,{fail,num});
+  const customerBalances=createCustomerBalances(db,{fail,num,str});
   const reviewMedia=createReviewMedia(db,{directory:resolve(dirname(dbPath),'review-media'),botToken,fail});
   const storefrontReviews=createStorefrontReviews(db,{botToken,fail,serialize:rows=>reviewMedia.serialize(rows,{publicView:true})});
   const notifier=createOrderNotifier(db,{token:orderBotToken,chatId:orderChatId,usernames:orderManagerUsernames,fetchImpl:telegramFetch});
