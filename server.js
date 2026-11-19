@@ -244,6 +244,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const [,table,idText]=match; const id=Number(idText);
           if(!db.prepare(`SELECT id FROM ${table} WHERE id=?`).get(id)) fail(404,'Запись не найдена.');
           if(method==='DELETE'&&['products','customers','orders'].includes(table)) {if(table==='orders')storefrontOrders.update(id,undefined,true);else db.prepare(`UPDATE ${table} SET deleted=1 WHERE id=?`).run(id);return json(res,200,{ok:true});}
+          if(method==='DELETE'&&table==='reviews') {await reviewMedia.removeReview(id);return json(res,200,{ok:true});}
           if(method==='DELETE'&&table==='banners') {db.prepare('DELETE FROM banners WHERE id=?').run(id);return json(res,200,{ok:true});}
           if(method!=='PATCH') fail(405,'Метод не поддерживается.');
           const b=await body(req);

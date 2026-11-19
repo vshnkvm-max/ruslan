@@ -297,7 +297,6 @@ dialog { background: #fff9fbf5; border-color: var(--panel-border); box-shadow: 0
 .recent-orders-list p { margin: 0; padding: 0 14px 16px; color: #99828f; font-size: 12px; }
 .category-wind { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(90deg, transparent, #ffffffcf 48%, transparent 90%); -webkit-mask-image: repeating-linear-gradient(0deg, transparent 0 33px, #000 34px 36px, transparent 38px 81px); mask-image: repeating-linear-gradient(0deg, transparent 0 33px, #000 34px 36px, transparent 38px 81px); }
 
-dialog[data-profile-anchored] { --profile-y: clamp(12px, var(--profile-top), 50dvh); top: var(--profile-y); bottom: auto; margin-block: 0; max-height: min(760px, calc(100dvh - var(--profile-y) - 14px)); }
 
 .app-page { display: flow-root; }
 #cart-content { padding: 24px 20px; border-radius: 26px; }
@@ -421,3 +420,6 @@ dialog[data-view="product"] .photo[data-photo-fit="auto"] img, dialog[data-view=
 
 
 .review-opportunity{padding:18px 0;border-bottom:1px solid #9c829033}.review-opportunity>strong{display:block;overflow-wrap:anywhere}.review-opportunity p{font-size:12px!important;color:#897682;margin:8px 0!important}
+
+.bottom-nav[data-active="profile"] .nav-indicator { opacity: 0; }
+.review-media-list:has(> img:only-child) { margin-inline: 0; }

@@ -29,14 +29,14 @@ try{
 
  assert.equal(await page.locator('[data-info="reviews"]').getAttribute('aria-label'),'Отзывы о всех товарах');
  assert.equal(await page.locator('[data-write-review]').count(),0);
- await page.locator('dialog > .close').click();await page.locator('#profile-button').click();await page.locator('[data-my-reviews]').click();await page.locator('[data-write-review]').click();await page.locator('#review-purchase').waitFor();
+ await page.locator('dialog > .close').click();await page.locator('#profile-button').click();await page.locator('#profile-page [data-my-reviews]').click();await page.locator('[data-write-review]').click();await page.locator('#review-purchase').waitFor();
  await page.locator('#review-purchase').selectOption(`${orders[0]}:${product}`);await page.locator('[data-review-rating="5"]').click();await page.locator('[data-review-submit]').click();await page.getByText('Отзыв отправлен',{exact:true}).waitFor();assert.equal(await page.locator('#review-count-badge').count(),0);
  assert.equal(db.prepare('SELECT order_id FROM reviews WHERE customer_id=?').get(buyer).order_id,orders[0]);
- await page.locator('dialog > .close').click();await page.locator('#profile-button').click();await page.locator('[data-my-reviews]').click();await page.getByText('На модерации',{exact:true}).waitFor();assert.equal(await page.locator('.my-review').count(),1);
+ await page.locator('dialog > .close').click();await page.locator('#profile-button').click();await page.locator('#profile-page [data-my-reviews]').click();await page.getByText('На модерации',{exact:true}).waitFor();assert.equal(await page.locator('.my-review').count(),1);
  await page.locator('dialog > .close').click();
  await page.evaluate(initData=>{window.Telegram.WebApp.initData=initData;window.Telegram.WebApp.initDataUnsafe.user={id:202,first_name:'Другой'};document.querySelector('#telegram-sdk').dispatchEvent(new Event('load'));},signedProfileUser(202));
  assert.equal(await page.locator('#review-count-badge').count(),0);
- await page.locator('[data-info="reviews"]').click();await page.getByText('Чужой отзыв',{exact:true}).waitFor();assert.equal(await page.locator('[data-write-review]').count(),0);
+ await page.locator('#catalog-tab').click();await page.locator('[data-info="reviews"]').click();await page.getByText('Чужой отзыв',{exact:true}).waitFor();assert.equal(await page.locator('[data-write-review]').count(),0);
  // A guest can use the same home shortcut without Telegram authentication.
  const guest=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
  await guest.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:''}));

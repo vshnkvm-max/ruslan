@@ -138,7 +138,7 @@ try {
   assert.equal(await page.getByRole('tab', { name: 'Обзор' }).getAttribute('aria-selected'), 'true');
   assert.equal(await page.locator('.outgoing-profile-body').count(), 0);
   assert.equal(await page.locator('#profile-body').evaluate(element => element.inert), false);
-  await close();
+  assert.ok(await page.locator('#details').isHidden());
   await page.locator('#cart-tab').click();
   await page.getByText('Корзина пока пуста', { exact: true }).waitFor();
   assert.ok(await page.locator('#details').isHidden());
@@ -240,7 +240,6 @@ try {
   assert.equal(await page.locator('.profile-stats strong').first().textContent(), '—');
   await settle();
   await page.screenshot({ path: '/tmp/gas-profile.png' });
-  await close();
   await page.locator('#cart-tab').click();
   await page.locator('[data-remove="2"]').click();
   await page.getByText('Корзина пока пуста', { exact: true }).waitFor();
@@ -262,9 +261,8 @@ try {
   await close();
   assert.equal(await page.locator('[data-product="6"]').count(),0);
   await page.locator('[data-info="reviews"]').click();
-  await page.getByRole('heading',{name:'Оставить отзыв',exact:true}).waitFor();
-  assert.equal(await page.locator('[data-all-reviews]').count(),0);
-  await close();await page.locator('#profile-button').click();await page.locator('[data-my-reviews]').click();await page.locator('[data-all-reviews]').click();
+  await page.getByRole('heading',{name:'Отзывы',exact:true}).waitFor();
+  assert.equal(await page.locator('#details [data-write-review]').count(),0);
   await page.waitForFunction(()=>document.querySelectorAll('dialog .review').length===4);
   assert.equal(await page.locator('dialog .review').count(), 4, 'reviews of unavailable products remain readable');
   await close();
@@ -325,9 +323,8 @@ try {
     }), `navigation remains usable on cart at ${width}px`);
     await page.locator('#profile-button').click();
     await settle();
-    assert.ok(await page.locator('#details').evaluate(element => element.scrollWidth <= element.clientWidth));
-    await close();
-    assert.equal(await page.locator('#cart-tab').getAttribute('aria-current'), 'page');
+    assert.ok(await page.locator('#profile-page').evaluate(element => element.scrollWidth <= element.clientWidth));
+    assert.equal(await page.locator('#profile-button').getAttribute('aria-current'), 'page');
     await home();
     if (width === 390) await page.screenshot({ path: '/tmp/gas-miniapp.png' });
     if (width === 1280) await page.screenshot({ path: '/tmp/gas-miniapp-desktop.png' });
@@ -363,7 +360,7 @@ try {
   await page.getByRole('tab', { name: 'Начисления' }).click();
   await page.getByRole('tab', { name: 'Обзор' }).click();
   assert.equal(await page.locator('.outgoing-profile-body').count(), 0);
-  await close();
+  assert.ok(await page.locator('#details').isHidden());
   assert.equal(await page.evaluate(() => window.motionLog.length), motionCount);
   await page.evaluate(() => localStorage.setItem('gas-cart:v1:101', '{broken'));
   await page.reload();
@@ -382,7 +379,7 @@ try {
   await guest.locator('.product').first().waitFor();
   await guest.locator('#profile-button').click();
   await guest.getByRole('heading', { name: 'Гость' }).waitFor();
-  await guest.locator('dialog[data-view=product] .product-close, dialog:not([data-view=product]) > .close').click();
+  await guest.locator('#catalog-tab').click();
   await guest.locator('[data-product="2"]').click();
   await guest.locator('#product-add').click();
   await guest.locator('#product-cart').click();
@@ -415,8 +412,7 @@ try {
     await late.getByRole('heading',{name:'Гость',exact:true}).waitFor();
     releaseSdk();
     await late.getByRole('heading',{name:'Поздний SDK',exact:true}).waitFor();
-    await late.locator('dialog > .close').click();
-    await late.locator('dialog').waitFor({state:'hidden'});
+    assert.ok(await late.locator('dialog').isHidden());
     await late.locator('#cart-tab').click();
     await late.locator('[data-cart-item="2"]').waitFor();
     assert.equal(await late.locator('#cart-badge').textContent(),'1');
