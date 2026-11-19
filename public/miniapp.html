@@ -14,7 +14,7 @@
 <body>
   <div class="miniapp">
     <header class="topbar">
-      <button class="profile-button" id="profile-button" aria-label="Открыть профиль" aria-haspopup="dialog">
+      <button class="profile-button" id="profile-button" aria-label="Открыть профиль" aria-controls="profile-page">
         <span class="header-profile-avatar"><svg viewBox="0 0 42 42" aria-hidden="true"><circle cx="21" cy="14" r="7"/><path d="M7 42V32a14 14 0 0 1 28 0v10Z"/></svg></span>
         <span class="header-profile-label">Мой профиль</span>
         <svg class="profile-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
@@ -47,6 +47,7 @@
         </section>
       </section>
       <section class="app-page" id="cart-page" aria-label="Корзина" tabindex="-1" hidden><div id="cart-content"></div></section>
+      <section class="app-page" id="profile-page" aria-label="Мой профиль" tabindex="-1" hidden></section>
     </main>
 
     <nav class="bottom-nav" aria-label="Основная навигация" data-active="catalog">

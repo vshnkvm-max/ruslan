@@ -79,9 +79,9 @@ let data, category = '', loading = false, modalVersion = 0, toastTimer;
 let cart = readCart();
 let categorySlide;
 let categoryMenuKey;
-let profileTab = 'overview', profileTransition, ordersTransition;
+let profileTab = 'overview', profileTransition;
 let activePage = 'home', pageSwitchVersion = 0, pageTransition;
-const pageScroll = { home: 0, cart: 0 };
+const pageScroll = { home: 0, cart: 0, profile: 0 };
 
 function readCart() {
   try {
@@ -204,11 +204,12 @@ function formatted(value) {
   }).join('');
 }
 function setNav(view) {
-  const inCart = view === 'cart';
-  $('.bottom-nav').dataset.active = inCart ? 'cart' : 'catalog';
-  $('#cart-tab').toggleAttribute('aria-current', inCart);
-  $('#catalog-tab').toggleAttribute('aria-current', !inCart);
-  (inCart ? $('#cart-tab') : $('#catalog-tab')).setAttribute('aria-current', 'page');
+  $('.bottom-nav').dataset.active = activePage === 'profile' ? 'profile' : view;
+  for (const [id, active] of [['cart-tab', activePage === 'cart'], ['catalog-tab', activePage === 'home'], ['profile-button', activePage === 'profile']]) {
+    const tab = $('#' + id);
+    if (active) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  }
 }
 function show(html, view = 'info', shouldAnimate = true) {
   stopBannerAuto();
@@ -216,13 +217,9 @@ function show(html, view = 'info', shouldAnimate = true) {
   resetSheetGesture();
   if(['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(view))holdTelegramSwipes();else releaseTelegramSwipes();
   stopProfileTransition();
-  ordersTransition?.cancel();
-  ordersTransition = undefined;
   modalVersion++;
   const dialog = $('#details'), content = $('#detail-content');
   const wasOpen = dialog.open;
-  delete dialog.dataset.profileAnchored;
-  dialog.style.removeProperty('--profile-top');
   const scroll = dialog.scrollTop;
   dialog.getAnimations().forEach(animation => animation.cancel());
   delete dialog.dataset.closing;
@@ -587,15 +584,15 @@ async function reviewRequest(url,options={},timeout=15000){
  catch(error){if(error.name==='AbortError')throw new Error('Сервер не ответил. Проверьте соединение и повторите.');if(error instanceof TypeError)throw new Error('Нет соединения с сервером. Повторите запрос.');throw error;}finally{clearTimeout(timer);}
 }
 let reviewIdentity=telegram?.initData||'';
-let reviewFeed={productId:null,sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};
+let reviewFeed={sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};
 let reviewDraft=null,reviewEligibility={key:null,items:[],next:null,loaded:false},reviewExpiryTimer;
 let reviewEligibilityVersion=0,reviewBadgeTimer;
 const reviewDate=value=>new Date(value).toLocaleDateString('ru-RU');
 const reviewCountLabel=value=>`${value} ${{one:'отзыв',few:'отзыва',many:'отзывов',other:'отзывов'}[new Intl.PluralRules('ru').select(value)]}`;
 function reviewMediaMarkup(review){return review.media?.length?`<div class="review-media-list">${review.media.map(file=>file.type==='video'?`<video src="${escape(file.url)}" controls playsinline preload="none" aria-label="Видео к отзыву"></video>`:`<img src="${escape(file.url)}" alt="Фото к отзыву о товаре ${escape(review.product_name)}" loading="lazy" decoding="async">`).join('')}</div>`:'';}
-function reviewCard(review,own=false){
+function reviewCard(review,{own=false,showProduct=true}={}){
  const rating=Math.max(0,Math.min(5,Math.trunc(Number(review.rating)||0))),statuses={pending:'На модерации',published:'Опубликован',hidden:'Скрыт'};
- return `<article class="review review-card${own?' my-review':''}"><div class="review-author-row"><strong>${escape(review.author_name||'Покупатель')}</strong><time datetime="${escape(review.created_at)}">${reviewDate(review.created_at)}</time></div><div class="review-stars" aria-label="Оценка ${rating} из 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</div><div class="review-product-name">${escape(review.product_name)}</div>${own?`<span class="my-review-status">${escape(statuses[review.status]||review.status)}</span>`:''}${review.text?`<p>${escape(review.text)}</p>`:''}${reviewMediaMarkup(review)}</article>`;
+ return `<article class="review review-card${own?' my-review':''}"><div class="review-author-row"><strong>${escape(review.author_name||'Покупатель')}</strong><time datetime="${escape(review.created_at)}">${reviewDate(review.created_at)}</time></div><div class="review-stars" aria-label="Оценка ${rating} из 5">${'★'.repeat(rating)}${'☆'.repeat(5-rating)}</div>${showProduct?`<div class="review-product-name">${escape(review.product_name)}</div>`:''}${own?`<span class="my-review-status">${escape(statuses[review.status]||review.status)}</span>`:''}${review.text?`<p>${escape(review.text)}</p>`:''}${reviewMediaMarkup(review)}</article>`;
 }
 function pendingReview(owner=cartKey){try{const item=JSON.parse(localStorage.getItem('gas-review-pending:'+owner));return item&&typeof item.request_key==='string'&&Number.isSafeInteger(item.order_id)&&Number.isSafeInteger(item.product_id)?item:null;}catch{return null;}}
 function validReviewChoices(){return reviewEligibility.key===(telegram?.initData||'')?reviewEligibility.items.filter(item=>Date.parse(item.expires_at)>Date.now()):[];}
@@ -624,7 +621,7 @@ function renderReviewBadge(){
  const count=eligible?reviewEligibility.total||0:0,expires=Date.parse(reviewEligibility.next_expiry);
  const current=count>0&&expires>Date.now();
  badge.hidden=!current;badge.textContent=current?String(count):'';
- button.setAttribute('aria-label',current?`Написать отзыв. Доступно: ${count}`:'Написать отзыв');
+ button.setAttribute('aria-label',current?`Отзывы. Можно написать: ${count}`:'Отзывы');
  if(current)reviewBadgeTimer=setTimeout(()=>{renderReviewBadge();void refreshReviewBadge();},Math.max(30,Math.min(2147483647,expires-Date.now()+30)));
 }
 async function refreshReviewBadge(){
@@ -642,9 +639,9 @@ async function loadReviewEligibility(productId=null,append=false){
 }
 function renderReviewFeed(){
  const state=reviewFeed;
- show(`<h2>${state.productId?'Отзывы о товаре':'Отзывы'}</h2>${state.productId?`<p class="review-context">${escape(data?.products.find(p=>p.id===state.productId)?.name||'')}</p>`:''}
+ show(`<h2>Все отзывы</h2>
  <div class="review-filters"><label for="review-sort">Сортировка<select id="review-sort"><option value="newest" ${state.sort==='newest'?'selected':''}>Сначала новые</option><option value="oldest" ${state.sort==='oldest'?'selected':''}>Сначала старые</option><option value="rating_asc" ${state.sort==='rating_asc'?'selected':''}>Сначала с низкой оценкой</option><option value="rating_desc" ${state.sort==='rating_desc'?'selected':''}>Сначала с высокой оценкой</option></select></label><label class="review-media-filter"><input id="review-media-only" type="checkbox" ${state.media?'checked':''}>С медиа</label></div>
- <div id="review-write-slot">${reviewWriteButton(state.productId)}</div>
+ <div id="review-write-slot">${reviewWriteButton()}</div>
  <p class="review-rule">Отзывы о купленных товарах можно оставить в течение 7 дней после выполнения заказа.</p>
  ${state.total?`<p class="review-summary">${reviewCountLabel(state.total)} · ${Number(state.average).toLocaleString('ru-RU',{maximumFractionDigits:1})} ★</p>`:''}
  ${state.error?`<div class="profile-error" role="alert"><p>${escape(state.error)}</p><button class="secondary-button" data-review-retry>Повторить</button></div>`:''}
@@ -656,7 +653,7 @@ async function loadReviewFeed(more=false){
  const state=reviewFeed,version=++state.version;state.loading=true;state.error='';if(!more){state.items=[];state.next=null;}
  renderReviewFeed();
  try{
-  const query=new URLSearchParams({sort:state.sort,media:state.media?'1':'0',offset:String(more?state.next||state.items.length:0)});if(state.productId)query.set('product_id',state.productId);
+  const query=new URLSearchParams({sort:state.sort,media:state.media?'1':'0',offset:String(more?state.next||state.items.length:0)});
   const result=await reviewRequest('/api/storefront/reviews?'+query);
   if(reviewFeed!==state||state.version!==version)return;
   state.items=more?[...state.items,...result.items]:result.items;state.total=result.total;state.average=result.average;state.next=result.next_offset;
@@ -667,7 +664,7 @@ let reviewOpportunities=null;
 function renderReviewOpportunities(){
  const state=reviewOpportunities;if(!state||state.key!==(telegram?.initData||''))return;
  state.items=state.items.filter(item=>Date.parse(item.expires_at)>Date.now());
- show(`<h2>Оставить отзыв</h2><p class="review-rule">Выберите купленный товар. Отзыв можно оставить в течение 7 дней после выполнения заказа.</p>
+ show(`<h2>Оставить отзыв</h2><button class="secondary-button" data-all-reviews>Все отзывы</button><p class="review-rule">Выберите купленный товар. Отзыв можно оставить в течение 7 дней после выполнения заказа.</p>
  ${!state.key?'<p>Откройте магазин через Telegram, чтобы увидеть товары, на которые можно оставить отзыв.</p>':''}
  ${pendingReview()?'<button class="primary-button" data-write-review="">Проверить отправку отзыва</button>':''}
  ${state.error?`<div class="profile-error" role="alert"><p>${escape(state.error)}</p><button class="secondary-button" data-review-opportunities>Повторить</button></div>`:''}
@@ -685,22 +682,44 @@ async function openReviewOpportunities(more=false){
  finally{state.loading=false;if(reviewOpportunities===state&&$('#details').open&&$('#details').dataset.view==='review-opportunities')renderReviewOpportunities();}
 }
 
-function openReviewFeed(productId=null){
- reviewFeed={productId,sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};void loadReviewFeed();
- void loadReviewEligibility().then(()=>{if($('#details').open&&$('#details').dataset.view==='reviews'){const slot=$('#review-write-slot');if(slot)slot.innerHTML=reviewWriteButton(reviewFeed.productId);scheduleReviewExpiry();}}).catch(()=>{});
+function openReviewFeed(){
+ reviewFeed={sort:'newest',media:false,items:[],total:0,average:0,next:null,loading:false,error:'',version:0};void loadReviewFeed();
+ void loadReviewEligibility().then(()=>{if($('#details').open&&$('#details').dataset.view==='reviews'){const slot=$('#review-write-slot');if(slot)slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}).catch(()=>{});
 }
 async function loadProductReviews(id){
  const container=$('#product-reviews');if(!container)return;
+ const list=document.createElement('div'),controls=document.createElement('div'),write=document.createElement('div');
+ write.className='product-write-review';
+ container.innerHTML='<h3>Отзывы</h3>';
+ container.append(list,controls,write);
+ async function loadPage(offset){
+  controls.innerHTML='<p role="status">Загружаем отзывы…</p>';
+  try{
+   const result=await reviewRequest(`/api/storefront/reviews?product_id=${id}&offset=${offset}`);
+   if(!controls.isConnected)return;
+   if(offset===0){
+    container.querySelector('h3').innerHTML=`Отзывы ${result.total?`<span>${result.total} · ${Number(result.average).toLocaleString('ru-RU',{maximumFractionDigits:1})} ★</span>`:''}`;
+   }
+   list.insertAdjacentHTML('beforeend',result.items.map(review=>reviewCard(review,{showProduct:false})).join('')||(!offset?'<p>Об этом товаре пока нет отзывов.</p>':''));
+   controls.innerHTML=result.next_offset===null?'':'<button class="secondary-button">Показать ещё отзывы</button>';
+   if(result.next_offset!==null)controls.firstElementChild.onclick=()=>void loadPage(result.next_offset);
+  }catch{
+   if(!controls.isConnected)return;
+   controls.innerHTML='<p role="alert">Не удалось загрузить отзывы.</p><button class="secondary-button">Повторить</button>';
+   controls.querySelector('button').onclick=()=>void loadPage(offset);
+  }
+ }
+ void loadPage(0);
  try{
-  const result=await reviewRequest(`/api/storefront/reviews?product_id=${id}&limit=3`);
-  if(!container.isConnected||$('#details').dataset.view!=='product')return;
-  container.innerHTML=`<h3>Отзывы ${result.total?`<span>${result.total} · ${Number(result.average).toLocaleString('ru-RU',{maximumFractionDigits:1})} ★</span>`:''}</h3>${result.items.map(review=>reviewCard(review)).join('')||'<p>Об этом товаре пока нет отзывов.</p>'}<button class="secondary-button" data-product-reviews="${id}">Все отзывы о товаре</button><div class="product-write-review"></div>`;
   const eligible=await loadReviewEligibility(id);
-  if(container.isConnected&&eligible.items.length){const expires=eligible.items.reduce((last,item)=>item.expires_at>last?item.expires_at:last,'');container.querySelector('.product-write-review').innerHTML=`<button class="primary-button" data-write-review="${id}" data-review-expires="${expires}">Оставить отзыв</button>`;scheduleReviewExpiry();}
- }catch{if(container.isConnected)container.innerHTML=`<h3>Отзывы</h3><button class="secondary-button" data-product-reviews="${id}">Открыть отзывы о товаре</button>`;}
+  if(write.isConnected&&eligible.items.length){
+   const expires=eligible.items.reduce((last,item)=>item.expires_at>last?item.expires_at:last,'');
+   write.innerHTML=`<button class="primary-button" data-write-review="${id}" data-review-expires="${expires}">Оставить отзыв</button>`;
+   scheduleReviewExpiry();
+  }
+ }catch{}
 }
-async function openReviewForm(productId=null,orderId=null){
- const origin=$('#details').dataset.view==='review-opportunities'?'opportunities':'reviews';
+async function openReviewForm(productId=null,orderId=null,origin=$('#details').open?$('#details').dataset.view:'my-reviews'){
  const pending=pendingReview();
  reviewFeed.version++;
  reviewDraft=pending?{...pending,files:[],choices:[],next:null,locked:true,busy:false,productId,error:''}:{request_key:crypto.randomUUID(),rating:0,text:'',files:[],choices:[],next:null,locked:false,busy:false,productId,error:'',loading:true};
@@ -760,7 +779,7 @@ async function submitReview(){
   try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}
   if(owner!==cartKey||reviewDraft!==draft)return;
   profileState={key:'',status:'idle'};reviewEligibilityVersion++;reviewEligibility={key:null,items:[],next:null,loaded:false};renderReviewBadge();void refreshReviewBadge();reviewDraft=null;
-  if($('#details').open&&$('#details').dataset.view==='review-form')show(`<h2>Отзыв отправлен</h2><p>${result.review.status==='published'?'Отзыв опубликован.':'Отзыв появится после модерации.'}</p>${draft.origin==='opportunities'?'<button class="primary-button" data-review-opportunities>К доступным отзывам</button>':'<button class="primary-button" data-my-reviews>Мои отзывы</button><button class="secondary-button" data-review-back>Все отзывы</button>'}`,'reviews-sent');
+  if($('#details').open&&$('#details').dataset.view==='review-form')show(`<h2>Отзыв отправлен</h2><p>${result.review.status==='published'?'Отзыв опубликован.':'Отзыв появится после модерации.'}</p>${draft.origin==='review-opportunities'?'<button class="primary-button" data-review-opportunities>К доступным отзывам</button>':'<button class="primary-button" data-my-reviews>Мои отзывы</button>'}`,'reviews-sent');
  }catch(error){draft.error=error.message;if(error.status>=400&&error.status<500&&error.status!==401){try{localStorage.removeItem('gas-review-pending:'+owner);}catch{}}if(pendingReview(owner)){Object.assign(draft,body,{locked:true});}}
  finally{draft.busy=false;if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();}
 }
@@ -874,7 +893,7 @@ function accrualsContent(){
  ${state.transactionsNext?`<button class="secondary-button" data-more-accruals ${state.transactionsLoading?'disabled':''}>Показать ещё</button>`:''}`;
 }
 function refreshAccrualsView(){
- if($('#details').open&&$('#details').dataset.view==='profile'&&profileTab==='accruals'){stopProfileTransition();$('#profile-body').innerHTML=accrualsContent();}
+ if(isProfileView('profile')&&profileTab==='accruals'){stopProfileTransition();$('#profile-body').innerHTML=accrualsContent();}
 }
 async function loadAccruals(more=false,refresh=true){
  const state=currentCustomerHistory();if(!state.key||state.transactionsLoading)return;
@@ -886,14 +905,32 @@ async function loadAccruals(more=false,refresh=true){
  }catch(error){if(currentCustomerHistory()===state&&state.transactionsVersion===version)state.transactionsError=error.message;}
  finally{if(state.transactionsVersion===version){state.transactionsLoading=false;if(currentCustomerHistory()===state)refreshAccrualsView();}}
 }
+function showProfilePage(html, view) {
+  const page = $('#profile-page');
+  const changed = page.dataset.view !== view;
+  stopProfileTransition();
+  page.dataset.view = view;
+  page.innerHTML = html;
+  if (activePage !== 'profile') {
+    pageScroll.profile = 0;
+    void navigateToPage('profile').then(refreshProfileView);
+  }
+  if (changed && activePage === 'profile') {
+    window.scrollTo({top:0,behavior:'instant'});
+    if (!$('#details').open) page.focus({preventScroll:true});
+  }
+}
+function isProfileView(view) {
+  return activePage === 'profile' && $('#profile-page').dataset.view === view;
+}
 function renderCustomerOrders(){
  const state=currentCustomerHistory();
- show(`<h2>Заказы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button>
+ showProfilePage(`<h2>Заказы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button>
  ${!state.key?'<p>Откройте магазин через Telegram, чтобы увидеть свои заказы.</p>':''}
  ${state.ordersError?historyError(state.ordersError,'data-retry-orders'):''}
  <div class="customer-order-list">${state.orders.map(order=>`<button class="profile-order customer-order-button" data-customer-order="${order.id}"><div><strong>Заказ #${order.id}</strong><small>${escape(orderStatus(order.status))} · ${reviewDate(order.created_at)}</small></div><strong>${moneyMarkup(order.total)} ${icons.arrow}</strong></button>`).join('')}</div>
  ${state.ordersLoading?'<p role="status">Загружаем заказы…</p>':state.key&&!state.ordersError&&!state.orders.length?'<p>Заказов пока нет.</p>':''}
- ${state.ordersNext?`<button class="secondary-button" data-more-orders ${state.ordersLoading?'disabled':''}>Показать ещё</button>`:''}`, 'my-orders',false);
+ ${state.ordersNext?`<button class="secondary-button" data-more-orders ${state.ordersLoading?'disabled':''}>Показать ещё</button>`:''}`, 'my-orders');
 }
 async function openCustomerOrders(more=false){
  const state=currentCustomerHistory();if(state.ordersLoading){renderCustomerOrders();return;}
@@ -901,22 +938,22 @@ async function openCustomerOrders(more=false){
  state.ordersLoading=true;state.ordersError='';if(!more)state.orders=[];renderCustomerOrders();
  try{const result=await historyRequest('orders/list',more?{before:state.ordersNext}:{});if(currentCustomerHistory()!==state)return;state.orders=more?[...state.orders,...result.items]:result.items;state.ordersNext=result.next;}
  catch(error){if(currentCustomerHistory()===state)state.ordersError=error.message;}
- finally{state.ordersLoading=false;if(currentCustomerHistory()===state&&$('#details').open&&$('#details').dataset.view==='my-orders')renderCustomerOrders();}
+ finally{state.ordersLoading=false;if(currentCustomerHistory()===state&&isProfileView('my-orders'))renderCustomerOrders();}
 }
 function renderCustomerOrder(id){
  const state=currentCustomerHistory(),order=state.order?.id===id?state.order:null;
- show(`<h2>Заказ #${id}</h2><button class="profile-back" data-back-customer-orders>${icons.previousPhoto}${state.orderOrigin==='accruals'?'К начислениям':'К заказам'}</button>
+ showProfilePage(`<h2>Заказ #${id}</h2><button class="profile-back" data-back-customer-orders>${icons.previousPhoto}${state.orderOrigin==='accruals'?'К начислениям':'К заказам'}</button>
  ${state.orderError?historyError(state.orderError,`data-retry-order="${id}"`):''}${state.orderLoading?'<p role="status">Загружаем заказ…</p>':''}
  ${order?`<p class="customer-order-status">${escape(orderStatus(order.status))} · ${reviewDate(order.created_at)}</p>
  <div class="customer-order-items">${order.items.map(item=>`<div><span>${escape(item.name)}<small>${item.quantity} × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity*item.price)}</strong></div>`).join('')}</div>
  <div class="customer-order-totals"><div><span>Стоимость товаров</span><strong>${moneyMarkup(order.total)}</strong></div>${order.balance_spent?`<div><span>${order.status==='cancelled'?'Рубли возвращены':'Списано рублей'}</span><strong>${moneyMarkup(order.balance_spent)}</strong></div>`:''}<div><span>${order.status==='cancelled'?'К оплате':'Итого к оплате'}</span><strong>${moneyMarkup(order.payable)}</strong></div></div>
- ${order.can_cancel?state.cancelConfirm?`<div class="profile-error"><p>Отменить заказ? Товары вернутся на склад${order.balance_spent?', списанные рубли — на баланс':''}.</p><button class="primary-button" data-confirm-order-cancel="${id}" ${state.cancelling?'disabled':''}>${state.cancelling?'Отменяем…':'Да, отменить'}</button><button class="secondary-button" data-keep-order="${id}" ${state.cancelling?'disabled':''}>Оставить заказ</button></div>`:`<button class="secondary-button customer-cancel-order" data-cancel-customer-order="${id}">Отменить заказ</button>`:''}`:''}`, 'order-detail',false);
+ ${order.can_cancel?state.cancelConfirm?`<div class="profile-error"><p>Отменить заказ? Товары вернутся на склад${order.balance_spent?', списанные рубли — на баланс':''}.</p><button class="primary-button" data-confirm-order-cancel="${id}" ${state.cancelling?'disabled':''}>${state.cancelling?'Отменяем…':'Да, отменить'}</button><button class="secondary-button" data-keep-order="${id}" ${state.cancelling?'disabled':''}>Оставить заказ</button></div>`:`<button class="secondary-button customer-cancel-order" data-cancel-customer-order="${id}">Отменить заказ</button>`:''}`:''}`, 'order-detail');
 }
 async function openCustomerOrder(id,origin){
  const state=currentCustomerHistory(),version=++state.orderVersion;state.order=null;state.orderLoading=true;state.orderError='';state.cancelConfirm=false;state.orderOrigin=origin||state.orderOrigin||'orders';renderCustomerOrder(id);
  try{const result=await historyRequest('orders/'+id);if(currentCustomerHistory()!==state||state.orderVersion!==version)return;state.order=result.order;applyHeaderBalance(state.key,result.order.balance_after);profileState={key:'',status:'idle'};state.transactionsVersion++;state.transactionsLoading=false;state.transactionsLoaded=false;}
  catch(error){if(currentCustomerHistory()===state&&state.orderVersion===version)state.orderError=error.message;}
- finally{if(state.orderVersion===version){state.orderLoading=false;if(currentCustomerHistory()===state&&$('#details').open&&$('#details').dataset.view==='order-detail')renderCustomerOrder(id);}}
+ finally{if(state.orderVersion===version){state.orderLoading=false;if(currentCustomerHistory()===state&&isProfileView('order-detail'))renderCustomerOrder(id);}}
 }
 async function cancelCustomerOrder(id){
  const state=currentCustomerHistory();if(state.cancelling||state.order?.id!==id||!state.cancelConfirm)return;
@@ -928,7 +965,7 @@ async function cancelCustomerOrder(id){
   profileState={key:'',status:'idle'};applyHeaderBalance(state.key,result.order.balance_after);
   if(data)void load();
  }catch(error){if(currentCustomerHistory()===state&&state.orderVersion===version){state.orderError=error.message;if(error.status===409){try{const updated=await historyRequest('orders/'+id);if(currentCustomerHistory()===state&&state.orderVersion===version){state.order=updated.order;state.cancelConfirm=false;}}catch{}}}}
- finally{state.cancelling=false;if(currentCustomerHistory()===state&&state.orderVersion===version&&$('#details').open&&$('#details').dataset.view==='order-detail')renderCustomerOrder(id);}
+ finally{state.cancelling=false;if(currentCustomerHistory()===state&&state.orderVersion===version&&isProfileView('order-detail'))renderCustomerOrder(id);}
 }
 
 function currentProfile() {
@@ -948,9 +985,8 @@ function profileContent(tab) {
     <button class="profile-link" data-customer-orders>${icons.package}<span>Заказы</span>${icons.arrow}</button>${profileMessage()}`;
 }
 function refreshProfileView() {
-  if (!$('#details').open) return;
-  if ($('#details').dataset.view === 'profile') renderProfile(profileTab);
-  else if ($('#details').dataset.view === 'my-reviews') renderMyReviews();
+  if (isProfileView('profile')) renderProfile(profileTab);
+  else if (isProfileView('my-reviews')) renderMyReviews();
 }
 async function loadProfile(more = false) {
   const state = currentProfile();
@@ -977,8 +1013,8 @@ async function loadProfile(more = false) {
 }
 function renderMyReviews() {
   const state = currentProfile();
-  show(`<h2>Мои отзывы</h2><button class="secondary-button" data-all-reviews>Все отзывы</button><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button><div id="my-review-write-slot">${reviewWriteButton()}</div>${profileMessage()}
-    ${state.status === 'ready' ? state.reviews.length ? `<div class="my-reviews-list">${state.reviews.map(review=>reviewCard(review,true)).join('')}</div>${state.reviews_next ? `<button class="primary-button secondary-button" data-more-reviews ${state.loadingMore?'disabled':''}>${state.loadingMore?'Загружаем…':'Показать ещё'}</button>` : ''}` : '<div class="empty-inline">У вас пока нет отзывов.</div>' : ''}`, 'my-reviews', false);
+  showProfilePage(`<h2>Мои отзывы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button><div id="my-review-write-slot">${reviewWriteButton()}</div>${profileMessage()}
+    ${state.status === 'ready' ? state.reviews.length ? `<div class="my-reviews-list">${state.reviews.map(review=>reviewCard(review,{own:true})).join('')}</div>${state.reviews_next ? `<button class="primary-button secondary-button" data-more-reviews ${state.loadingMore?'disabled':''}>${state.loadingMore?'Загружаем…':'Показать ещё'}</button>` : ''}` : '<div class="empty-inline">У вас пока нет отзывов.</div>' : ''}`, 'my-reviews');
   if (state.status === 'idle'||(state.status==='ready'&&Date.now()-state.loadedAt>30000)) void loadProfile();
   scheduleReviewExpiry();
   if(!reviewEligibility.loaded||reviewEligibility.key!==(telegram?.initData||''))void loadReviewEligibility().then(()=>{const slot=$('#my-review-write-slot');if(slot){slot.innerHTML=reviewWriteButton();scheduleReviewExpiry();}}).catch(()=>{});
@@ -1000,16 +1036,9 @@ function stopProfileTransition() {
 async function switchProfileTab(tab) {
   if (tab === profileTab || !['overview', 'accruals'].includes(tab)) return;
   stopProfileTransition();
-  ordersTransition?.cancel();
-  ordersTransition = undefined;
   const panel = $('#profile-panel'), body = $('#profile-body');
   if (!panel || !body) return;
   const direction = tab === 'accruals' ? 1 : -1;
-  const dialog = $('#details');
-  if (!dialog.hasAttribute('data-profile-anchored')) {
-    dialog.style.setProperty('--profile-top', `${dialog.getBoundingClientRect().top}px`);
-    dialog.dataset.profileAnchored = 'true';
-  }
   const oldHeight = body.getBoundingClientRect().height;
   const outgoing = body.cloneNode(true);
   profileTab = tab;
@@ -1053,7 +1082,7 @@ function renderProfile(tab = 'overview') {
   const initials = [text('first_name'), text('last_name')].filter(Boolean).map(value => [...value][0]).join('').toUpperCase();
   const state = currentProfile(), ready = state.status === 'ready';
   profileTab = tab;
-  show(`<div class="profile-card">
+  showProfilePage(`<div class="profile-card">
       <div class="profile-identity"><span class="profile-avatar">${initials ? escape(initials) : icons.user}${avatarPhoto()}</span><div><h2>${escape(name)}</h2>${text('username') ? `<span class="profile-username">@${escape(text('username'))}</span>` : ''}</div></div>
       <div class="profile-stats" aria-busy="${state.status==='loading'}"><div>${icons.bag}<strong data-profile-order-count>${ready ? state.stats.orders_count : '—'}</strong><span>Кол-во заказов</span></div><div>${icons.wallet}<strong data-profile-order-total>${ready ? moneyMarkup(state.stats.total) : '—'}</strong><span>Общая сумма</span></div></div>
     </div>
@@ -1062,8 +1091,8 @@ function renderProfile(tab = 'overview') {
       <button role="tab" id="profile-overview" aria-controls="profile-panel" aria-selected="${tab === 'overview'}" tabindex="${tab === 'overview' ? 0 : -1}" data-profile-tab="overview">Обзор</button>
       <button role="tab" id="profile-accruals" aria-controls="profile-panel" aria-selected="${tab === 'accruals'}" tabindex="${tab === 'accruals' ? 0 : -1}" data-profile-tab="accruals">Начисления</button>
     </div>
-    <div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-${tab}"><div class="profile-body" id="profile-body">${profileContent(tab)}</div></div>`, 'profile', false);
-  bindAvatarFallbacks($('#detail-content'));
+    <div class="profile-panel" id="profile-panel" role="tabpanel" aria-labelledby="profile-${tab}"><div class="profile-body" id="profile-body">${profileContent(tab)}</div></div>`, 'profile');
+  bindAvatarFallbacks($('#profile-page'));
   if(tab==='accruals'&&(!currentCustomerHistory().transactionsLoaded||Date.now()-currentCustomerHistory().transactionsAt>30000)&&!currentCustomerHistory().transactionsLoading&&!currentCustomerHistory().transactionsError)void loadAccruals(false,false);
   if (state.status === 'idle' || (ready && Date.now()-state.loadedAt > 30000)) void loadProfile();
 }
@@ -1199,7 +1228,7 @@ async function confirmCheckout() {
   }
 }
 async function navigateToPage(next, { toCatalog = false } = {}) {
-  if (!['home', 'cart'].includes(next)) return;
+  if (!['home', 'cart', 'profile'].includes(next)) return;
   const version = ++pageSwitchVersion;
   await closeDetails();
   if (version !== pageSwitchVersion || $('#details').open) return;
@@ -1215,6 +1244,11 @@ async function navigateToPage(next, { toCatalog = false } = {}) {
   const previous = $(`#${activePage}-page`), target = $(`#${next}-page`);
   const transferFocus = previous.contains(document.activeElement);
   if (next === 'cart') renderCart();
+  if (activePage === 'profile') {
+    stopProfileTransition();
+    previous.replaceChildren();
+    delete previous.dataset.view;
+  }
   previous.hidden = true;
   target.hidden = false;
   activePage = next;
@@ -1222,7 +1256,7 @@ async function navigateToPage(next, { toCatalog = false } = {}) {
   window.scrollTo({ top: pageScroll[next], behavior: 'instant' });
   if (toCatalog) $('#catalog').scrollIntoView({ behavior: 'instant', block: 'start' });
   if (next === 'home') positionCategoryIndicator();
-  if (transferFocus) target.focus({ preventScroll: true });
+  if (transferFocus || next === 'profile') target.focus({ preventScroll: true });
   if (!target.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const animation = target.animate([
     { opacity: 0, transform: `translateX(${next === 'cart' ? 18 : -18}px)` },
@@ -1288,11 +1322,10 @@ function handleCartAction(event) {
  if(event.target.closest('[data-retry-accruals]')){void loadAccruals();return;}
  if(event.target.closest('[data-more-accruals]')){void loadAccruals(true);return;}
 
- const feed=event.target.closest('[data-product-reviews]');if(feed){openReviewFeed(Number(feed.dataset.productReviews));return;}
  const write=event.target.closest('[data-write-review]');if(write){void openReviewForm(Number(write.dataset.writeReview)||null);return;}
  const rating=event.target.closest('[data-review-rating]');if(rating&&reviewDraft&&!reviewDraft.busy){reviewDraft.rating=Number(rating.dataset.reviewRating);document.querySelectorAll('[data-review-rating]').forEach(button=>{button.classList.toggle('selected',Number(button.dataset.reviewRating)<=reviewDraft.rating);button.setAttribute('aria-pressed',String(Number(button.dataset.reviewRating)===reviewDraft.rating));});return;}
  if(event.target.closest('[data-review-submit]')){void submitReview();return;}
- if(event.target.closest('[data-review-back]')){const origin=reviewDraft?.origin;reviewDraft=null;if(origin==='opportunities')void openReviewOpportunities();else openReviewFeed(reviewFeed.productId);return;}
+ if(event.target.closest('[data-review-back]')){const origin=reviewDraft?.origin;reviewDraft=null;if(origin==='review-opportunities')void openReviewOpportunities();else if(origin==='product')openProduct(Number($('#details').dataset.productId));else if(origin==='my-reviews')void closeDetails();else openReviewFeed();return;}
  if(event.target.closest('[data-review-retry]')){void loadReviewFeed();return;}
  if(event.target.closest('[data-review-more]')){if(!reviewFeed.loading)void loadReviewFeed(true);return;}
  const removeReview=event.target.closest('[data-remove-review-file]');if(removeReview&&reviewDraft&&!reviewDraft.busy){reviewDraft.files.splice(Number(removeReview.dataset.removeReviewFile),1);renderReviewForm();return;}
@@ -1300,7 +1333,7 @@ function handleCartAction(event) {
 
  if(event.target.closest('[data-toggle-rubles]')){toggleCheckoutRubles();return;}
  if(event.target.closest('[data-all-reviews]')){openReviewFeed();return;}
- if(event.target.closest('[data-my-reviews]')){renderMyReviews();return;}
+ if(event.target.closest('[data-my-reviews]')){renderMyReviews();if(activePage==='profile')void closeDetails();return;}
  if(event.target.closest('[data-back-profile]')){renderProfile();return;}
  if(event.target.closest('[data-retry-profile]')){void loadProfile();return;}
  if(event.target.closest('[data-more-reviews]')){void loadProfile(true);return;}
@@ -1337,7 +1370,8 @@ $('#detail-content').addEventListener('change',event=>{
 $('#detail-content').addEventListener('input',event=>{if(event.target.id==='review-text'&&reviewDraft)reviewDraft.text=event.target.value;});
 $('#detail-content').addEventListener('input',event=>{if(event.target.id!=='checkout-rubles'||!checkoutDraft||checkoutSubmitting||checkoutLocked)return;checkoutDraft.balance_spend=Math.max(0,Math.min(checkoutSpendLimit(),Math.round(Number(event.target.value)||0)));refreshCheckoutPayment();});
 $('#cart-content').onclick = handleCartAction;
-$('#detail-content').addEventListener('keydown', event => {
+$('#profile-page').onclick = handleCartAction;
+$('#profile-page').addEventListener('keydown', event => {
   if (!event.target.closest('[role="tablist"]') || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
   const current = $('[role="tab"][aria-selected="true"]').dataset.profileTab;
@@ -1364,8 +1398,8 @@ $('#telegram-sdk')?.addEventListener('load', () => {
       updateProductAddButton();
     }
   }
-  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed(reviewFeed.productId);else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
-  if($('#details').open&&['my-orders','order-detail'].includes($('#details').dataset.view))void openCustomerOrders();
+  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;const draft=reviewDraft;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(draft?.productId,null,draft?.origin);else if($('#details').open&&$('#details').dataset.view==='reviews')openReviewFeed();else if($('#details').open&&$('#details').dataset.view==='product'){document.querySelector('.product-write-review')?.replaceChildren();void loadProductReviews(Number($('#details').dataset.productId));}}
+  if(isProfileView('my-orders')||isProfileView('order-detail'))void openCustomerOrders();
   if($('#details').open&&$('#details').dataset.view==='review-opportunities')void openReviewOpportunities();
   renderReviewBadge();void refreshReviewBadge();
   refreshProfileView();

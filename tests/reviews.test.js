@@ -68,6 +68,20 @@ test('photo and video uploads stay private before moderation, support playback r
  await new Promise(resolve=>app.server.close(resolve));await start();assert.equal((await fetch(base+signed)).status,200);assert.ok(existsSync(join(directory,'review-media',clip.data.media.id+'.bin')));
  await request(`/reviews/${sent.data.review.id}`,{status:'hidden'},'PATCH',true);assert.equal((await fetch(base+path)).status,404);assert.equal((await request(`/storefront/reviews?product_id=${b.product}`)).data.total,0);
 });
+test('only an administrator with a CSRF token can delete a review and its media',async()=>{
+ const b=buyer(),photo=(await upload(b)).data.media;
+ const sent=await request('/storefront/reviews',payload(b,{media_ids:[photo.id]}));
+ const path=`/reviews/${sent.data.review.id}`;
+ assert.equal((await request(path,undefined,'DELETE')).status,401);
+ assert.equal((await fetch(base+'/api'+path,{method:'DELETE',headers:{Cookie:'session='+'d'.repeat(64)}})).status,403);
+ assert.equal((await request(path,{status:'published'},'PATCH',true)).status,200);
+ assert.equal((await request(path,undefined,'DELETE',true)).status,200);
+ assert.equal((await request(path,undefined,'DELETE',true)).status,404);
+ assert.equal((await request(`/storefront/reviews?product_id=${b.product}`)).data.total,0);
+ assert.deepEqual((await request('/storefront/profile',{init_data:b.init_data})).data.reviews,[]);
+ assert.equal((await fetch(base+photo.url)).status,404);
+ assert.equal(existsSync(join(directory,'review-media',photo.id+'.bin')),false);
+});
 test('media validates type, signature, count and purchase ownership, without leaving failed uploads',async()=>{
  const b=buyer();assert.equal((await upload(b,Buffer.from('<html/>'),'text/html')).status,415);assert.equal((await upload(b,Buffer.from('not a photograph'))).status,400);
  assert.equal((await upload(b,Buffer.alloc(5*1024*1024+1))).status,413);
