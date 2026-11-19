@@ -777,12 +777,80 @@ async function submitReview(){
  finally{draft.busy=false;if(reviewDraft===draft&&$('#details').open&&$('#details').dataset.view==='review-form')renderReviewForm();}
 }
 
-function referralContent() {
-  const referral = data?.referral;
-  if (!referral) return '<p>Информация пока недоступна. Обновите каталог.</p>';
-  return referral.enabled
-    ? `<div class="referral-summary"><span>Награда за заказ друга</span><strong>${moneyMarkup(referral.bonus)} + ${new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(referral.percent??5)}%</strong><span>Фиксированная сумма и процент от суммы заказа складываются.</span></div><p>Условия участия уточняйте у магазина.</p>`
-    : '<div class="empty-inline">Реферальная программа пока не действует.</div>';
+const referralStatuses={pending:'В ожидании',successful:'Успешные',rejected:'Отклонённые'};
+let referralView;
+function renderReferrals(){
+ const view=referralView;
+ const active=document.activeElement;
+ const focused=$('#details').dataset.view==='referral'&&active?.matches('[data-referral-tab],[data-referral-status]');
+ const result=view.result;
+ const info=`
+  <section class="referral-card">
+   <label for="referral-link">Твоя реферальная ссылка</label>
+   ${result?.link?`<div class="referral-link-row"><textarea id="referral-link" rows="3" readonly>${escape(result.link)}</textarea><button class="primary-button" data-copy-referral>Копировать</button></div>`:
+   `<p>${!view.key?'Открой магазин через Telegram, чтобы получить ссылку.':result?.enabled===false?'Новые приглашения пока недоступны.':view.loading?'Загружаем ссылку…':'Ссылка пока недоступна.'}</p>`}
+  </section>
+  <section class="referral-card referral-rules">
+   <h3>Как это работает</h3>
+   <p>Зарабатывай бонусные рубли за каждого приглашенного друга.</p>
+   <p>Оплачивай бонусными рублями до 50% стоимости заказа.</p>
+   <p>Твоя награда зависит от суммы первого выполненного заказа друга и количества приглашенных в месяц.</p>
+   <dl class="referral-rates"><div><dt>1–2 приглашенных</dt><dd>3%</dd></div><div><dt>3–5 приглашенных</dt><dd>5%</dd></div><div><dt>Более 5 приглашенных</dt><dd>7%</dd></div></dl>
+   <p>Ставка закрепляется при переходе. У друга есть 7 дней, чтобы выполнить первый заказ.</p>
+   <p class="referral-warning"><strong>Предупреждение</strong><br>Боты, фейки, способы обхода системы = блокировка и списание <strong>всего</strong> баланса!</p>
+   <p><strong>Совет</strong><br>Советуйте наш магазин тем, кто реально заинтересован в покупке — друзьям, в вейп-барахолках, личные каналы.</p>
+  </section>`;
+ const recommendations=`
+  ${result?`<div class="referral-stats"><div class="referral-card"><span>Успешные</span><strong>${result.count}</strong></div><div class="referral-card"><span>Заработано</span><strong>${moneyMarkup(result.earned)}</strong></div></div>`:''}
+  <section class="referral-card">
+   <h3>История рекомендаций</h3>
+   <div class="referral-filters" role="group" aria-label="Статус рекомендаций">${Object.entries(referralStatuses).map(([id,label])=>`<button data-referral-status="${id}" aria-pressed="${view.status===id}">${label}</button>`).join('')}</div>
+   ${view.items.map(item=>`<article class="referral-person"><span class="referral-avatar">${escape([...item.name][0]?.toUpperCase()||'')}</span><div><strong>${escape(item.name)}</strong><time datetime="${escape(item.created_at)}">${new Date(item.created_at).toLocaleDateString('ru-RU')}</time></div>${view.status==='successful'?`<strong class="referral-earned">+${moneyMarkup(item.amount)}</strong>`:''}</article>`).join('')}
+   ${!view.key?'<p>Открой магазин через Telegram, чтобы увидеть рекомендации.</p>':view.loading?'<p role="status">Загружаем рекомендации…</p>':!view.items.length&&!view.error?'<p>В этом разделе пока нет рекомендаций.</p>':''}
+   ${view.next!==null?`<button class="secondary-button" data-referral-more ${view.loading?'disabled':''}>Показать ещё</button>`:''}
+  </section>`;
+ show(`<h2>Реферальная программа</h2><div class="referral-tabs" role="group" aria-label="Раздел реферальной программы">
+  <button data-referral-tab="information" aria-pressed="${view.tab==='information'}">Информация</button>
+  <button data-referral-tab="recommendations" aria-pressed="${view.tab==='recommendations'}">Рекомендации</button>
+ </div><div class="referral-content">${view.error?historyError(view.error,'data-referral-retry'):''}${view.tab==='information'?info:recommendations}</div>`,'referral',false);
+ if(focused){
+  const selector=active.dataset.referralTab?`[data-referral-tab="${active.dataset.referralTab}"]`:`[data-referral-status="${active.dataset.referralStatus}"]`;
+  $(selector)?.focus({preventScroll:true});
+ }
+}
+async function loadReferrals(more=false){
+ const view=referralView,version=++view.version;
+ view.loading=Boolean(view.key);
+ view.error='';
+ if(!more){view.items=[];view.next=null;}
+ renderReferrals();
+ if(!view.key)return;
+ const current=()=>referralView===view&&version===view.version&&view.key===(telegram?.initData||'');
+ try{
+  const result=await historyRequest('referrals',{status:view.status,...(more?{before:view.next}:{})});
+  if(!current())return;
+  view.result=result;
+  view.items=more?[...view.items,...result.items]:result.items;
+  view.next=result.next;
+ }catch(error){if(current())view.error=error.message;}
+ finally{if(current()){view.loading=false;if($('#details').open&&$('#details').dataset.view==='referral')renderReferrals();}}
+}
+function openReferrals(){
+ referralView={key:telegram?.initData||'',tab:'information',status:'pending',result:null,items:[],next:null,error:'',loading:false,version:0};
+ void loadReferrals();
+}
+let trackedReferralSession;
+function trackReferralVisit(){
+ const key=telegram?.initData||'';
+ if(!key||trackedReferralSession===key||!new URLSearchParams(key).get('start_param')?.startsWith('ref_'))return;
+ trackedReferralSession=key;
+ void historyRequest('referrals').catch(()=>{if(trackedReferralSession===key)trackedReferralSession=null;});
+}
+async function copyReferralLink(){
+ const input=$('#referral-link');
+ try{await navigator.clipboard.writeText(input.value);}
+ catch{input.focus();input.select();if(!document.execCommand?.('copy')){notify('Выделили ссылку. Скопируй её вручную.');return;}}
+ notify('Ссылка скопирована');
 }
 function openInfo(type) {
   if(type==='reviews'){openReviewFeed();return;}
@@ -830,7 +898,7 @@ function openInfo(type) {
   }
   if (!data) { show('<h2>Информация недоступна</h2><p>Сначала загрузите каталог.</p>'); return; }
   if (type === 'referral') {
-    show(`<h2>Реферальная программа</h2>${referralContent()}`);
+    openReferrals();
   } else {
     openReviewFeed();
   }
@@ -1303,6 +1371,23 @@ $('#details').onclick = event => {
   }
 };
 function handleCartAction(event) {
+ const referralTab=event.target.closest('[data-referral-tab]');
+ if(referralTab){
+  referralView.tab=referralTab.dataset.referralTab;
+  renderReferrals();
+  $('#details').scrollTop=0;
+  return;
+ }
+ const referralStatus=event.target.closest('[data-referral-status]');
+ if(referralStatus){
+  referralView.status=referralStatus.dataset.referralStatus;
+  void loadReferrals();
+  return;
+ }
+ if(event.target.closest('[data-referral-retry]')){void loadReferrals();return;}
+ if(event.target.closest('[data-referral-more]')){if(!referralView.loading)void loadReferrals(true);return;}
+ if(event.target.closest('[data-copy-referral]')){void copyReferralLink();return;}
+
  if(event.target.closest('[data-review-opportunities]')){void openReviewOpportunities();return;}
  if(event.target.closest('[data-more-review-opportunities]')){void openReviewOpportunities(true);return;}
  const purchase=event.target.closest('[data-review-purchase]');if(purchase){const [orderId,productId]=purchase.dataset.reviewPurchase.split(':').map(Number);void openReviewForm(productId,orderId);return;}
@@ -1385,6 +1470,8 @@ $('#telegram-sdk')?.addEventListener('load', () => {
   if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes($('#details').dataset.view))holdTelegramSwipes();
   user = telegram?.initDataUnsafe?.user;
   updateClientAvatar();
+  trackReferralVisit();
+  if($('#details').open&&$('#details').dataset.view==='referral'&&referralView?.key!==(telegram?.initData||''))openReferrals();
   void loadHeaderBalance();
   if(data)openStartProduct();
   const nextKey = cartKeyFor(user);
@@ -1405,12 +1492,13 @@ $('#telegram-sdk')?.addEventListener('load', () => {
   refreshProfileView();
 });
 updateClientAvatar();
+trackReferralVisit();
 void loadHeaderBalance();
 void refreshReviewEligibility();
 load();
 configureTelegram();
 signalReadyWithoutSdk();
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){void loadHeaderBalance(true);void refreshReviewEligibility();}});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){trackReferralVisit();void loadHeaderBalance(true);void refreshReviewEligibility();}});
 setInterval(()=>{if(!document.hidden)void refreshReviewEligibility();},60000);
 
 document.addEventListener('click',event=>{const button=event.target.closest('button');if(!event.isTrusted||!button||button.disabled)return;try{if(telegram?.HapticFeedback?.impactOccurred)telegram.HapticFeedback.impactOccurred('light');else if(telegram||window.TelegramWebviewProxy)postTelegramEvent('web_app_trigger_haptic_feedback',{type:'impact',impact_style:'light'});else navigator.vibrate?.(8);}catch{}});

@@ -1,7 +1,8 @@
 import { createHmac } from 'node:crypto';
 export const profileBotToken = 'test-only:profile-bot';
-export function signedProfileUser(id = 101) {
+export function signedProfileUser(id = 101, startParam) {
   const fields = new URLSearchParams({auth_date:String(Math.floor(Date.now()/1000)),user:JSON.stringify({id,first_name:'Покупатель',username:'same_username'})});
+  if(startParam!==undefined)fields.set('start_param',startParam);
   const text = [...fields].sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=>`${key}=${value}`).join('\n');
   fields.set('hash',createHmac('sha256',createHmac('sha256','WebAppData').update(profileBotToken).digest()).update(text).digest('hex'));
   return fields.toString();

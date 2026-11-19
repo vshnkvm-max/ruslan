@@ -10,6 +10,7 @@ import { sendJson } from './lib/http-response.js';
 import { createInventoryDocuments } from './lib/inventory-documents.js';
 import { recordProductView } from './lib/product-views.js';
 import { createStorefrontOrders } from './lib/storefront-orders.js';
+import { createStorefrontReferrals } from './lib/storefront-referrals.js';
 import { createOrderNotifier } from './lib/order-notifications.js';
 import { verifiedTelegramUser } from './lib/telegram-auth.js';
 import { loadStorefrontProfile, loadStorefrontBalance } from './lib/storefront-profile.js';
@@ -58,7 +59,9 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   const productImages=createProductImages(db,imageValue,fail);
   const documents=createInventoryDocuments(db,{fail,str,num,bool,token});
   const serveStatic=createStaticAssets(root);
-  const storefrontOrders=createStorefrontOrders(db,{botToken,fail});
+  const getSettings=key => JSON.parse(db.prepare('SELECT value FROM settings WHERE key=?').get(key).value);
+  const referrals=createStorefrontReferrals(db,{botToken,fail,settings:()=>getSettings('referral'),botUsername:()=>getSettings('shop').botUsername||'gas_shop_vape_bot'});
+  const storefrontOrders=createStorefrontOrders(db,{botToken,fail,referrals});
   const customerHistory=createCustomerHistory(db,{botToken,fail,orders:storefrontOrders});
   const customerBalances=createCustomerBalances(db,{fail,num,str});
   const reviewMedia=createReviewMedia(db,{directory:resolve(dirname(dbPath),'review-media'),botToken,fail});
@@ -75,7 +78,6 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
     const cookie=req.headers.cookie?.match(/(?:^|;\s*)session=([a-f0-9]{64})(?:;|$)/)?.[1];
     return cookie?db.prepare('SELECT s.*,a.username FROM sessions s JOIN admins a ON a.id=s.admin_id WHERE s.token=? AND s.expires>?').get(digest(cookie),Date.now()):null;
   };
-  const getSettings=key => JSON.parse(db.prepare('SELECT value FROM settings WHERE key=?').get(key).value);
   const saveSettings=(key,value)=> db.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify(value),key);
   const products=()=>productImages.serializeAll(db.prepare(`SELECT p.*, (SELECT AVG(rating) FROM reviews WHERE product_id=p.id AND status='published') AS rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id AND status='published') AS review_count FROM products p WHERE p.deleted=0 ORDER BY p.sort_order,p.id DESC`).all());
   const bannerPath=row=>row.image?`/api/banner-images/${row.id}?v=${digest(row.image)}`:'';
@@ -87,7 +89,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
     reviews:reviewMedia.serialize(db.prepare('SELECT r.*,c.name AS customer_name,p.name AS product_name FROM reviews r JOIN customers c ON c.id=r.customer_id JOIN products p ON p.id=r.product_id ORDER BY r.created_at DESC').all()),
     sales:db.prepare('SELECT * FROM sales WHERE deleted=0 ORDER BY id DESC').all().map(row=>({...row,items:JSON.parse(row.items)})),
     purchases:db.prepare('SELECT * FROM purchases WHERE deleted=0 ORDER BY id DESC').all().map(p=>({...p,items:JSON.parse(p.items)})),
-    referrals:db.prepare('SELECT r.*,c.name AS inviter_name,c.referral_code,i.name AS invitee_name FROM referrals r JOIN customers c ON c.id=r.inviter_id JOIN customers i ON i.id=r.invitee_id ORDER BY r.created_at DESC').all(),
+    referrals:referrals.adminList(),
     banners:db.prepare('SELECT * FROM banners ORDER BY id').all().map(serializeBanner),shop:getSettings('shop'),referral:getSettings('referral')
   });
   async function body(req) {
@@ -153,6 +155,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
           return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:storefrontReviews.list({limit:100}).items,products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
+        if(path==='/api/storefront/referrals'&&method==='POST')return json(res,200,referrals.view(await body(req)));
         if(path==='/api/storefront/reviews'&&method==='GET'){
           const productId=url.searchParams.has('product_id')?num(Number(url.searchParams.get('product_id')),'Товар'):null;
           const offset=num(Number(url.searchParams.get('offset')||0),'Страница'),limit=num(Number(url.searchParams.get('limit')||20),'Количество',20);
@@ -334,7 +337,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const r=db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run(choice(b.type,['income','expense']),str(b.category,'Категория',80),str(b.description,'Описание'),amount,new Date().toISOString());return json(res,201,{id:Number(r.lastInsertRowid)});
         }
         if(path==='/api/settings/shop'&&method==='PATCH') {const b=await body(req);b.address??=getSettings('shop').address;const shop={};for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');const bot=str(b.botUsername??getSettings('shop').botUsername??'gas_shop_vape_bot','Имя бота',32,false).replace(/^@/,'');if(bot&&!/^[A-Za-z0-9_]{5,32}$/.test(bot))fail(400,'Проверьте имя Telegram-бота.');shop.botUsername=bot;saveSettings('shop',shop);return json(res,200,{ok:true});}
-        if(path==='/api/settings/referral'&&method==='PATCH') {const b=await body(req);saveSettings('referral',{enabled:Boolean(bool(b.enabled)),bonus:num(b.bonus,'Бонус',100000),percent:referralPercent(b.percent===undefined?(getSettings('referral').percent??5):b.percent),minPayout:num(b.minPayout===undefined?(getSettings('referral').minPayout??0):b.minPayout,'Минимальная выплата',1000000)});return json(res,200,{ok:true});}
+        if(path==='/api/settings/referral'&&method==='PATCH') {const b=await body(req);saveSettings('referral',{enabled:Boolean(bool(b.enabled)),bonus:num(b.bonus===undefined?(getSettings('referral').bonus??100):b.bonus,'Бонус',100000),percent:referralPercent(b.percent===undefined?(getSettings('referral').percent??5):b.percent),minPayout:num(b.minPayout===undefined?(getSettings('referral').minPayout??0):b.minPayout,'Минимальная выплата',1000000)});return json(res,200,{ok:true});}
         if(path==='/api/auth/password'&&method==='POST') {
           const b=await body(req);const current=passwordValue(b.current);const next=passwordValue(b.password);
           if(next.length<12) fail(400,'Новый пароль должен содержать не менее 12 символов.');
