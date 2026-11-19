@@ -799,7 +799,7 @@ function renderReferrals(){
    <dl class="referral-rates"><div><dt>1–2 приглашенных</dt><dd>3%</dd></div><div><dt>3–5 приглашенных</dt><dd>5%</dd></div><div><dt>Более 5 приглашенных</dt><dd>7%</dd></div></dl>
    <p>Ставка закрепляется при переходе. У друга есть 7 дней, чтобы выполнить первый заказ.</p>
    <p class="referral-warning"><strong>Предупреждение</strong><br>Боты, фейки, способы обхода системы = блокировка и списание <strong>всего</strong> баланса!</p>
-   <p><strong>Совет</strong><br>Советуйте наш магазин тем, кто реально заинтересован в покупке — друзьям, в вейп-барахолках, личные каналы.</p>
+   <p class="referral-tip"><strong>Совет</strong><br>Советуйте наш магазин тем, кто реально заинтересован в покупке — друзьям, в вейп-барахолках, личные каналы.</p>
   </section>`;
  const recommendations=`
   ${result?`<div class="referral-stats"><div class="referral-card"><span>Успешные</span><strong>${result.count}</strong></div><div class="referral-card"><span>Заработано</span><strong>${moneyMarkup(result.earned)}</strong></div></div>`:''}

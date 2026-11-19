@@ -518,7 +518,9 @@ dialog[data-view="referral"] h2 { padding-inline-end: 32px; font-size: clamp(19p
 .referral-rates div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; }
 .referral-rates div + div { border-top: 1px solid #ecdee7; }
 .referral-rates dd { margin: 0; color: #9b173b; font-weight: 750; }
-dialog .referral-warning { padding: 10px; border-radius: 11px; background: #fff0f2; color: #821d39; }
+dialog .referral-rules :is(.referral-warning, .referral-tip) { padding: 10px; border-radius: 11px; }
+.referral-warning { background: #fff0f2; color: #821d39; }
+.referral-tip { background: #e7f5ec; color: #185738; }
 .referral-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .referral-stats .referral-card > span { display: block; margin-bottom: 5px; color: #694f60; font-size: 12px; }
 .referral-stats strong { font-size: 19px; line-height: 1.2; overflow-wrap: anywhere; }
