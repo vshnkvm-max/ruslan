@@ -211,11 +211,12 @@ function setNav() {
     else button.removeAttribute('aria-current');
   }
 }
+const bottomSheetViews = new Set(['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities','referral']);
 function show(html, view = 'info', shouldAnimate = true) {
   stopBannerAuto();
   if(view==='checkout'){clearTimeout(toastTimer);$('#toast').classList.remove('visible');}
   resetSheetGesture();
-  if(['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(view))holdTelegramSwipes();else releaseTelegramSwipes();
+  if(bottomSheetViews.has(view))holdTelegramSwipes();else releaseTelegramSwipes();
   stopProfileTransition();
   modalVersion++;
   const dialog = $('#details'), content = $('#detail-content');
@@ -230,7 +231,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   if (!wasOpen) {
     dialog.showModal();
     document.body.style.overflow = 'hidden';
-    void animate(dialog, ['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(view)?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
+    void animate(dialog, bottomSheetViews.has(view)?[{transform:'translateY(100%)'},{transform:'translateY(0)'}]:[{opacity:0,transform:'translateY(32px) scale(.97)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:320});
   } else if (shouldAnimate) {
     void animate(content, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180 });
   }
@@ -245,7 +246,7 @@ async function closeDetails() {
   const version = ++modalVersion;
   dialog.dataset.closing = 'true';
   if(dialog.dataset.view==='promotion'){dialog.close();return;}
-  await animate(dialog,['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(dialog.dataset.view)?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
+  await animate(dialog,bottomSheetViews.has(dialog.dataset.view)?[{transform:from==='none'?'translateY(0)':from},{transform:'translateY(100%)'}]:[{opacity:1,transform:'translateY(0) scale(1)'},{opacity:0,transform:'translateY(22px) scale(.98)'}],{duration:220});
   if (version !== modalVersion) return;
   dialog.close();
 }
@@ -259,11 +260,11 @@ function holdTelegramSwipes(){
 }
 function releaseTelegramSwipes(){const owner=swipeOwner;swipeOwner=null;try{owner?.enableVerticalSwipes?.();}catch{/* Keep closing available without the SDK. */}}
 window.addEventListener('pagehide',releaseTelegramSwipes);
-window.addEventListener('pageshow',()=>{if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes($('#details').dataset.view))holdTelegramSwipes();});
+window.addEventListener('pageshow',()=>{if($('#details').open&&bottomSheetViews.has($('#details').dataset.view))holdTelegramSwipes();});
 function resetSheetGesture(){sheetGesture=null;const dialog=$('#details');dialog.style.removeProperty('transform');delete dialog.dataset.dragging;}
 function startSheetGesture(x,y,target,pointerId=null){
  const dialog=$('#details');
- if(!dialog.open||!['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes(dialog.dataset.view)||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
+ if(!dialog.open||!bottomSheetViews.has(dialog.dataset.view)||dialog.dataset.closing||target.closest('button,a,input,textarea,select'))return;
  if(dialog.scrollTop>1&&!target.closest('.sheet-handle'))return;
  sheetGesture={x,y,dy:0,axis:null,dragging:false,time:performance.now(),samples:[],version:modalVersion,pointerId};
 }
@@ -833,7 +834,7 @@ async function loadReferrals(more=false){
   view.items=more?[...view.items,...result.items]:result.items;
   view.next=result.next;
  }catch(error){if(current())view.error=error.message;}
- finally{if(current()){view.loading=false;if($('#details').open&&$('#details').dataset.view==='referral')renderReferrals();}}
+ finally{if(current()){view.loading=false;if($('#details').open&&$('#details').dataset.view==='referral'&&!$('#details').dataset.closing)renderReferrals();}}
 }
 function openReferrals(){
  referralView={key:telegram?.initData||'',tab:'information',status:'pending',result:null,items:[],next:null,error:'',loading:false,version:0};
@@ -1467,7 +1468,7 @@ document.addEventListener('click', event => { if (event.target.id === 'retry') l
 $('#telegram-sdk')?.addEventListener('load', () => {
   telegram = window.Telegram?.WebApp;
   configureTelegram();
-  if($('#details').open&&['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities'].includes($('#details').dataset.view))holdTelegramSwipes();
+  if($('#details').open&&bottomSheetViews.has($('#details').dataset.view))holdTelegramSwipes();
   user = telegram?.initDataUnsafe?.user;
   updateClientAvatar();
   trackReferralVisit();

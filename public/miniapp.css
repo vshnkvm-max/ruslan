@@ -63,8 +63,8 @@ dialog::backdrop { background: #3b263c45; animation: backdrop-in .3s ease-out; }
 dialog h2 { margin: 15px 0 20px; font-size: 22px; overflow-wrap: anywhere; }
 dialog p { line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
 .important-info { text-align: left; }
-dialog:is([data-view="important"],[data-view="reviews"],[data-view="review-form"],[data-view="reviews-sent"],[data-view="review-opportunities"]) { position: fixed; inset: auto 0 0; width: 100%; max-width: var(--app-width); height: calc(100dvh - max(10px, env(safe-area-inset-top), var(--telegram-safe-top, 0px))); max-height: none; margin: 0 auto; border: 0; border-radius: 24px 24px 0 0; padding-bottom: max(28px, env(safe-area-inset-bottom), var(--telegram-safe-bottom, 0px)); background: #fff9fb; overscroll-behavior: contain; }
-dialog:is([data-view="important"],[data-view="reviews"],[data-view="review-form"],[data-view="reviews-sent"],[data-view="review-opportunities"]) > .close { position: sticky; top: 0; float: right; margin-top: -32px; margin-right: -12px; }
+dialog:is([data-view="important"],[data-view="reviews"],[data-view="review-form"],[data-view="reviews-sent"],[data-view="review-opportunities"],[data-view="referral"]) { position: fixed; inset: auto 0 0; width: 100%; max-width: var(--app-width); height: calc(100dvh - max(10px, env(safe-area-inset-top), var(--telegram-safe-top, 0px))); max-height: none; margin: 0 auto; border: 0; border-radius: 24px 24px 0 0; padding-bottom: max(28px, env(safe-area-inset-bottom), var(--telegram-safe-bottom, 0px)); background: #fff9fb; overscroll-behavior: contain; }
+dialog:is([data-view="important"],[data-view="reviews"],[data-view="review-form"],[data-view="reviews-sent"],[data-view="review-opportunities"],[data-view="referral"]) > .close { position: sticky; top: 0; float: right; margin-top: -32px; margin-right: -12px; }
 .important-eyebrow { display: block; padding-right: 12px; color: #986576; font-size: 9px; font-weight: 700; letter-spacing: 1.1px; line-height: 1.6; }
 .important-info h2 { margin: 10px 0 18px; font-size: 27px; line-height: 1.15; letter-spacing: -.6px; }
 .important-info p { margin: 10px 0; white-space: normal; line-height: 1.6; }
@@ -351,8 +351,8 @@ dialog[data-view="product"] { position: fixed; inset: auto 0 0; width: 100%; max
 .banner-navigation { position: absolute; z-index: 1; bottom: 6px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; align-items: center; gap: 6px; max-width: calc(100% - 12px); padding: 0 4px; border-radius: 99px; background: #0009; }
 .banner-navigation > button { width: 28px; height: 28px; padding: 0; border: 0; background: transparent; color: #fff; font-size: 23px; }
 .banner-navigation > button:disabled { opacity: .3; }
-dialog[data-view="product"] > .sheet-handle, dialog:is([data-view="important"],[data-view="reviews"],[data-view="review-form"],[data-view="reviews-sent"],[data-view="review-opportunities"]) > .sheet-handle { top: 0; left: calc(50% - 36px); width: 72px; height: 30px; background: transparent; cursor: grab; touch-action: none; }
-dialog[data-view="product"] > .sheet-handle::before, dialog:is([data-view="important"],[data-view="reviews"],[data-view="review-form"],[data-view="reviews-sent"],[data-view="review-opportunities"]) > .sheet-handle::before { content: ''; position: absolute; top: 12px; left: 18px; width: 36px; height: 4px; border-radius: 3px; background: #ddcfd5; }
+dialog[data-view="product"] > .sheet-handle, dialog:is([data-view="important"],[data-view="reviews"],[data-view="review-form"],[data-view="reviews-sent"],[data-view="review-opportunities"],[data-view="referral"]) > .sheet-handle { top: 0; left: calc(50% - 36px); width: 72px; height: 30px; background: transparent; cursor: grab; touch-action: none; }
+dialog[data-view="product"] > .sheet-handle::before, dialog:is([data-view="important"],[data-view="reviews"],[data-view="review-form"],[data-view="reviews-sent"],[data-view="review-opportunities"],[data-view="referral"]) > .sheet-handle::before { content: ''; position: absolute; top: 12px; left: 18px; width: 36px; height: 4px; border-radius: 3px; background: #ddcfd5; }
 dialog[data-dragging] { user-select: none; cursor: grabbing; }
 
 .product-gallery, .gallery-stage { position: relative; }
@@ -489,7 +489,7 @@ dialog[data-view="product"] .photo[data-photo-fit="auto"] img, dialog[data-view=
 .review-media-list:has(> img:only-child) { margin-inline: 0; }
 
 
-dialog[data-view="referral"] { height: min(690px, 85dvh); background: #fff8fb; }
+dialog[data-view="referral"] h2 { padding-inline-end: 32px; font-size: clamp(19px, 5.25vw, 22px); }
 .referral-tabs, .referral-filters { display: flex; gap: 5px; padding: 4px; border-radius: 14px; background: #f1e9ee; }
 .referral-tabs { margin-bottom: 14px; }
 .referral-tabs button, .referral-filters button {

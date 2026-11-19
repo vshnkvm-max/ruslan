@@ -60,6 +60,20 @@ try{
  await mini.getByRole('button',{name:'В ожидании',exact:true}).click();
  await mini.locator('.referral-person').getByText('Покупатель',{exact:true}).waitFor();
  assert.ok(await mini.locator('#details').evaluate(el=>el.scrollWidth<=el.clientWidth+1));
+ const sheet=mini.locator('#details');
+ assert.ok(await sheet.evaluate(el=>Math.abs(el.getBoundingClientRect().bottom-innerHeight)<1));
+ const handle=await sheet.locator('.sheet-handle').boundingBox();
+ const cdp=await mobile.newCDPSession(mini);
+ const x=Math.round(handle.x+handle.width/2),y=Math.round(handle.y+handle.height/2);
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+ for(let offset=20;offset<=220;offset+=20){
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+offset}]});
+ }
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ await sheet.waitFor({state:'hidden'});
+ await mini.locator('[data-info=referral]').click();
+ await sheet.locator('.close').click();
+ await sheet.waitFor({state:'hidden'});
  assert.deepEqual(errors,[]);
- console.log('PASS: referral activation, signed visit on startup, copy link, rate table, recommendation summaries and all status tabs at 320 px');
+ console.log('PASS: referral activation, signed visit on startup, copy link, rate table, recommendation summaries and all status tabs and bottom sheet dismissal at 320 px');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
