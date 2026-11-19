@@ -877,13 +877,30 @@ function currentCustomerHistory(){
 }
 function historyRequest(path,body={}){return reviewRequest('/api/storefront/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...body,init_data:telegram?.initData||''})});}
 function historyError(message,action){return `<div class="profile-error" role="alert"><p>${escape(message)}</p><button class="secondary-button" ${action}>Повторить</button></div>`;}
+const balanceHistoryDate = new Intl.DateTimeFormat('ru-RU', {dateStyle:'medium',timeStyle:'short'});
 function accrualsContent(){
  const state=currentCustomerHistory();
- if(!state.key)return '<p class="profile-hint">Откройте магазин через Telegram, чтобы увидеть начисления и списания.</p>';
- return `<h3>Начисления и списания</h3>${state.transactionsError?historyError(state.transactionsError,'data-retry-accruals'):''}
- <div class="balance-history">${state.transactions.map(item=>`<article class="balance-history-row" data-balance-event="${escape(item.id)}"><div><strong>${escape(item.title)}</strong><time datetime="${escape(item.created_at)}">${new Date(item.created_at).toLocaleString('ru-RU')}</time>${item.order_id?`<button class="text-link" data-customer-order="${item.order_id}" data-order-origin="accruals">Открыть заказ</button>`:''}</div><strong class="${item.amount>0?'balance-credit':'balance-debit'}">${item.amount>0?'+':'−'}${moneyMarkup(Math.abs(item.amount))}</strong></article>`).join('')}</div>
- ${state.transactionsLoading?'<p role="status">Загружаем операции…</p>':state.transactionsLoaded&&!state.transactions.length&&!state.transactionsError?'<p class="profile-hint">Начислений и списаний пока нет.</p>':''}
- ${state.transactionsNext?`<button class="secondary-button" data-more-accruals ${state.transactionsLoading?'disabled':''}>Показать ещё</button>`:''}`;
+ const heading='<h3 id="balance-history-title">Начисления и списания</h3>';
+ if(!state.key)return `<section class="balance-history-panel" aria-labelledby="balance-history-title">${heading}<p class="balance-history-status">Откройте магазин через Telegram, чтобы увидеть начисления и списания.</p></section>`;
+ const rows=state.transactions.map(item=>{
+  const credit=item.amount>0;
+  return `<article class="balance-history-row ${credit?'balance-credit':'balance-debit'}" data-balance-event="${escape(item.id)}">
+   <span class="balance-history-icon" aria-hidden="true">${credit?icons.plus:icons.minus}</span>
+   <div class="balance-history-details">
+    <strong>${escape(item.title)}</strong>
+    <time datetime="${escape(item.created_at)}">${balanceHistoryDate.format(new Date(item.created_at))}</time>
+    ${item.order_id?`<button class="balance-history-order" data-customer-order="${item.order_id}" data-order-origin="accruals">Открыть заказ ${icons.chevron}</button>`:''}
+   </div>
+   <strong class="balance-history-amount">${credit?'+':'−'}${moneyMarkup(Math.abs(item.amount))}</strong>
+  </article>`;
+ }).join('');
+ return `<section class="balance-history-panel" aria-labelledby="balance-history-title">
+  ${heading}
+  ${state.transactionsError?historyError(state.transactionsError,'data-retry-accruals'):''}
+  ${rows?`<div class="balance-history">${rows}</div>`:''}
+  ${state.transactionsLoading?'<p class="balance-history-status" role="status">Загружаем операции…</p>':state.transactionsLoaded&&!rows&&!state.transactionsError?'<p class="balance-history-status">Начислений и списаний пока нет.</p>':''}
+  ${state.transactionsNext?`<button class="secondary-button" data-more-accruals ${state.transactionsLoading?'disabled':''}>Показать ещё</button>`:''}
+ </section>`;
 }
 function refreshAccrualsView(){
  if(activePage==='profile'&&profileTab==='accruals'){stopProfileTransition();$('#profile-body').innerHTML=accrualsContent();}
