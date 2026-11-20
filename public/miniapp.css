@@ -532,3 +532,23 @@ dialog .referral-rules :is(.referral-warning, .referral-tip) { padding: 10px; bo
 .referral-person time { display: block; margin-top: 3px; color: #725c69; font-size: 11px; }
 .referral-avatar { display: grid; place-items: center; height: 32px; border-radius: 10px; background: #f7ecf2; color: #852b50; font-weight: 750; }
 .referral-earned { color: #146c44; white-space: nowrap; }
+
+
+.product-flavors {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: #fff;
+}
+.product-flavors h3 { margin: 0 0 6px; font-size: 16px; }
+.product-flavor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  min-height: 56px;
+}
+.product-flavor-row + .product-flavor-row { border-top: 1px solid #eee5ea; }
+.product-flavor-row strong { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }

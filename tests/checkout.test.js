@@ -98,3 +98,31 @@ test('outbox survives delivery failure and resumes from each confirmed message w
   notification = app.db.prepare('SELECT * FROM order_notifications WHERE order_id=?').get(first);
   assert.ok(notification.delivered_at); assert.deepEqual(sent.filter(text => text.startsWith('part ')).map(text => text.split('\n')[0]), ['part one', 'part two']);
 });
+
+test('configured flavors reserve shared stock and remain in the order after the catalog changes', async () => {
+  const id = product(3);
+  const edit = {name:'Товар',category:'',price:200,cost:50,active:true,description:'',flavors:[' Мята ','Ягода']};
+  assert.equal((await request('/products/' + id,'PATCH',edit,true)).status,200);
+  const {data:catalog} = await request('/storefront','GET');
+  assert.deepEqual(catalog.products.find(item=>item.id===id).flavors,['Мята','Ягода']);
+  assert.equal((await request('/products/' + id,'PATCH',{...edit,flavors:['Мята','мята']},true)).status,400);
+  const body = { ...bodyFor(id), init_data:signedUser(1901) };
+  const mint = {...body.items[0],flavor:'Мята'};
+  const berry = {...mint,flavor:'Ягода',quantity:1};
+  for (const items of [body.items,[{...mint,flavor:'Неизвестный вкус'}],[mint,{...berry,quantity:2}]]){
+    assert.equal((await request('/storefront/orders','POST',{...body,items})).status,409);
+    assert.equal(stock(id),3);
+  }
+  assert.equal((await request('/storefront/orders','POST',{...body,items:[mint,mint]})).status,400);
+  const payload = {...body,items:[mint,berry]};
+  const created = await request('/storefront/orders','POST',payload);
+  assert.equal(created.status,201);
+  const order = created.data.order;
+  assert.deepEqual(order.items.map(item=>[item.name,item.quantity]),[['Товар — Мята',2],['Товар — Ягода',1]]);
+  assert.equal(stock(id),0);
+  assert.equal((await request('/products/' + id,'PATCH',{...edit,flavors:[]},true)).status,200);
+  const retry = await request('/storefront/orders','POST',payload);
+  assert.deepEqual(retry.data.order.items,order.items);
+  assert.equal((await request('/orders/' + order.id,'PATCH',{status:'cancelled'},true)).status,200);
+  assert.equal(stock(id),3);
+});

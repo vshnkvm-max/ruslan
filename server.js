@@ -79,7 +79,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
     return cookie?db.prepare('SELECT s.*,a.username FROM sessions s JOIN admins a ON a.id=s.admin_id WHERE s.token=? AND s.expires>?').get(digest(cookie),Date.now()):null;
   };
   const saveSettings=(key,value)=> db.prepare('UPDATE settings SET value=? WHERE key=?').run(JSON.stringify(value),key);
-  const products=()=>productImages.serializeAll(db.prepare(`SELECT p.*, (SELECT AVG(rating) FROM reviews WHERE product_id=p.id AND status='published') AS rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id AND status='published') AS review_count FROM products p WHERE p.deleted=0 ORDER BY p.sort_order,p.id DESC`).all());
+  const products=()=>productImages.serializeAll(db.prepare(`SELECT p.*, (SELECT AVG(rating) FROM reviews WHERE product_id=p.id AND status='published') AS rating, (SELECT COUNT(*) FROM reviews WHERE product_id=p.id AND status='published') AS review_count FROM products p WHERE p.deleted=0 ORDER BY p.sort_order,p.id DESC`).all()).map(row=>({...row,flavors:JSON.parse(row.flavors)}));
   const bannerPath=row=>row.image?`/api/banner-images/${row.id}?v=${digest(row.image)}`:'';
   const serializeBanner=row=>({...row,image:bannerPath(row)});
   const categories=()=>[...new Set([...getSettings('categories'),...db.prepare("SELECT DISTINCT category FROM products WHERE deleted=0 AND category!=''").all().map(p=>p.category)])].filter(Boolean);
@@ -152,8 +152,8 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/health'&&method==='GET') return json(res,200,{ok:true});
         if(path==='/api/storefront'&&method==='GET') {
           const shop=getSettings('shop');
-          const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
-          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:storefrontReviews.list({limit:100}).items,products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
+          const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit,flavors FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
+          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:storefrontReviews.list({limit:100}).items,products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit,flavors})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit,flavors:JSON.parse(flavors)})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
         if(path==='/api/storefront/referrals'&&method==='POST')return json(res,200,referrals.view(await body(req)));
         if(path==='/api/storefront/reviews'&&method==='GET'){
@@ -260,10 +260,11 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
             const saved=db.prepare('SELECT * FROM products WHERE id=?').get(id);
             if(b.stock!==undefined&&b.stock!==saved.stock)fail(400,'Остатки изменяются через документы закупки.');
             b.sku??=saved.sku;b.short_description??=saved.short_description;b.stock??=saved.stock;
+            const flavors=b.flavors===undefined?saved.flavors:validateFlavors(b.flavors);
             const p=validateProduct(b),sort=num(b.sort_order??saved.sort_order,'Сортировка',1000000),fit=choice(b.image_fit??saved.image_fit,['auto','contain','cover']);
             db.exec('BEGIN IMMEDIATE');
             try {
-              db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=?,short_description=?,sort_order=?,image_fit=? WHERE id=?').run(...p,sort,fit,id);
+              db.prepare('UPDATE products SET name=?,sku=?,category=?,price=?,cost=?,stock=?,active=?,image=?,description=?,short_description=?,sort_order=?,image_fit=?,flavors=? WHERE id=?').run(...p,sort,fit,flavors,id);
               productImages.replace(id,b,saved);
               if(b.visible!==undefined){if(b.visible&&saved.stock===0)fail(400,'Нет остатка. Сначала оформите закупку.');db.prepare('UPDATE products SET visible=? WHERE id=?').run(bool(b.visible),id);}
               db.exec('COMMIT');
@@ -307,10 +308,11 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           b.stock??=0;
           if(num(b.stock,'Остаток',1000000)!==0)fail(400,'Новый товар создаётся без остатков. Добавьте поступление через закупку.');
           b.sku??=token().slice(0,32);
+          const flavors=validateFlavors(b.flavors??[]);
           const p=validateProduct(b),sort=num(b.sort_order??100,'Сортировка',1000000),fit=choice(b.image_fit??'auto',['auto','contain','cover']);
           db.exec('BEGIN IMMEDIATE');
           try {
-            const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description,short_description,sort_order,create_key,image_fit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...p,sort,key,fit);
+            const r=db.prepare('INSERT INTO products (name,sku,category,price,cost,stock,active,image,description,short_description,sort_order,create_key,image_fit,flavors) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(...p,sort,key,fit,flavors);
             const id=Number(r.lastInsertRowid);
             productImages.replace(id,b);
             db.exec('COMMIT');return json(res,201,{id});
@@ -376,6 +378,14 @@ function validateCustomer(b) {
  if(phone&&!/^[+\d\s()\-]{3,40}$/.test(phone))fail(400,'Проверьте телефон.');
  const status=choice(b.status,['active','pending','banned']);
  return [str(b.name,'Имя'),str(b.username??'','Username',80,false),phone,email,str(b.city??'','Город',100,false),status,Number(status==='banned')];
+}
+
+function validateFlavors(values) {
+  if(!Array.isArray(values)||values.length>50)fail(400,'Добавьте до 50 вкусов.');
+  const flavors=values.map(value=>str(value,'Вкус',80).normalize('NFC'));
+  if(flavors.some(name=>!name.isWellFormed()||/\p{Cc}/u.test(name)))fail(400,'Проверьте названия вкусов.');
+  if(new Set(flavors.map(name=>name.toLocaleLowerCase('ru'))).size!==flavors.length)fail(400,'Названия вкусов должны различаться.');
+  return JSON.stringify(flavors);
 }
 
 function validateProduct(b) {
