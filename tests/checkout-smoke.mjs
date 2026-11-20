@@ -118,6 +118,13 @@ try {
   assert.deepEqual(await names.allTextContents(),['Тестовый товар — Ягода','Тестовый товар — Мята']);
   await page.locator('[data-checkout]').click();
   await dateInput.fill(meetingDate);
+  assert.ok(await dateInput.evaluate(input=>{
+    const field=input.getBoundingClientRect();
+    const label=input.labels[0].getBoundingClientRect();
+    const items=document.querySelector('.checkout-items').getBoundingClientRect();
+    return Math.abs(field.left-label.left)<1 && Math.abs(field.right-label.right)<1
+      && Math.abs(field.left-items.left)<1 && Math.abs(field.right-items.right)<1;
+  }), 'the date field aligns with checkout content on a narrow screen');
   await page.locator('[data-confirm-checkout]').click();
   await page.getByRole('heading',{name:'Заказ #3 принят',exact:true}).waitFor();
   assert.deepEqual(db.prepare('SELECT name FROM order_items WHERE order_id=3 ORDER BY id').all().map(row=>row.name),['Тестовый товар — Ягода','Тестовый товар — Мята']);
