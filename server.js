@@ -9,7 +9,7 @@ import { loadOrderHistory } from './lib/order-history.js';
 import { sendJson } from './lib/http-response.js';
 import { createInventoryDocuments } from './lib/inventory-documents.js';
 import { recordProductView } from './lib/product-views.js';
-import { createStorefrontOrders } from './lib/storefront-orders.js';
+import { createStorefrontOrders, orderCashbackPercent } from './lib/storefront-orders.js';
 import { createStorefrontReferrals } from './lib/storefront-referrals.js';
 import { createOrderNotifier } from './lib/order-notifications.js';
 import { verifiedTelegramUser } from './lib/telegram-auth.js';
@@ -153,7 +153,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/storefront'&&method==='GET') {
           const shop=getSettings('shop');
           const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit,flavors FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
-          return json(res,200,{shop,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:storefrontReviews.list({limit:100}).items,products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit,flavors})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit,flavors:JSON.parse(flavors)})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
+          return json(res,200,{shop,cashback_percent:orderCashbackPercent,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:storefrontReviews.list({limit:100}).items,products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit,flavors})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit,flavors:JSON.parse(flavors)})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
         if(path==='/api/storefront/referrals'&&method==='POST')return json(res,200,referrals.view(await body(req)));
         if(path==='/api/storefront/reviews'&&method==='GET'){

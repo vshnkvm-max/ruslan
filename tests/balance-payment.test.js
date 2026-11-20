@@ -39,13 +39,13 @@ test('concurrent different orders cannot overdraw the same wallet',async()=>{
 });
 test('cancel, restore and delete return or debit rubles once; ordinary status changes do not debit again',async()=>{
   const b=buyer(),p=product(),body=payload(b,p,500),id=(await request('/storefront/orders',body)).data.order.id;
-  for(const status of ['accepted','completed']){assert.equal((await request('/orders/'+id,{status},'PATCH',true)).status,200);assert.equal(balance(b),500);}
+  for(const [status,expected] of [['accepted',500],['completed',550]]){assert.equal((await request('/orders/'+id,{status},'PATCH',true)).status,200);assert.equal(balance(b),expected);}
   for(let i=0;i<2;i++)assert.equal((await request('/orders/'+id,{status:'cancelled'},'PATCH',true)).status,200);
-  assert.equal(balance(b),1000);assert.equal(stock(p),10);assert.deepEqual(ledger(b),[-500,500]);
+  assert.equal(balance(b),1000);assert.equal(stock(p),10);assert.deepEqual(ledger(b),[-500,50,500,-50]);
   const retry=await request('/storefront/orders',body);assert.equal(retry.data.order.status,'cancelled');assert.equal(retry.data.order.payable,0);assert.equal(balance(b),1000);
   assert.equal((await request('/orders/'+id,{status:'new'},'PATCH',true)).status,200);assert.equal(balance(b),500);assert.equal(stock(p),9);
   assert.equal((await request('/orders/'+id,undefined,'DELETE',true)).status,200);assert.equal(balance(b),1000);assert.equal(stock(p),10);
-  assert.equal((await request('/orders/'+id,undefined,'DELETE',true)).status,404);assert.deepEqual(ledger(b),[-500,500,-500,500]);
+  assert.equal((await request('/orders/'+id,undefined,'DELETE',true)).status,404);assert.deepEqual(ledger(b),[-500,50,500,-50,-500,500]);
   assert.equal((await request('/storefront/orders',body)).data.order.status,'cancelled');assert.equal(balance(b),1000);
 });
 test('failed restoration rolls back stock and balance together',async()=>{
@@ -69,5 +69,46 @@ test('admin ledger uses the remaining payment and notification includes the wall
   await request('/orders/'+id,{status:'completed'},'PATCH',true);
   const bootstrap=(await request('/bootstrap',undefined,'GET',true)).data;
   assert.equal(bootstrap.transactions.find(t=>t.id==='o'+id).amount,700);assert.equal(bootstrap.orders.find(o=>o.id===id).balance_spent,300);
-  const profile=(await request('/storefront/profile',{init_data:b.init_data})).data;assert.equal(profile.stats.total,1000);assert.equal(profile.balance,700);
+  const profile=(await request('/storefront/profile',{init_data:b.init_data})).data;assert.equal(profile.stats.total,1000);assert.equal(profile.balance,750);
+});
+test('cashback uses the saved order total, rounds down and tracks completed status without duplicate credits',async()=>{
+  const b=buyer(),p=product(1019);
+  const {order}=(await request('/storefront/orders',payload(b,p,500))).data;
+  const path='/orders/'+order.id;
+  app.db.prepare('UPDATE products SET price=2000 WHERE id=?').run(p.id);
+  const complete=()=>request(path,{status:'completed'},'PATCH',true);
+  const responses=await Promise.all([complete(),complete()]);
+  assert.deepEqual(responses.map(response=>response.status),[200,200]);
+  assert.equal(balance(b),550);
+  assert.deepEqual(ledger(b),[-500,50]);
+  const history=(await request('/storefront/transactions',{init_data:b.init_data})).data;
+  assert.deepEqual(history.items.filter(item=>item.kind==='cashback').map(({amount,order_id,title})=>({amount,order_id,title})),[
+    {amount:50,order_id:order.id,title:'Кэшбек за заказ #'+order.id}
+  ]);
+  assert.equal((await request(path,{status:'accepted'},'PATCH',true)).status,200);
+  assert.equal(balance(b),500);
+  assert.equal((await complete()).status,200);
+  assert.equal(balance(b),550);
+  assert.equal((await request(path,undefined,'DELETE',true)).status,200);
+  assert.equal(balance(b),1000);
+  assert.deepEqual(ledger(b),[-500,50,-50,50,500,-50]);
+});
+test('cancelling a completed order rolls back if its cashback has already been spent',async()=>{
+  const b=buyer(0),p=product();
+  const {order}=(await request('/storefront/orders',payload(b,p,0))).data;
+  const path='/orders/'+order.id;
+  assert.equal((await request(path,{status:'completed'},'PATCH',true)).status,200);
+  const other=await request('/storefront/orders',payload(b,p,50));
+  assert.equal(other.status,201);
+  const cancel=()=>request(path,{status:'cancelled'},'PATCH',true);
+  assert.equal((await cancel()).status,409);
+  assert.equal(app.db.prepare('SELECT status FROM orders WHERE id=?').get(order.id).status,'completed');
+  assert.equal(stock(p),8);
+  assert.equal(balance(b),0);
+  assert.deepEqual(ledger(b),[50,-50]);
+  assert.equal((await request('/orders/'+other.data.order.id,{status:'cancelled'},'PATCH',true)).status,200);
+  assert.equal((await cancel()).status,200);
+  assert.equal(stock(p),10);
+  assert.equal(balance(b),0);
+  assert.deepEqual(ledger(b),[50,-50,50,-50]);
 });

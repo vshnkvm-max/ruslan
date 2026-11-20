@@ -28,6 +28,8 @@ try {
   await page.locator('[data-checkout]').click();
   assert.match(await page.locator('dialog').innerText(), /Тестовый товар/);
   assert.match(await page.locator('dialog').innerText(), /2\s*300/);
+  const cashback = page.locator('.checkout-cashback');
+  assert.match(await cashback.innerText(), /Кэшбек 5% после выполнения\s*\+115\s₽/);
   const sheet = await page.locator('dialog').evaluate(element => ({ bottom: element.getBoundingClientRect().bottom, viewport: innerHeight }));
   assert.equal(sheet.bottom, sheet.viewport);
   await page.locator('[data-toggle-rubles]').click();
@@ -35,6 +37,7 @@ try {
   await page.locator('#checkout-rubles').press('Home'); await page.locator('#checkout-rubles').press('ArrowRight');
   assert.equal(await page.locator('#checkout-rubles').inputValue(),'1');
   await page.locator('#checkout-rubles').press('End');assert.match(await page.locator('#checkout-payable').innerText(),/1\s*150/);
+  assert.match(await cashback.innerText(), /\+115\s₽/);
   assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,1540);
   await page.screenshot({ path: '/tmp/shop-checkout-confirmation.png' });
   await page.locator('[data-cancel-checkout]').click();
@@ -135,7 +138,18 @@ try {
   await page.getByRole('heading',{name:'Заказ #3 принят',exact:true}).waitFor();
   assert.deepEqual(db.prepare('SELECT name FROM order_items WHERE order_id=3 ORDER BY id').all().map(row=>row.name),['Тестовый товар — Ягода','Тестовый товар — Мята']);
   assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock,1);
+  await admin.goto(base+'/#orders');
+  await admin.locator('[data-action=order-detail][data-id="1"]').first().click();
+  await admin.locator('#order-status').selectOption('completed');
+  await admin.locator('#order-form [type=submit]').click();
+  await admin.locator('.modal').waitFor({state:'detached'});
+  await page.locator('dialog [data-continue]').click();
+  await page.locator('#profile-button').click();
+  await page.getByRole('tab',{name:'Начисления',exact:true}).click();
+  const credit = page.locator('.balance-history-row').filter({hasText:'Кэшбек за заказ #1'});
+  await credit.waitFor();
+  assert.match(await credit.innerText(),/\+115\s₽/);
   assert.deepEqual(errors, []);
-  console.log('PASS: mobile wallet slider and 50% cap, cancel preserves balance, actual debit and payable amount, lost-response retry with zero balance, admin cancellation refunds rubles and restores stock, header balance refresh, flavor editing, meeting date, cash notice and checkout');
+  console.log('PASS: mobile checkout, wallet payments and refunds, retry, flavors, meeting date, cash notice, cashback preview and balance history');
   await context.close();
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, { recursive: true, force: true }); }

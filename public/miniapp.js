@@ -1408,6 +1408,8 @@ function openCheckout() {
   checkoutDraft = pending || { request_key: crypto.randomUUID(), items, balance_spend:0 };
   checkoutLocked = Boolean(pending); checkoutSpendPanelOpen = false;
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const cashbackPercent = Number(data?.cashback_percent) || 0;
+  const cashback = Math.floor(total * cashbackPercent / 100);
   show(`<h2>Подтверждение заказа</h2>
     ${pending ? '<p>Проверим, сохранился ли предыдущий заказ. Повторного списания не будет.</p>' : ''}
     <label class="checkout-meeting-date" for="checkout-meeting-date">Дата встречи
@@ -1422,6 +1424,7 @@ function openCheckout() {
     <div class="checkout-subtotal" id="checkout-wallet-row" hidden><span>Списано бонусных рублей</span><strong id="checkout-wallet-amount"></strong></div>
     <div class="cart-total"><span>К оплате</span><strong id="checkout-payable">${moneyMarkup(total)}</strong></div>
     <p class="checkout-cash-note">${icons.wallet}Оплата только наличными</p>
+    ${cashback > 0 ? `<div class="checkout-subtotal checkout-cashback"><span>Кэшбек ${cashbackPercent}% после выполнения</span><strong>+${moneyMarkup(cashback)}</strong></div>` : ''}
     <p class="checkout-error" role="alert" hidden></p>
     <button class="primary-button" data-confirm-checkout>${pending ? 'Проверить заказ' : 'Подтвердить'}</button>
     <button class="primary-button secondary-button" data-cancel-checkout>Отмена</button>`, 'checkout');

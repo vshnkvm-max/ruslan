@@ -219,6 +219,7 @@ dialog .checkout-cash-note, dialog .order-meeting-date {
 .checkout-error { color: #b00025; font-size: 13px; line-height: 1.5; }
 .checkout-subtotal { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 16px; font-size: 13px; }
 .checkout-subtotal > strong { white-space: nowrap; }
+.checkout-cashback { padding: 10px 12px; border-radius: 12px; background: #eaf7ef; color: #14613b; }
 .checkout-rubles { margin-top: 18px; padding: 14px; border-radius: 16px; background: #f8edf2; }
 .checkout-rubles .primary-button { margin-top: 0; }
 .checkout-rubles .checkout-note { margin: 10px 0 0; font-size: 12px; }
