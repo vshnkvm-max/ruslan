@@ -251,7 +251,7 @@ function show(html, view = 'info', shouldAnimate = true) {
   stopBannerAuto();
   if(view==='checkout'){clearTimeout(toastTimer);$('#toast').classList.remove('visible');}
   resetSheetGesture();
-  if(bottomSheetViews.has(view))holdTelegramSwipes();else releaseTelegramSwipes();
+  resetCatalogPull();
   stopProfileTransition();
   modalVersion++;
   const dialog = $('#details'), content = $('#detail-content');
@@ -271,6 +271,7 @@ function show(html, view = 'info', shouldAnimate = true) {
     void animate(content, [{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 180 });
   }
   dialog.scrollTop = shouldAnimate ? 0 : scroll;
+  syncTelegramSwipes();
 }
 async function closeDetails() {
   const dialog = $('#details');
@@ -285,7 +286,7 @@ async function closeDetails() {
   if (version !== modalVersion) return;
   dialog.close();
 }
-$('#details').addEventListener('close', () => { resetSheetGesture();releaseTelegramSwipes();scheduleBannerAuto();document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav(); });
+$('#details').addEventListener('close', () => { resetSheetGesture();scheduleBannerAuto();document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav(); syncTelegramSwipes(); });
 $('#details').addEventListener('cancel', event => { event.preventDefault(); void closeDetails(); });
 
 let sheetGesture=null,swipeOwner=null;
@@ -294,8 +295,18 @@ function holdTelegramSwipes(){
  try{telegram.disableVerticalSwipes();swipeOwner=telegram;}catch{/* Older Telegram clients may not support this API. */}
 }
 function releaseTelegramSwipes(){const owner=swipeOwner;swipeOwner=null;try{owner?.enableVerticalSwipes?.();}catch{/* Keep closing available without the SDK. */}}
-window.addEventListener('pagehide',releaseTelegramSwipes);
-window.addEventListener('pageshow',()=>{if($('#details').open&&bottomSheetViews.has($('#details').dataset.view))holdTelegramSwipes();});
+function catalogAtTop(){
+ return activePage==='home'&&!$('#details').open&&window.scrollY<=1;
+}
+function syncTelegramSwipes(){
+ const dialog=$('#details');
+ if(swipeOwner&&swipeOwner!==telegram)releaseTelegramSwipes();
+ if(dialog.open?bottomSheetViews.has(dialog.dataset.view):catalogAtTop()&&navigator.maxTouchPoints>0)holdTelegramSwipes();
+ else releaseTelegramSwipes();
+}
+window.addEventListener('pagehide',()=>{resetCatalogPull();releaseTelegramSwipes();});
+window.addEventListener('pageshow',syncTelegramSwipes);
+window.addEventListener('scroll',syncTelegramSwipes,{passive:true});
 function resetSheetGesture(){sheetGesture=null;const dialog=$('#details');dialog.style.removeProperty('transform');delete dialog.dataset.dragging;}
 function startSheetGesture(x,y,target,pointerId=null){
  const dialog=$('#details');
@@ -464,8 +475,8 @@ function render(animateProducts = true) {
   $('#status').textContent = data.products.length ? 'В этой категории пока нет товаров.' : 'Товары скоро появятся. Загляните чуть позже.';
   renderCategories(!animateProducts);
 }
-async function load() {
-  if (loading) return;
+async function load({animateProducts=true} = {}) {
+  if (loading) return false;
   loading = true;
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
   let stage='network';
@@ -481,19 +492,78 @@ async function load() {
     if (!data.categories.includes(category)) category = '';
     renderBanners();
     reconcileCart();
-    render();
+    render(animateProducts);
     if (activePage === 'cart') renderCart();
     openStartProduct();
+    return true;
   } catch(error) {
     const reason=error.name==='AbortError'?'Сервер не ответил за 15 секунд.':error.httpStatus?`Сервер вернул HTTP ${error.httpStatus}.`:stage==='network'?'Нет соединения с сервером.':stage==='data'?'Сервер вернул некорректные данные каталога.':'Ошибка отображения каталога.';
     console.error(`Каталог: ${reason}`,error);
     $('#status').hidden = false;
     $('#status').innerHTML = `Не удалось обновить каталог.<br>${escape(reason)}<br><button class="retry" id="retry">Повторить</button>`;
+    return false;
   } finally {
     clearTimeout(timer);
     loading = false;
   }
 }
+const catalogPullThreshold=72;
+let catalogPull=null,catalogRefreshing=false;
+function resetCatalogPull(){
+ catalogPull=null;
+ if(!catalogRefreshing)$('#catalog-refresh').hidden=true;
+}
+async function refreshCatalog(){
+ if(loading||!catalogAtTop())return;
+ const indicator=$('#catalog-refresh');
+ catalogRefreshing=true;
+ indicator.hidden=false;
+ indicator.dataset.refreshing='';
+ indicator.style.setProperty('--catalog-pull-offset','14px');
+ $('#catalog-refresh-label').textContent='Обновляем каталог…';
+ try{
+  const updated=await load({animateProducts:false});
+  if(activePage==='home'&&!$('#details').open)notify(updated?'Каталог обновлён':'Не удалось обновить каталог');
+ }finally{
+  catalogRefreshing=false;
+  delete indicator.dataset.refreshing;
+  resetCatalogPull();
+ }
+}
+const catalogSurface=$('.miniapp');
+catalogSurface.addEventListener('touchstart',event=>{
+ resetCatalogPull();
+ if(loading||!catalogAtTop()||event.touches.length!==1||
+    event.target.closest('.bottom-nav,input,textarea,select,[contenteditable]'))return;
+ const touch=event.touches[0];
+ catalogPull={x:touch.clientX,y:touch.clientY,distance:0,active:false};
+},{passive:true});
+catalogSurface.addEventListener('touchmove',event=>{
+ const pull=catalogPull;
+ if(!pull)return;
+ if(event.touches.length!==1||!catalogAtTop()||!event.cancelable){resetCatalogPull();return;}
+ const touch=event.touches[0],dx=Math.abs(touch.clientX-pull.x),dy=touch.clientY-pull.y;
+ if(!pull.active){
+  if(Math.max(dx,Math.abs(dy))<8)return;
+  if(dy<=dx){resetCatalogPull();return;}
+  pull.active=true;
+ }
+ event.preventDefault();
+ pull.distance=Math.max(0,dy);
+ const indicator=$('#catalog-refresh');
+ indicator.hidden=false;
+ indicator.style.setProperty('--catalog-pull-offset',`${Math.min(48,pull.distance*.40+4)}px`);
+ indicator.style.setProperty('--catalog-pull-angle',`${Math.min(360,pull.distance*5)}deg`);
+ const label=$('#catalog-refresh-label');
+ const text=pull.distance>=catalogPullThreshold?'Отпустите для обновления':'Потяните для обновления';
+ if(label.textContent!==text)label.textContent=text;
+},{passive:false});
+catalogSurface.addEventListener('touchend',()=>{
+ const refresh=catalogPull?.distance>=catalogPullThreshold;
+ resetCatalogPull();
+ if(refresh)void refreshCatalog();
+},{passive:true});
+catalogSurface.addEventListener('touchcancel',resetCatalogPull,{passive:true});
 let bannerIndex=0,bannerObserver,bannerWidth=0,bannerFrame=0,bannerSettleTimer,bannerAutoTimer,bannerTouching=false;
 const bannerLoop=()=>data?.banners.length>1;
 const bannerOffset=()=>bannerLoop()?1:0;
@@ -1426,11 +1496,13 @@ async function navigateToPage(next, { toCatalog = false, profileSection = 'overv
   const version = ++pageSwitchVersion;
   await closeDetails();
   if (version !== pageSwitchVersion || $('#details').open) return;
+  resetCatalogPull();
   if (next === activePage) {
     if (next === 'cart') renderCart();
     if (next === 'profile') renderProfile(profileSection);
     setNav();
     if (toCatalog) $('#catalog').scrollIntoView({ behavior: 'instant', block: 'start' });
+    syncTelegramSwipes();
     return;
   }
   pageTransition?.cancel();
@@ -1451,6 +1523,7 @@ async function navigateToPage(next, { toCatalog = false, profileSection = 'overv
   window.scrollTo({ top: pageScroll[next], behavior: 'instant' });
   if (toCatalog) $('#catalog').scrollIntoView({ behavior: 'instant', block: 'start' });
   if (next === 'home') positionCategoryIndicator();
+  syncTelegramSwipes();
   if (transferFocus || next === 'profile') target.focus({ preventScroll: true });
   if (!target.animate || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const animation = target.animate([
@@ -1600,7 +1673,7 @@ document.addEventListener('click', event => { if (event.target.id === 'retry') l
 $('#telegram-sdk')?.addEventListener('load', () => {
   telegram = window.Telegram?.WebApp;
   configureTelegram();
-  if($('#details').open&&bottomSheetViews.has($('#details').dataset.view))holdTelegramSwipes();
+  syncTelegramSwipes();
   user = telegram?.initDataUnsafe?.user;
   updateClientAvatar();
   trackReferralVisit();
@@ -1630,6 +1703,7 @@ void loadHeaderBalance();
 void refreshReviewEligibility();
 load();
 configureTelegram();
+syncTelegramSwipes();
 signalReadyWithoutSdk();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){trackReferralVisit();void loadHeaderBalance(true);void refreshReviewEligibility();}});
 setInterval(()=>{if(!document.hidden)void refreshReviewEligibility();},60000);

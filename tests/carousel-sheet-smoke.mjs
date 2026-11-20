@@ -25,6 +25,8 @@ try {
  const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
  const wideBanner=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=1200;canvas.height=380;const ctx=canvas.getContext('2d');ctx.fillStyle='#337788';ctx.fillRect(0,0,1200,380);return canvas.toDataURL('image/png');});
  db.prepare('UPDATE banners SET image=? WHERE title=?').run(wideBanner,'Image promotion');
+ let catalogRequests=0;
+ page.on('request',request=>{if(new URL(request.url()).pathname==='/api/storefront')catalogRequests++;});
  await page.goto(base+'/miniapp');await page.locator('.product').first().waitFor();
  const cdp=await context.newCDPSession(page);
  const touch=async(type,x,y)=>cdp.send('Input.dispatchTouchEvent',{type,touchPoints:type==='touchEnd'||type==='touchCancel'?[]:[{x,y,id:0,radiusX:4,radiusY:4}]});
@@ -38,6 +40,26 @@ try {
  const settle=()=>page.waitForFunction(()=>document.getAnimations().every(animation=>animation.playState==='finished'));
  const close=async()=>{if(await page.locator('dialog').getAttribute('data-view')==='product'){const handle=await page.locator('.sheet-handle').boundingBox();await swipe(handle.x+handle.width/2,handle.y+15,handle.x+handle.width/2,handle.y+240);}else await page.locator('dialog > .close').tap();await page.locator('dialog').waitFor({state:'hidden'});};
  const open=async()=>{await page.locator('[data-product="1"]').tap();await settle();assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),false);};
+ await page.waitForFunction(()=>Telegram.WebApp.isVerticalSwipesEnabled===false);
+ await swipe(195,60,195,96);
+ assert.equal(catalogRequests,1,'a short pull does not refresh');
+ await page.evaluate(()=>window.scrollTo(0,200));
+ await page.waitForFunction(()=>scrollY>100&&Telegram.WebApp.isVerticalSwipesEnabled);
+ await swipe(195,110,195,360);
+ assert.equal(catalogRequests,1,'an ordinary scroll back to the top does not refresh');
+ await page.evaluate(()=>window.scrollTo(0,0));
+ db.prepare('UPDATE products SET name=? WHERE id=1').run('Обновлённый товар');
+ let releaseCatalog;
+ const catalogGate=new Promise(resolve=>{releaseCatalog=resolve;});
+ await page.route('**/api/storefront',async route=>{await catalogGate;await route.continue();},{times:1});
+ try{
+  await swipe(195,60,195,226);
+  await page.getByText('Обновляем каталог…',{exact:true}).waitFor();
+  await swipe(195,60,195,226);
+  assert.equal(catalogRequests,2,'only one catalog request runs while the first refresh is pending');
+ }finally{releaseCatalog();}
+ await page.getByRole('heading',{name:'Обновлённый товар',exact:true}).waitFor();
+ assert.ok(await page.locator('#catalog-refresh').isHidden());
  assert.equal(await page.locator('.banner-slide').count(),5);
  assert.equal(await page.locator('[data-banner-dot]').count(),3);
  assert.equal(await page.locator('[data-banner-step="1"]').isHidden(),true);
@@ -115,8 +137,8 @@ try {
  await touch('touchStart',195,handle.y+15);await touch('touchMove',195,handle.y+95);await touch('touchCancel');
  await settle();assert.ok(await page.locator('dialog').evaluate(element=>element.open),'cancelled gesture snaps back');
  await swipe(195,handle.y+15,195,handle.y+235);
- await page.locator('dialog').waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),true);
- await open();await close();assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),true);
+ await page.locator('dialog').waitFor({state:'hidden'});await page.waitForFunction(()=>Telegram.WebApp.isVerticalSwipesEnabled===(scrollY>1));
+ await open();await close();await page.waitForFunction(()=>Telegram.WebApp.isVerticalSwipesEnabled===(scrollY>1));
  await open();handle=await page.locator('.sheet-handle').boundingBox();
  await page.mouse.move(handle.x+handle.width/2,handle.y+15);await page.mouse.down();await page.mouse.move(handle.x+handle.width/2,handle.y+240,{steps:12});await page.mouse.up();
  await page.locator('dialog').waitFor({state:'hidden'});
@@ -124,11 +146,14 @@ try {
  await page.evaluate(()=>dispatchEvent(new Event('pagehide')));assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),true);
  await page.evaluate(()=>dispatchEvent(new Event('pageshow')));assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),false);
  await close();
- await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled=false);await open();await close();
+ await page.locator('#cart-tab').click();
+ await page.waitForFunction(()=>Telegram.WebApp.isVerticalSwipesEnabled);
+ await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled=false);
+ await page.locator('#catalog-tab').click();await open();await close();
  assert.equal(await page.evaluate(()=>Telegram.WebApp.isVerticalSwipesEnabled),false,'pre-existing native swipe setting is preserved');
  db.prepare('UPDATE banners SET active=0 WHERE id!=1').run();await page.reload();await page.locator('.banner-slide').waitFor();assert.equal(await page.locator('.banner-navigation').count(),0);
  db.prepare('UPDATE banners SET active=0').run();await page.reload();await page.locator('#banner').waitFor({state:'hidden'});
  assert.deepEqual(errors,[]);
- console.log('PASS: real touch banner swipes, navigation/dots, correct promotion, responsive image height, gallery/description scrolling, sheet drag/cancel/button/mouse dismissal and restored Telegram swipes');
+ console.log('PASS: pull-to-refresh, real touch banner swipes, navigation/dots, correct promotion, responsive image height, gallery/description scrolling, sheet drag/cancel/button/mouse dismissal and restored Telegram swipes');
  await context.close();
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));rmSync(directory,{recursive:true,force:true});}

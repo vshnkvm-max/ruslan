@@ -53,6 +53,40 @@ main { padding: 0 20px 110px; }
 .product-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; }
 .price { font-size: 16px; font-weight: 850; letter-spacing: -.5px; }
 .catalog-status { padding: 36px 16px; color: var(--muted); text-align: center; font-size: 13px; line-height: 1.6; }
+.catalog-refresh {
+  position: fixed;
+  z-index: 4;
+  top: max(0px, env(safe-area-inset-top), var(--telegram-safe-top, 0px));
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 10px 14px;
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 4px 16px #3c11252b;
+  color: #49343f;
+  font-size: 13px;
+  font-weight: 650;
+  pointer-events: none;
+  transform: translate(-50%, var(--catalog-pull-offset, 14px));
+}
+.catalog-refresh-indicator {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  border: 2px solid #ead9e1;
+  border-top-color: var(--red);
+  border-radius: 50%;
+  transform: rotate(var(--catalog-pull-angle, 0deg));
+}
+.catalog-refresh[data-refreshing] .catalog-refresh-indicator { animation: catalog-refresh-spin .7s linear infinite; }
+@keyframes catalog-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .catalog-refresh[data-refreshing] .catalog-refresh-indicator { animation: none; }
+}
 .bottom-nav { position: fixed; z-index: 3; left: 50%; bottom: max(30px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; width: min(240px, calc(100% - 32px)); height: 60px; padding: 4px; border-radius: 30px; background: #e5dfe2e8; box-shadow: 0 4px 24px #44212a12; }
 .bottom-tab { position: relative; display: grid; align-content: center; justify-items: center; gap: 3px; width: 50%; min-width: 0; border: 0; border-radius: 26px; padding: 5px 12px; text-decoration: none; font-size: 11px; line-height: 13px; font-weight: 500; color: #aaa9af; background: transparent; }
 .bottom-tab[aria-current="page"] { color: #111; }
