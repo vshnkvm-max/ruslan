@@ -14,6 +14,11 @@ try{
   await context.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:''}));
   await context.route('https://example.test/avatar.png',route=>route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a0a0AAAAASUVORK5CYII=','base64')}));
   const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const panel=page.locator('#details');
+  async function assertSheet(view){
+    assert.equal(await panel.getAttribute('data-view'),view);
+    assert.ok(await panel.evaluate(el=>getComputedStyle(el).position==='fixed'&&Math.abs(el.getBoundingClientRect().bottom-innerHeight)<1));
+  }
   await page.goto(base+'/miniapp');await page.waitForFunction(()=>document.querySelector('#header-balance-value')?.textContent==='1 540');await page.waitForFunction(()=>{const image=document.querySelector('.header-profile-avatar img');return image?.complete&&image.naturalWidth>0;});await page.screenshot({path:'/tmp/shop-header-balance.png'});await page.locator('[data-product="1"]').click();await page.locator('[data-add="1"]').click();await page.locator('.product-close').click();
   await page.locator('#profile-button').click();
   await page.waitForFunction(()=>document.querySelector('[data-profile-order-count]')?.textContent==='2');
@@ -25,11 +30,29 @@ try{
   await page.getByText('Кол-во заказов',{exact:true}).waitFor();await page.getByText('Общая сумма',{exact:true}).waitFor();
   await page.screenshot({path:'/tmp/shop-profile-orders.png'});
   await page.locator('[data-customer-orders]').click();await page.getByText('Заказ #3',{exact:true}).waitFor();assert.equal(await page.getByText('Заказ #5',{exact:true}).count(),0);
+  await assertSheet('my-orders');
+  await page.locator('[data-customer-order="3"]').click();
+  await page.getByRole('heading',{name:'Заказ #3',exact:true}).waitFor();
+  await assertSheet('order-detail');
+  await panel.locator('.close').click();
+  await panel.waitFor({state:'hidden'});
+  await page.locator('[data-customer-orders]').click();
+  await page.getByText('Заказ #3',{exact:true}).waitFor();
   await page.locator('[data-back-profile]').click();await page.locator('#profile-page [data-my-reviews]').click();assert.equal(await page.getByRole('button',{name:'Все отзывы',exact:true}).count(),0);assert.equal(await page.locator('.my-review').count(),20);assert.equal(await page.getByText('Чужой отзыв',{exact:true}).count(),0);
+  await assertSheet('my-reviews');
   await page.locator('[data-more-reviews]').click();await page.waitForFunction(()=>document.querySelectorAll('.my-review').length===23);
   assert.equal(await page.locator('.my-review img').count(),0);assert.equal(await page.locator('[data-more-reviews]').count(),0);
   await page.locator('dialog').evaluate(element=>element.scrollTop=0);await page.screenshot({path:'/tmp/shop-profile-reviews.png'});
-  await page.locator('[data-back-profile]').click();assert.equal(await page.locator('[data-profile-order-count]').innerText(),'2');
+  const handle=await panel.locator('.sheet-handle').boundingBox();
+  const cdp=await context.newCDPSession(page);
+  const x=Math.round(handle.x+handle.width/2),y=Math.round(handle.y+handle.height/2);
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});
+  for(let distance=20;distance<=220;distance+=20){
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x,y:y+distance}]});
+  }
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  await panel.waitFor({state:'hidden'});
+  assert.equal(await page.locator('[data-profile-order-count]').innerText(),'2');
   await page.locator('#profile-accruals').click();await page.getByText('Начислений и списаний пока нет.',{exact:true}).waitFor();await page.locator('#profile-overview').click();
   for(const width of [320,1280]){
     await page.setViewportSize({width,height:844});
@@ -45,5 +68,5 @@ try{
   await page.waitForFunction(()=>document.querySelector('[data-profile-order-count]')?.textContent==='1');assert.match(await page.locator('[data-profile-order-total]').innerText(),/50\s*000/);
   await page.locator('#profile-page [data-my-reviews]').click();assert.equal(await page.locator('.my-review').count(),1);await page.getByText('Чужой отзыв',{exact:true}).waitFor();
   assert.deepEqual(errors,[]);await context.close();
-  console.log('PASS: real order count and total independent of cart, own reviews and pagination, HTML escaping, recent orders, profile tabs, mobile/desktop layout, network retry and account cache isolation');
+  console.log('PASS: real order count and total independent of cart, own reviews and pagination, HTML escaping, profile sheets and swipe dismissal, profile tabs, mobile/desktop layout, network retry and account cache isolation');
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve));rmSync(directory,{recursive:true,force:true});}

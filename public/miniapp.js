@@ -246,7 +246,7 @@ function setNav() {
     else button.removeAttribute('aria-current');
   }
 }
-const bottomSheetViews = new Set(['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities','referral']);
+const bottomSheetViews = new Set(['product','checkout','important','reviews','review-form','reviews-sent','review-opportunities','referral','my-orders','order-detail','my-reviews']);
 function show(html, view = 'info', shouldAnimate = true) {
   stopBannerAuto();
   if(view==='checkout'){clearTimeout(toastTimer);$('#toast').classList.remove('visible');}
@@ -748,7 +748,7 @@ async function requestPublicReviews(url,isCurrent){
   return reviewRequest(url,{},8000);
  }
 }
-function reviewViewOpen(view){
+function dialogViewOpen(view){
  const dialog=$('#details');
  return dialog.open&&dialog.dataset.view===view&&!dialog.dataset.closing;
 }
@@ -812,7 +812,7 @@ async function loadReviewFeed(more=false){
  state.error='';
  if(!more){state.items=[];state.total=0;state.next=null;}
  renderReviewFeed();
- const isCurrent=()=>reviewFeed===state&&state.version===version&&reviewViewOpen('reviews');
+ const isCurrent=()=>reviewFeed===state&&state.version===version&&dialogViewOpen('reviews');
  try{
   const query=new URLSearchParams({sort:state.sort,media:state.media?'1':'0',offset:String(more?state.next:0)});
   const result=await requestPublicReviews('/api/storefront/reviews?'+query,isCurrent);
@@ -854,7 +854,7 @@ function loadProductReviews(id){
  container.innerHTML='<h3>Отзывы</h3><div class="product-review-list"></div><div class="product-review-pagination"></div><div class="product-write-review"></div>';
  const list=container.querySelector('.product-review-list');
  const pagination=container.querySelector('.product-review-pagination');
- const isCurrent=()=>list.isConnected&&reviewViewOpen('product');
+ const isCurrent=()=>list.isConnected&&dialogViewOpen('product');
  async function loadPage(offset){
   pagination.innerHTML='<p role="status">Загружаем отзывы…</p>';
   try {
@@ -886,7 +886,7 @@ async function updateProductReviewButton(id){
  slot.replaceChildren();
  try {
   const eligible=await loadReviewEligibility(id);
-  if(!slot.isConnected||!reviewViewOpen('product')||!eligible.items.length)return;
+  if(!slot.isConnected||!dialogViewOpen('product')||!eligible.items.length)return;
   const expires=eligible.items.reduce((last,item)=>item.expires_at>last?item.expires_at:last,'');
   slot.innerHTML=`<button class="primary-button" data-write-review="${id}" data-review-expires="${expires}">Оставить отзыв</button>`;
   scheduleReviewExpiry();
@@ -1178,7 +1178,7 @@ async function openCustomerOrders(more=false){
  state.ordersLoading=true;state.ordersError='';if(!more)state.orders=[];renderCustomerOrders();
  try{const result=await historyRequest('orders/list',more?{before:state.ordersNext}:{});if(currentCustomerHistory()!==state)return;state.orders=more?[...state.orders,...result.items]:result.items;state.ordersNext=result.next;}
  catch(error){if(currentCustomerHistory()===state)state.ordersError=error.message;}
- finally{state.ordersLoading=false;if(currentCustomerHistory()===state&&$('#details').open&&$('#details').dataset.view==='my-orders')renderCustomerOrders();}
+ finally{state.ordersLoading=false;if(currentCustomerHistory()===state&&dialogViewOpen('my-orders'))renderCustomerOrders();}
 }
 function orderMeetingDate(value){
  return value?`<p class="order-meeting-date">Дата встречи <time datetime="${escape(value)}">${escape(value.split('-').reverse().join('.'))}</time></p>`:'';
@@ -1197,7 +1197,7 @@ async function openCustomerOrder(id,origin){
  const state=currentCustomerHistory(),version=++state.orderVersion;state.order=null;state.orderLoading=true;state.orderError='';state.cancelConfirm=false;state.orderOrigin=origin||state.orderOrigin||'orders';renderCustomerOrder(id);
  try{const result=await historyRequest('orders/'+id);if(currentCustomerHistory()!==state||state.orderVersion!==version)return;state.order=result.order;applyHeaderBalance(state.key,result.order.balance_after);profileState={key:'',status:'idle'};state.transactionsVersion++;state.transactionsLoading=false;state.transactionsLoaded=false;}
  catch(error){if(currentCustomerHistory()===state&&state.orderVersion===version)state.orderError=error.message;}
- finally{if(state.orderVersion===version){state.orderLoading=false;if(currentCustomerHistory()===state&&$('#details').open&&$('#details').dataset.view==='order-detail')renderCustomerOrder(id);}}
+ finally{if(state.orderVersion===version){state.orderLoading=false;if(currentCustomerHistory()===state&&dialogViewOpen('order-detail'))renderCustomerOrder(id);}}
 }
 async function cancelCustomerOrder(id){
  const state=currentCustomerHistory();if(state.cancelling||state.order?.id!==id||!state.cancelConfirm)return;
@@ -1209,7 +1209,7 @@ async function cancelCustomerOrder(id){
   profileState={key:'',status:'idle'};applyHeaderBalance(state.key,result.order.balance_after);
   if(data)void load();
  }catch(error){if(currentCustomerHistory()===state&&state.orderVersion===version){state.orderError=error.message;if(error.status===409){try{const updated=await historyRequest('orders/'+id);if(currentCustomerHistory()===state&&state.orderVersion===version){state.order=updated.order;state.cancelConfirm=false;}}catch{}}}}
- finally{state.cancelling=false;if(currentCustomerHistory()===state&&state.orderVersion===version&&$('#details').open&&$('#details').dataset.view==='order-detail')renderCustomerOrder(id);}
+ finally{state.cancelling=false;if(currentCustomerHistory()===state&&state.orderVersion===version&&dialogViewOpen('order-detail'))renderCustomerOrder(id);}
 }
 
 function currentProfile() {
@@ -1230,7 +1230,7 @@ function profileContent(tab) {
 }
 function refreshProfileView() {
   if (activePage === 'profile') renderProfile(profileTab);
-  if ($('#details').open && $('#details').dataset.view === 'my-reviews') renderMyReviews();
+  if (dialogViewOpen('my-reviews')) renderMyReviews();
 }
 async function loadProfile(more = false) {
   const state = currentProfile();
@@ -1691,8 +1691,8 @@ $('#telegram-sdk')?.addEventListener('load', () => {
       updateProductAddButton();
     }
   }
-  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;const draft=reviewDraft;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(draft?.productId,null,draft?.origin);else if(reviewViewOpen('product'))void updateProductReviewButton(Number($('#details').dataset.productId));}
-  if($('#details').open&&['my-orders','order-detail'].includes($('#details').dataset.view))void openCustomerOrders();
+  if(reviewIdentity!==(telegram?.initData||'')){reviewIdentity=telegram?.initData||'';reviewEligibilityVersion++;const draft=reviewDraft;reviewDraft=null;reviewEligibility={key:null,items:[],next:null,loaded:false};if($('#details').open&&$('#details').dataset.view==='review-form')void openReviewForm(draft?.productId,null,draft?.origin);else if(dialogViewOpen('product'))void updateProductReviewButton(Number($('#details').dataset.productId));}
+  if(dialogViewOpen('my-orders')||dialogViewOpen('order-detail'))void openCustomerOrders();
   if($('#details').open&&$('#details').dataset.view==='review-opportunities')void openReviewOpportunities();
   void refreshReviewEligibility();
   refreshProfileView();
