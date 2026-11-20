@@ -126,6 +126,44 @@ button:disabled { cursor: default; }
 .secondary-button { background: #fff7fa; color: #6e4d5b; box-shadow: none; }
 dialog[data-view="checkout"] { position: fixed; inset: auto 0 0; width: 100%; max-width: var(--app-width); max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); margin: 0 auto; border: 0; border-radius: 24px 24px 0 0; padding-bottom: max(28px, env(safe-area-inset-bottom)); background: #fff9fb; overscroll-behavior: contain; }
 dialog[data-view="checkout"] > .close { display: none; }
+.checkout-meeting-date {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+.checkout-meeting-date input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid #dfd0d8;
+  border-radius: 12px;
+  background: #fff;
+  color: #382f35;
+  font-size: 16px;
+}
+.checkout-meeting-date input:disabled { opacity: .75; }
+dialog .checkout-cash-note, dialog .order-meeting-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f8edf2;
+  color: #624352;
+  font-size: 13px;
+  font-weight: 650;
+}
+.checkout-cash-note svg {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
 .checkout-items { margin-top: 24px; }
 .checkout-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid #6e4d5b20; }
 .checkout-item > span { min-width: 0; overflow-wrap: anywhere; }

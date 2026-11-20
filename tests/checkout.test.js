@@ -126,3 +126,25 @@ test('configured flavors reserve shared stock and remain in the order after the 
   assert.equal((await request('/orders/' + order.id,'PATCH',{status:'cancelled'},true)).status,200);
   assert.equal(stock(id),3);
 });
+
+test('validates and preserves the meeting date in the order, history and manager notification', async () => {
+  const id = product();
+  const body = {...bodyFor(id),init_data:signedUser(1902)};
+  for (const meeting_date of ['2000-01-01','2099-02-30','2099-1-10','',19000101]){
+    assert.equal((await request('/storefront/orders','POST',{...body,meeting_date})).status,400);
+  }
+  assert.equal(stock(id),5);
+  const meeting_date = new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'});
+  const created = await request('/storefront/orders','POST',{...body,meeting_date});
+  assert.equal(created.status,201);
+  const order = created.data.order;
+  assert.equal(order.meeting_date,meeting_date);
+  const retry = await request('/storefront/orders','POST',{...body,meeting_date:'2000-01-01'});
+  assert.equal(retry.status,200);
+  assert.equal(retry.data.order.meeting_date,meeting_date);
+  const history = await request('/storefront/orders/'+order.id,'POST',{init_data:body.init_data});
+  assert.equal(history.data.order.meeting_date,meeting_date);
+  const text = JSON.parse(app.db.prepare('SELECT messages FROM order_notifications WHERE order_id=?').get(order.id).messages).join('\n');
+  assert.ok(text.includes('Дата встречи: '+meeting_date.split('-').reverse().join('.')));
+  assert.ok(text.includes('К ОПЛАТЕ: 400 ₽ наличными'));
+});

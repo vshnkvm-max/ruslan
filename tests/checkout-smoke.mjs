@@ -44,6 +44,13 @@ try {
   await page.locator('[data-toggle-rubles]').click();
   await page.locator('#checkout-rubles').evaluate(element=>{element.value='700';element.dispatchEvent(new Event('input',{bubbles:true}));});
   assert.match(await page.locator('#checkout-payable').innerText(),/1\s*600/);
+  const dateInput = page.locator('#checkout-meeting-date');
+  const meetingDate = new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'});
+  assert.ok(await page.getByText('Оплата только наличными',{exact:true}).isVisible());
+  await page.locator('[data-confirm-checkout]').click();
+  await page.locator('.checkout-error:not([hidden])').filter({hasText:'Выберите дату встречи'}).waitFor();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n,0);
+  await dateInput.fill(meetingDate);
   const saved = page.waitForResponse(response => response.url().endsWith('/api/storefront/orders'));
   await page.locator('[data-confirm-checkout]').click(); await saved;
   await page.getByRole('heading', { name: 'Заказ #1 принят', exact: true }).waitFor();
@@ -51,6 +58,7 @@ try {
   assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
   assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,840);
   assert.equal(db.prepare('SELECT balance_spent FROM orders WHERE id=1').get().balance_spent,700);
+  assert.equal(await page.locator('.order-meeting-date time').getAttribute('datetime'),meetingDate);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 1);
   await page.locator('dialog [data-continue]').click();
 
@@ -58,12 +66,15 @@ try {
   await page.locator('[data-product="1"]').click(); await page.locator('[data-add="1"]').click(); await page.locator('[data-open-cart]').click();
   await page.locator('[data-checkout]').click();
   await page.locator('[data-toggle-rubles]').click();assert.equal(await page.locator('#checkout-rubles').inputValue(),'840');
+  await dateInput.fill(meetingDate);
   await page.route('**/api/storefront/orders', async route => { await route.fetch(); await route.abort('failed'); });
   await page.locator('[data-confirm-checkout]').click(); await page.locator('.checkout-error:not([hidden])').waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2);
   assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,0);
   await page.unroute('**/api/storefront/orders'); await page.reload(); await page.locator('[data-product="1"]').waitFor();
   await page.locator('#cart-tab').click(); await page.getByRole('button', { name: 'Проверить заказ', exact: true }).click();
+  assert.equal(await dateInput.inputValue(),meetingDate);
+  assert.equal(await dateInput.isDisabled(),true);
   assert.match(await page.locator('#checkout-rubles-limit').innerText(),/840/);assert.equal(await page.locator('#checkout-rubles-panel').isHidden(),true);
   await page.locator('[data-confirm-checkout]').click(); await page.getByRole('heading', { name: 'Заказ #2 принят', exact: true }).waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 2);
@@ -73,6 +84,7 @@ try {
   await admin.locator('[data-action=order-detail][data-id="2"]').first().click(); await admin.locator('#order-form').waitFor();
   assert.match(await admin.locator('.modal').innerText(), /Тестовый Покупатель/);
   assert.match(await admin.locator('.modal').innerText(), /Не задан ORDER_BOT_TOKEN/);
+  await admin.getByText(meetingDate.split('-').reverse().join('.'),{exact:true}).waitFor();
   await admin.locator('#order-status').selectOption('cancelled'); await admin.locator('#order-form [type=submit]').click();
   await admin.locator('.modal').waitFor({ state: 'detached' }); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
   assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,840);
@@ -105,11 +117,12 @@ try {
   await names.nth(1).waitFor();
   assert.deepEqual(await names.allTextContents(),['Тестовый товар — Ягода','Тестовый товар — Мята']);
   await page.locator('[data-checkout]').click();
+  await dateInput.fill(meetingDate);
   await page.locator('[data-confirm-checkout]').click();
   await page.getByRole('heading',{name:'Заказ #3 принят',exact:true}).waitFor();
   assert.deepEqual(db.prepare('SELECT name FROM order_items WHERE order_id=3 ORDER BY id').all().map(row=>row.name),['Тестовый товар — Ягода','Тестовый товар — Мята']);
   assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock,1);
   assert.deepEqual(errors, []);
-  console.log('PASS: mobile wallet slider and 50% cap, cancel preserves balance, actual debit and payable amount, lost-response retry with zero balance, admin cancellation refunds rubles and restores stock, header balance refresh, flavor editing and checkout');
+  console.log('PASS: mobile wallet slider and 50% cap, cancel preserves balance, actual debit and payable amount, lost-response retry with zero balance, admin cancellation refunds rubles and restores stock, header balance refresh, flavor editing, meeting date, cash notice and checkout');
   await context.close();
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, { recursive: true, force: true }); }
