@@ -81,10 +81,16 @@ try {
 
   const admin = await context.newPage(); admin.on('pageerror', error => errors.push(error.message));
   await admin.goto(base + '/#orders'); await admin.getByLabel('Логин', { exact: true }).fill('admin'); await admin.getByLabel('Пароль', { exact: true }).fill('checkout-test-password'); await admin.locator('#login-form [type=submit]').click();
-  await admin.locator('[data-action=order-detail][data-id="2"]').first().click(); await admin.locator('#order-form').waitFor();
+  const orderRow = admin.locator('tbody tr').filter({has:admin.locator('[data-action=order-detail][data-id="2"]')});
+  const displayMeetingDate = meetingDate.split('-').reverse().join('.');
+  await admin.getByRole('columnheader',{name:'Дата встречи',exact:true}).waitFor();
+  await orderRow.getByRole('cell',{name:displayMeetingDate,exact:true}).waitFor();
+  await orderRow.locator('[data-action=order-detail]').first().click();
+  await admin.locator('#order-form').waitFor();
+  assert.doesNotMatch(await admin.locator('#order-form').innerText(),/Выполненные заказы включаются|Товары зарезервированы/);
   assert.match(await admin.locator('.modal').innerText(), /Тестовый Покупатель/);
   assert.match(await admin.locator('.modal').innerText(), /Не задан ORDER_BOT_TOKEN/);
-  await admin.getByText(meetingDate.split('-').reverse().join('.'),{exact:true}).waitFor();
+  await admin.locator('.modal').getByText(displayMeetingDate,{exact:true}).waitFor();
   await admin.locator('#order-status').selectOption('cancelled'); await admin.locator('#order-form [type=submit]').click();
   await admin.locator('.modal').waitFor({ state: 'detached' }); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
   assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,840);
