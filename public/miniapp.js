@@ -1441,7 +1441,7 @@ async function confirmCheckout() {
     date.min = moscowDate();
     if (!date.validity.valid) {
       errorElement.hidden = false;
-      errorElement.textContent = 'Выберите дату встречи, начиная с сегодняшнего дня по Москве.';
+      errorElement.textContent = 'Выберите дату встречи, начиная с сегодняшнего дня.';
       date.focus();
       return;
     }
