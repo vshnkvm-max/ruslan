@@ -22,7 +22,19 @@ try {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
   await context.addInitScript(({ user, initData }) => { window.Telegram = { WebApp: { platform: 'ios', initData, initDataUnsafe: { user }, ready() {}, expand() {} } }; }, { user, initData: params.toString() });
   await context.route('https://telegram.org/**', route => route.fulfill({ contentType: 'text/javascript', body: '' }));
-  const page = await context.newPage(), errors = []; page.on('pageerror', error => errors.push(error.message));
+  const errors = [];
+  const admin = await context.newPage(); admin.on('pageerror', error => errors.push(error.message));
+  await admin.goto(base + '/#content');
+  await admin.getByLabel('Логин', { exact: true }).fill('admin');
+  await admin.getByLabel('Пароль', { exact: true }).fill('checkout-test-password');
+  await admin.locator('#login-form [type=submit]').click();
+  const managerId = '1234567890123';
+  await admin.getByLabel('Название магазина').fill('Тестовый магазин');
+  await admin.getByLabel('Telegram ID менеджера', { exact: true }).fill(managerId);
+  const savedManager = admin.waitForResponse(response => response.url().endsWith('/api/settings/shop'));
+  await admin.locator('#shop-form [type=submit]').click();
+  assert.equal((await savedManager).status(), 200);
+  const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + '/miniapp'); await page.waitForFunction(()=>document.querySelector('#header-balance-value')?.textContent==='1 540'); await page.locator('[data-product="1"]').click();
   await page.locator('[data-add="1"]').click(); await page.locator('[data-open-cart]').click();
   await page.locator('[data-checkout]').click();
@@ -57,6 +69,9 @@ try {
   const saved = page.waitForResponse(response => response.url().endsWith('/api/storefront/orders'));
   await page.locator('[data-confirm-checkout]').click(); await saved;
   await page.getByRole('heading', { name: 'Заказ #1 принят', exact: true }).waitFor();
+  const manager = page.locator('.checkout-manager');
+  assert.match(await manager.innerText(), /Telegram ID менеджера/);
+  assert.equal(await manager.getByRole('link', {name:managerId, exact:true}).getAttribute('href'), 'tg://user?id=' + managerId);
   assert.doesNotMatch(await page.locator('dialog').innerText(), /Менеджер свяжется/);
   assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
   assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,840);
@@ -80,10 +95,11 @@ try {
   assert.equal(await dateInput.isDisabled(),true);
   assert.match(await page.locator('#checkout-rubles-limit').innerText(),/840/);assert.equal(await page.locator('#checkout-rubles-panel').isHidden(),true);
   await page.locator('[data-confirm-checkout]').click(); await page.getByRole('heading', { name: 'Заказ #2 принят', exact: true }).waitFor();
+  await manager.getByRole('link', {name:managerId, exact:true}).waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 2);
 
-  const admin = await context.newPage(); admin.on('pageerror', error => errors.push(error.message));
-  await admin.goto(base + '/#orders'); await admin.getByLabel('Логин', { exact: true }).fill('admin'); await admin.getByLabel('Пароль', { exact: true }).fill('checkout-test-password'); await admin.locator('#login-form [type=submit]').click();
+  await admin.goto(base + '/#orders');
+  await admin.reload();
   const orderRow = admin.locator('tbody tr').filter({has:admin.locator('[data-action=order-detail][data-id="2"]')});
   const displayMeetingDate = meetingDate.split('-').reverse().join('.');
   await admin.getByRole('columnheader',{name:'Дата встречи',exact:true}).waitFor();
@@ -150,6 +166,6 @@ try {
   await credit.waitFor();
   assert.match(await credit.innerText(),/\+115\s₽/);
   assert.deepEqual(errors, []);
-  console.log('PASS: mobile checkout, wallet payments and refunds, retry, flavors, meeting date, cash notice, cashback preview and balance history');
+  console.log('PASS: mobile checkout, manager contact in confirmation, wallet payments and refunds, retry, flavors, meeting date, cash notice, cashback preview and balance history');
   await context.close();
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, { recursive: true, force: true }); }

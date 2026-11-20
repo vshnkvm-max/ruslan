@@ -190,7 +190,7 @@ dialog[data-view="checkout"] > .close { display: none; }
   text-align: start;
 }
 .checkout-meeting-date input:disabled { opacity: .75; }
-dialog .checkout-cash-note, dialog .order-meeting-date {
+dialog .checkout-cash-note, dialog .order-meeting-date, dialog .checkout-manager {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -201,6 +201,14 @@ dialog .checkout-cash-note, dialog .order-meeting-date {
   color: #624352;
   font-size: 13px;
   font-weight: 650;
+}
+.checkout-manager { flex-wrap: wrap; }
+.checkout-manager a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  -webkit-user-select: text;
+  user-select: text;
 }
 .checkout-cash-note svg {
   flex: 0 0 18px;

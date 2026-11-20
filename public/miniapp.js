@@ -1478,9 +1478,19 @@ async function confirmCheckout() {
     }
     checkoutDraft = undefined;
     profileState = { key:'', status:'idle' };
-    applyHeaderBalance(initData,result.order.balance_after);
-    if ($('#details').open && modalVersion === dialogVersion) show(`<h2>Заказ #${result.order.id} ${result.order.status==='cancelled'?'отменён':'принят'}</h2>${orderMeetingDate(result.order.meeting_date)}${result.order.balance_spent ? `<div class="checkout-subtotal"><span>${result.order.status==='cancelled'?'Возвращено рублей':'Оплата рублями'}</span><strong>${moneyMarkup(result.order.balance_spent)}</strong></div>` : ''}<div class="cart-total"><span>К оплате</span><strong>${moneyMarkup(result.order.payable??result.order.total)}</strong></div><button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
-    else notify(`Заказ #${result.order.id} ${result.order.status==='cancelled'?'отменён':'принят'}`);
+    const { order } = result;
+    const cancelled = order.status === 'cancelled';
+    const title = `Заказ #${order.id} ${cancelled ? 'отменён' : 'принят'}`;
+    const managerId = !cancelled && /^[1-9][0-9]{0,15}$/.test(order.manager_telegram_id) ? order.manager_telegram_id : '';
+    applyHeaderBalance(initData,order.balance_after);
+    if ($('#details').open && modalVersion === dialogVersion) {
+      show(`<h2>${title}</h2>
+        ${orderMeetingDate(order.meeting_date)}
+        ${order.balance_spent ? `<div class="checkout-subtotal"><span>${cancelled ? 'Возвращено рублей' : 'Оплата рублями'}</span><strong>${moneyMarkup(order.balance_spent)}</strong></div>` : ''}
+        <div class="cart-total"><span>К оплате</span><strong>${moneyMarkup(order.payable??order.total)}</strong></div>
+        ${managerId ? `<p class="checkout-manager">Telegram ID менеджера <a href="tg://user?id=${managerId}">${managerId}</a></p>` : ''}
+        <button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
+    } else notify(managerId ? `${title}. Telegram ID менеджера ${managerId}` : title);
     void load();
   } catch (error) {
     if ($('#details').open && modalVersion === dialogVersion) {

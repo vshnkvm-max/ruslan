@@ -152,6 +152,7 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/health'&&method==='GET') return json(res,200,{ok:true});
         if(path==='/api/storefront'&&method==='GET') {
           const shop=getSettings('shop');
+          delete shop.managerTelegramId;
           const catalog=productImages.serializeAll(db.prepare('SELECT id,name,sku,category,price,stock,image,description,short_description,image_fit,flavors FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY sort_order,id DESC').all(),true);
           return json(res,200,{shop,cashback_percent:orderCashbackPercent,categories:[...new Set([...getSettings('categories'),...catalog.map(p=>p.category)])].filter(Boolean),referral:getSettings('referral'),reviews:storefrontReviews.list({limit:100}).items,products:catalog.map(({id,name,sku,category,price,stock,image,images,description,short_description,image_fit,flavors})=>({id,name,sku,category,price,stock,image,images,description,short_description,image_fit,flavors:JSON.parse(flavors)})),banners:db.prepare('SELECT * FROM banners WHERE active=1 ORDER BY id').all().map(serializeBanner)});
         }
@@ -197,7 +198,10 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           return json(res,200,customerHistory.balanceHistory(b.init_data,b.before??null));
         }
         if(path==='/api/storefront/orders'&&method==='POST') {
-          const result=storefrontOrders.create(await body(req));
+          const b=await body(req);
+          const {managerTelegramId}=getSettings('shop');
+          const result=storefrontOrders.create(b);
+          if(managerTelegramId&&result.order.status!=='cancelled')result.order.manager_telegram_id=managerTelegramId;
           return json(res,result.repeated?200:201,{order:result.order});
         }
         const productView=path.match(/^\/api\/storefront\/products\/(\d+)\/view$/);
@@ -338,7 +342,19 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
           const b=await body(req);const amount=num(b.amount,'Сумма');if(!amount) fail(400,'Сумма должна быть больше нуля.');
           const r=db.prepare('INSERT INTO transactions (type,category,description,amount,created_at) VALUES (?,?,?,?,?)').run(choice(b.type,['income','expense']),str(b.category,'Категория',80),str(b.description,'Описание'),amount,new Date().toISOString());return json(res,201,{id:Number(r.lastInsertRowid)});
         }
-        if(path==='/api/settings/shop'&&method==='PATCH') {const b=await body(req);b.address??=getSettings('shop').address;const shop={};for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');const bot=str(b.botUsername??getSettings('shop').botUsername??'gas_shop_vape_bot','Имя бота',32,false).replace(/^@/,'');if(bot&&!/^[A-Za-z0-9_]{5,32}$/.test(bot))fail(400,'Проверьте имя Telegram-бота.');shop.botUsername=bot;saveSettings('shop',shop);return json(res,200,{ok:true});}
+        if(path==='/api/settings/shop'&&method==='PATCH') {
+          const b=await body(req), saved=getSettings('shop'), shop={};
+          b.address??=saved.address;
+          for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');
+          const bot=str(b.botUsername??saved.botUsername??'gas_shop_vape_bot','Имя бота',32,false).replace(/^@/,'');
+          if(bot&&!/^[A-Za-z0-9_]{5,32}$/.test(bot))fail(400,'Проверьте имя Telegram-бота.');
+          shop.botUsername=bot;
+          const managerId=str(b.managerTelegramId??saved.managerTelegramId??'','Telegram ID менеджера',16,false);
+          if(managerId&&(!/^[1-9][0-9]*$/.test(managerId)||!Number.isSafeInteger(Number(managerId))))fail(400,'Укажите числовой Telegram ID менеджера.');
+          shop.managerTelegramId=managerId;
+          saveSettings('shop',shop);
+          return json(res,200,{ok:true});
+        }
         if(path==='/api/settings/referral'&&method==='PATCH') {const b=await body(req);saveSettings('referral',{enabled:Boolean(bool(b.enabled)),bonus:num(b.bonus===undefined?(getSettings('referral').bonus??100):b.bonus,'Бонус',100000),percent:referralPercent(b.percent===undefined?(getSettings('referral').percent??5):b.percent),minPayout:num(b.minPayout===undefined?(getSettings('referral').minPayout??0):b.minPayout,'Минимальная выплата',1000000)});return json(res,200,{ok:true});}
         if(path==='/api/auth/password'&&method==='POST') {
           const b=await body(req);const current=passwordValue(b.current);const next=passwordValue(b.password);

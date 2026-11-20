@@ -47,6 +47,32 @@ test('server prices, snapshots and stock are atomic; duplicate and concurrent co
   const another = await request('/storefront/orders', 'POST', { ...body, init_data: signedUser(703) });
   assert.equal(another.status, 201); assert.notEqual(another.data.order.id, order.id); assert.equal(stock(id), 1);
 });
+test('checkout receipts show the configured manager ID on success and retry', async () => {
+  const orderBody = bodyFor(product());
+  const create = () => request('/storefront/orders', 'POST', orderBody);
+  const first = await create();
+  assert.equal(first.status, 201);
+  assert.equal(first.data.order.manager_telegram_id, undefined);
+  const {shop} = (await request('/bootstrap', 'GET', undefined, true)).data;
+  shop.name = 'Тестовый магазин';
+  const save = settings => request('/settings/shop', 'PATCH', settings, true);
+  assert.equal((await save({...shop, managerTelegramId: '@manager'})).status, 400);
+  const managerTelegramId = '1234567890123';
+  assert.equal((await save({...shop, managerTelegramId})).status, 200);
+  assert.equal((await save(shop)).status, 200);
+  assert.equal((await request('/storefront', 'GET')).data.shop.managerTelegramId, undefined);
+  const retried = await create();
+  assert.equal(retried.status, 200);
+  assert.equal(retried.data.order.manager_telegram_id, managerTelegramId);
+  const anotherBody = bodyFor(product());
+  const another = await request('/storefront/orders', 'POST', anotherBody);
+  assert.equal(another.status, 201);
+  assert.equal(another.data.order.manager_telegram_id, managerTelegramId);
+  assert.equal((await request('/orders/' + first.data.order.id, 'PATCH', {status:'cancelled'}, true)).status, 200);
+  assert.equal((await create()).data.order.manager_telegram_id, undefined);
+  assert.equal((await save({...shop, managerTelegramId: ''})).status, 200);
+  assert.equal((await request('/storefront/orders', 'POST', anotherBody)).data.order.manager_telegram_id, undefined);
+});
 test('rejects changed prices, hidden/archived products and insufficient stock without partial reservation', async () => {
   const id = product(1), body = bodyFor(id), other = product();
   for (const items of [body.items, [{ product_id: id, quantity: 1, price: 1 }], [{ product_id: other, quantity: 1, price: 200 }, ...body.items]]) {
