@@ -87,8 +87,19 @@ function cartSelection(key) {
     return { id, flavor };
   } catch { return null; }
 }
-function supportsFlavor(product, flavor) {
-  return product.flavors?.length ? product.flavors.includes(flavor) : flavor === undefined;
+const flavorOption = (product, flavor) => product.flavor_options?.find(option => option.name === flavor);
+function lineStock(product, flavor) {
+  if (flavor === undefined) return product.flavors?.length ? product.unassigned_stock ?? 0 : product.stock;
+  const option = flavorOption(product, flavor);
+  return option ? option.stock ?? product.stock : product.flavors?.includes(flavor) ? product.stock : 0;
+}
+const linePrice = (product, flavor) => product.price + (flavorOption(product, flavor)?.markup ?? 0);
+function productPriceMarkup(product) {
+  const selections = [...(product.flavors ?? []), undefined];
+  const prices = selections.filter(flavor => lineStock(product, flavor) > 0).map(flavor => linePrice(product, flavor));
+  if (!prices.length) return moneyMarkup(product.price);
+  const lowest = Math.min(...prices);
+  return (lowest < Math.max(...prices) ? 'от ' : '') + moneyMarkup(lowest);
 }
 function cartProductQuantity(id) {
   let total = 0;
@@ -97,6 +108,8 @@ function cartProductQuantity(id) {
   }
   return total;
 }
+const cartLineLimit = (product, flavor, quantity) =>
+  Math.min(lineStock(product, flavor), maxQuantity(product) - cartProductQuantity(product.id) + quantity);
 let data, category = '', loading = false, modalVersion = 0, toastTimer;
 let cart = readCart();
 let categorySlide;
@@ -122,10 +135,10 @@ function saveCart() {
 const cartItems = () => data ? [...cart].flatMap(([key, quantity]) => {
   const { id, flavor } = cartSelection(key);
   const product = data.products.find(item => item.id === id);
-  return product && product.stock > 0 && supportsFlavor(product, flavor) ? [{ key, product, flavor, quantity }] : [];
+  return product && lineStock(product, flavor) > 0 ? [{ key, product, flavor, quantity, price:linePrice(product, flavor) }] : [];
 }) : [];
-const cartSummary = () => cartItems().reduce((total, { product, quantity }) => ({
-  count: total.count + quantity, amount: total.amount + product.price * quantity
+const cartSummary = () => cartItems().reduce((total, { price, quantity }) => ({
+  count: total.count + quantity, amount: total.amount + price * quantity
 }), { count: 0, amount: 0 });
 
 function animate(element, frames, options = {}) {
@@ -173,7 +186,7 @@ function reconcileCart() {
     const { id, flavor } = cartSelection(key);
     const product = data.products.find(item => item.id === id);
     const used = quantities.get(id) || 0;
-    const remaining = product && supportsFlavor(product, flavor) ? maxQuantity(product) - used : 0;
+    const remaining = product ? Math.min(lineStock(product, flavor),maxQuantity(product) - used) : 0;
     if (remaining <= 0) { cart.delete(key); changed = true; continue; }
     const validQuantity = Math.min(quantity, remaining);
     if (validQuantity !== quantity) { cart.set(key, validQuantity); changed = true; }
@@ -188,9 +201,9 @@ function changeCart(key, delta, source) {
   if (!selection) return;
   const { id, flavor } = selection;
   const product = data?.products.find(item => item.id === id);
-  if (!product || product.stock <= 0 || !supportsFlavor(product, flavor)) return;
+  if (!product || lineStock(product, flavor) <= 0) return;
   const previous = cart.get(key) || 0;
-  const limit = maxQuantity(product) - cartProductQuantity(id) + previous;
+  const limit = cartLineLimit(product, flavor, previous);
   if (delta > 0 && previous >= limit) { notify('Достигнуто доступное количество'); return; }
   if (!previous && cart.size >= 100) { notify('В корзине может быть до 100 позиций'); return; }
   const quantity = Math.max(0, Math.min(limit, previous + delta));
@@ -467,7 +480,7 @@ function render(animateProducts = true) {
         </div>
         <div class="product-body">
           <h3>${escape(product.name)}</h3>
-          <div class="product-bottom"><span class="price">${moneyMarkup(product.price)}</span><span class="product-chevron" aria-hidden="true">${icons.chevron}</span></div>
+          <div class="product-bottom"><span class="price">${productPriceMarkup(product)}</span><span class="product-chevron" aria-hidden="true">${icons.chevron}</span></div>
         </div>
       </button>
     </article>`).join('');
@@ -667,13 +680,19 @@ function quantityControls(key, name, quantity, canAdd) {
   </div>`;
 }
 function productFlavorRows(product) {
-  const canAdd = cartProductQuantity(product.id) < maxQuantity(product);
+  const selections = product.unassigned_stock > 0 ? [...product.flavors, undefined] : product.flavors;
   return `<section class="product-flavors" id="product-flavors">
     <h3>Вкусы</h3>
-    ${product.flavors.map(flavor=>{
+    ${selections.map(flavor=>{
       const key=cartLineKey(product.id,flavor);
+      const name=flavor??'Без выбора вкуса';
+      const quantity=cart.get(key)||0;
+      const stock=lineStock(product,flavor);
+      const price=linePrice(product,flavor);
+      const info=[...(product.flavor_stock_tracked || price!==product.price ? [moneyMarkup(price)] : []),
+        ...(product.flavor_stock_tracked ? [stock ? `В наличии ${stock} шт.` : 'Нет в наличии'] : [])].join(' · ');
       return `<div class="product-flavor-row" data-flavor-key="${escape(key)}">
-        <strong>${escape(flavor)}</strong>${quantityControls(key,flavor,cart.get(key)||0,canAdd)}
+        <div><strong>${escape(name)}</strong>${info?`<small>${info}</small>`:''}</div>${quantityControls(key,name,quantity,quantity<cartLineLimit(product,flavor,quantity))}
       </div>`;
     }).join('')}
   </section>`;
@@ -683,9 +702,10 @@ function openProduct(id, { toReviews = false } = {}) {
   if (!product) return;
   $('#details').dataset.productId = id;
   const description = formatted(product.short_description) + formatted(product.description);
-  show(`${productGallery(product)}<div class="product-title-row"><h2>${escape(product.name)}</h2><div class="product-title-actions"><button type="button" class="product-share" data-share-product="${product.id}" aria-label="Поделиться товаром">${icons.telegram}<span>Поделиться</span></button><button type="button" class="product-close" data-product-close aria-label="Закрыть товар">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div></div><strong class="price">${moneyMarkup(product.price)}</strong>
+  show(`${productGallery(product)}<div class="product-title-row"><h2>${escape(product.name)}</h2><div class="product-title-actions"><button type="button" class="product-share" data-share-product="${product.id}" aria-label="Поделиться товаром">${icons.telegram}<span>Поделиться</span></button><button type="button" class="product-close" data-product-close aria-label="Закрыть товар">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div></div><strong class="price">${productPriceMarkup(product)}</strong>
     <p class="detail-stock">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</p>
-    ${product.flavors?.length?productFlavorRows(product):`${description}<button class="primary-button" id="product-add" data-add="${product.id}"></button>`}<button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>${product.flavors?.length?description:''}<section class="product-review-section" id="product-reviews"><h3>Отзывы</h3><p>Загружаем отзывы…</p></section>`, 'product');
+    ${product.flavors?.length?productFlavorRows(product):`${description}<button class="primary-button" id="product-add" data-add="${product.id}">${icons.bag}<span>Добавить в корзину</span></button>
+      <div id="product-quantity" hidden>${quantityControls(product.id,product.name,0,true)}</div>`}<button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>${product.flavors?.length?description:''}<section class="product-review-section" id="product-reviews"><h3>Отзывы</h3><p>Загружаем отзывы…</p></section>`, 'product');
   $('#gallery-track')?.addEventListener('scroll',updateGallery,{passive:true});
   updateProductAddButton();
   void loadProductReviews(id);
@@ -698,22 +718,29 @@ function updateProductAddButton() {
   $('#product-cart').hidden = cartSummary().count === 0;
   const product = data.products.find(item => item.id === Number(dialog.dataset.productId));
   if (!product) return;
+  const updateControls = (root, key, flavor) => {
+    const quantity = cart.get(key) || 0;
+    root.querySelector('output').value = quantity;
+    root.querySelector('[data-cart-change="-1"]').disabled = quantity === 0;
+    root.querySelector('[data-cart-change="1"]').disabled = quantity >= cartLineLimit(product,flavor,quantity);
+  };
   const button = $('#product-add');
   if (!button) {
-    const canAdd = cartProductQuantity(product.id) < maxQuantity(product);
     dialog.querySelectorAll('[data-flavor-key]').forEach(row=>{
-      const quantity = cart.get(row.dataset.flavorKey) || 0;
-      row.querySelector('output').value = quantity;
-      row.querySelector('[data-cart-change="-1"]').disabled = quantity === 0;
-      row.querySelector('[data-cart-change="1"]').disabled = !canAdd;
+      const key = row.dataset.flavorKey.includes(':') ? row.dataset.flavorKey : Number(row.dataset.flavorKey);
+      updateControls(row,key,cartSelection(key).flavor);
     });
     return;
   }
   const quantity = cart.get(product.id) || 0;
-  button.disabled = product.stock <= 0 || quantity >= maxQuantity(product);
-  button.innerHTML = product.stock <= 0 ? 'Нет в наличии'
-    : quantity ? `${icons.check}<span>В корзине: ${quantity}${button.disabled ? '' : ' · Добавить ещё'}</span>`
-    : `${icons.bag}<span>Добавить в корзину</span>`;
+  const controls = $('#product-quantity');
+  const focused = document.activeElement;
+  updateControls(controls,product.id,undefined);
+  button.hidden = quantity > 0;
+  controls.hidden = quantity === 0;
+  if (button.hidden && focused === button) {
+    (controls.querySelector('[data-cart-change="1"]:not(:disabled)') || controls.querySelector('button')).focus({preventScroll:true});
+  } else if (controls.hidden && controls.contains(focused)) button.focus({preventScroll:true});
 }
 async function reviewRequest(url,options={},timeout=15000){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
@@ -1347,12 +1374,12 @@ function renderCart() {
   const items = cartItems(), { count, amount } = cartSummary();
   $('#cart-content').innerHTML = `<div class="cart-heading"><span class="sheet-kicker">ВАШ ВЫБОР</span><h1>Корзина <span>${count}</span></h1></div>
     ${!data ? '<p>Сначала загрузите каталог, чтобы проверить наличие и цены.</p>' : items.length ? `
-      <div class="cart-items">${items.map(({ key, product, flavor, quantity }) => {
+      <div class="cart-items">${items.map(({ key, product, flavor, quantity, price }) => {
         const name = productLineName(product, flavor);
         return `<div class="cart-item" data-cart-item="${escape(key)}">
           <button class="cart-item-photo" data-open-product="${product.id}" aria-label="Открыть: ${escape(name)}">${photo(product)}</button>
-          <div class="cart-item-body"><button class="cart-item-name" data-open-product="${product.id}">${escape(name)}</button><span class="cart-unit-price">${moneyMarkup(product.price)} / шт.</span>
-            <div class="cart-item-controls">${quantityControls(key,name,quantity,cartProductQuantity(product.id)<maxQuantity(product))}<strong>${moneyMarkup(product.price * quantity)}</strong></div>
+          <div class="cart-item-body"><button class="cart-item-name" data-open-product="${product.id}">${escape(name)}</button><span class="cart-unit-price">${moneyMarkup(price)} / шт.</span>
+            <div class="cart-item-controls">${quantityControls(key,name,quantity,quantity<cartLineLimit(product,flavor,quantity))}<strong>${moneyMarkup(price * quantity)}</strong></div>
           </div>
           <button class="remove-item" data-remove="${escape(key)}" aria-label="Удалить: ${escape(name)}">${icons.trash}</button>
         </div>`;
@@ -1403,7 +1430,7 @@ function toggleCheckoutRubles() {
 function openCheckout() {
   if (checkoutSubmitting) return;
   const pending = pendingCheckout();
-  const items = pending?.items || cartItems().map(({ product, flavor, quantity }) => ({ product_id: product.id, flavor, name: productLineName(product, flavor), price: product.price, quantity }));
+  const items = pending?.items || cartItems().map(({ product, flavor, quantity, price }) => ({ product_id: product.id, flavor, name: productLineName(product, flavor), price, quantity }));
   if (!items.length) return;
   checkoutDraft = pending || { request_key: crypto.randomUUID(), items, balance_spend:0 };
   checkoutLocked = Boolean(pending); checkoutSpendPanelOpen = false;

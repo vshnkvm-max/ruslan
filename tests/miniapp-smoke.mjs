@@ -211,9 +211,9 @@ try {
   assert.equal(await page.locator('#detail-content .price .currency-symbol').evaluate(element => getComputedStyle(element).fontWeight), '400');
   await page.locator('#product-add').click();
   assert.equal(await page.locator('#cart-badge').textContent(), '1');
-  await page.locator('#product-add').click();
+  await page.locator('#product-quantity [data-cart-change="1"]').click();
   assert.equal(await page.locator('#cart-badge').textContent(), '2');
-  assert.ok(await page.locator('#product-add').isDisabled());
+  assert.ok(await page.locator('#product-quantity [data-cart-change="1"]').isDisabled());
   assert.equal(db.prepare('SELECT views FROM products WHERE id=2').get().views, before + 1);
   await close();
   await page.evaluate(() => window.scrollTo(0, 200));
@@ -222,12 +222,12 @@ try {
   await page.locator('#cart-page').waitFor({ state: 'visible' });
   assert.ok(await page.locator('#details').isHidden());
   assert.equal(await page.locator('[data-cart-item]').count(), 1);
-  assert.equal(await page.locator('.quantity-control output').textContent(), '2');
-  assert.ok(await page.locator('[data-cart-change="1"]').isDisabled());
-  await page.locator('[data-cart-change="-1"]').click();
-  assert.equal(await page.locator('.quantity-control output').textContent(), '1');
+  assert.equal(await page.locator('#cart-content .quantity-control output').textContent(), '2');
+  assert.ok(await page.locator('#cart-content [data-cart-change="1"]').isDisabled());
+  await page.locator('#cart-content [data-cart-change="-1"]').click();
+  assert.equal(await page.locator('#cart-content .quantity-control output').textContent(), '1');
   assert.match(await page.locator('.cart-total strong').textContent(), /4\D?590/);
-  await page.locator('[data-cart-change="1"]').click();
+  await page.locator('#cart-content [data-cart-change="1"]').click();
   await settle();
   await page.screenshot({ path: '/tmp/gas-cart.png' });
   await home();
@@ -255,7 +255,7 @@ try {
   await priceView;
   await page.locator('#product-add').click();
   assert.equal(await page.locator('#cart-badge').textContent(), '1');
-  await page.locator('#product-add').click();
+  await page.locator('#product-quantity [data-cart-change="1"]').click();
   assert.equal(db.prepare('SELECT views FROM products WHERE id=1').get().views, views + 1);
   assert.equal(await page.locator('#cart-badge').textContent(), '2');
   await close();
@@ -334,7 +334,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('[data-product="2"]').click();
   await page.locator('#product-add').click();
-  await page.locator('#product-add').click();
+  await page.locator('#product-quantity [data-cart-change="1"]').click();
   await close();
   assert.ok(await page.evaluate(() => window.motionLog.includes('cart-flight')));
   db.prepare('UPDATE products SET stock=0 WHERE id=1').run();
@@ -344,7 +344,7 @@ try {
   assert.equal(await page.locator('#cart-badge').textContent(), '1');
   await page.locator('#cart-tab').click();
   assert.equal(await page.locator('[data-cart-item]').count(), 1);
-  assert.equal(await page.locator('.quantity-control output').textContent(), '1');
+  assert.equal(await page.locator('#cart-content .quantity-control output').textContent(), '1');
   assert.match(await page.locator('.cart-total strong').textContent(), /5\D?000/);
   await home();
 

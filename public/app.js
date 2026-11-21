@@ -194,7 +194,7 @@ function productModal(id){
  <label>Категория<input name="category" aria-label="Категория" value="${e(p.category)}" list="categories" maxlength="80" placeholder="Без категории"><datalist id="categories">${(state.data.categories||[]).map(c=>`<option value="${e(c)}">`).join('')}</datalist></label>
  <div class="form-grid three"><label>Цена, ₽<input name="price" type="number" min="0" max="100000000" step="1" required value="${p.price}"></label><label>Закупка, ₽<input name="cost" type="number" min="0" max="100000000" step="1" required value="${p.cost}"></label><label>Сортировка<input name="sort_order" type="number" min="0" max="1000000" step="1" required value="${p.sort_order}"></label></div>
  <label for="product-flavors">Вкусы</label><textarea id="product-flavors" name="flavors" rows="4" maxlength="4050" aria-describedby="product-flavors-hint">${e((p.flavors||[]).join('\n'))}</textarea>
- <p id="product-flavors-hint" class="field-hint">Один вкус в строке. Оставьте поле пустым для товара без вкусов. Остаток общий для всех вкусов.</p>
+ <p id="product-flavors-hint" class="field-hint">Один вкус в строке. Количество и наценку по вкусам можно указать в закупке.</p>
  <p class="field-hint">Остатки поступают через документы закупки.</p>
  ${descriptionEditor(p.short_description,'product-short-description','Краткое описание','short_description')}${descriptionEditor(p.description,'product-description','Описание')}<label class="switch-row"><span><strong>Товар в работе</strong><small>Выключите, чтобы перенести в архив. Отзывы и история сохранятся.</small></span><input type="checkbox" class="switch" name="active" ${p.active?'checked':''}></label>${id?`<label class="switch-row"><span><strong>Показывать в боте</strong><small>Видимость не переносит товар в архив.</small></span><input type="checkbox" name="visible" ${p.visible?'checked':''} ${p.stock===0?'disabled':''}></label>`:''}${formActions(id?'Сохранить':'Добавить товар')}</form>`);
  const form=$('#product-form');form._photos=images;renderProductPhotos(form);
@@ -273,16 +273,70 @@ async function saveCustomerBalance(form,fields){
  }
  customerBalanceDrafts.delete(id);await refresh();if(form.isConnected)closeModal();toast(result.repeated?'Предыдущее сохранение подтверждено':'Баланс клиента сохранён');
 }
-let purchaseDraft=null,purchaseCategory=null,purchaseKind='purchase',documentEditing=true;
+let purchaseDraft=null,purchaseCategory=null,purchaseOptionsId=null,purchaseKind='purchase',documentEditing=true;
 function purchaseModal(id,kind='purchase',editing=false){
- purchaseKind=kind;purchaseCategory=null;
+ purchaseKind=kind;purchaseCategory=null;purchaseOptionsId=null;
  const saved=(state.data[kind==='sale'?'sales':'purchases']||[]).find(p=>p.id===id);
  documentEditing=!saved||!saved.posted||editing;const locked=!documentEditing,label=kind==='sale'?'Продажа':'Закупка';
  purchaseDraft=saved?{...saved,items:saved.items.map(i=>({...i,cost:kind==='sale'?i.price:i.cost})),posted:Boolean(saved.posted)}:{supplier:'',customer:'',store:'',posted:true,paid:0,comment:'',items:[],request_key:crypto.randomUUID()};
+ if(documentEditing)for(const item of purchaseDraft.items)if(item.flavors)item.flavors=editableDocumentFlavors(item);
  openModal(saved?`${label} #${saved.id}`:`Создание документа / ${kind==='sale'?'продажа':'закупка'}`,'',`<div class="purchase-layout"><aside class="purchase-catalog"><label>Поиск категорий и товаров<input type="search" id="purchase-search" placeholder="Категория или товар…"></label><div id="purchase-catalog-list"></div></aside><form id="purchase-form"><div class="purchase-actions">${locked?`<span class="badge published">Документ проведён</span><button type="button" class="button primary" data-action="edit-document" data-id="${saved.id}" data-kind="${kind}">Изменить документ</button>`:'<button type="submit" class="button primary">Сохранить</button>'}<button type="button" class="button secondary" data-action="purchase-print">Печать</button><span class="muted">${saved?dateTime(saved.created_at):'Новый документ'}</span></div><label class="purchase-posted"><input type="checkbox" name="posted" ${purchaseDraft.posted?'checked':''} ${locked?'disabled':''}> Документ проведён</label><div class="purchase-body"><h2>${label} ${saved?'#'+saved.id:''}</h2><label>${kind==='sale'?'Покупатель':'Поставщик'}<input name="${kind==='sale'?'customer':'supplier'}" required maxlength="200" placeholder="${kind==='sale'?'Имя покупателя':'Название поставщика'}" value="${e(kind==='sale'?purchaseDraft.customer:purchaseDraft.supplier)}" ${locked?'readonly':''}></label><div class="purchase-tabs" role="tablist" aria-label="Закупка"><button type="button" role="tab" aria-selected="true" data-action="purchase-tab" data-value="items" id="purchase-tab-items" aria-controls="purchase-items-panel">Товары</button><button type="button" role="tab" aria-selected="false" data-action="purchase-tab" data-value="payment" id="purchase-tab-payment" aria-controls="purchase-payment-panel">Счета и оплата</button></div><section id="purchase-items-panel" role="tabpanel" aria-labelledby="purchase-tab-items"><label class="sr-only" for="purchase-item-search">Поиск по товарам в документе</label><input type="search" id="purchase-item-search" placeholder="Поиск по товарам в документе"><div class="table-scroll"><table class="purchase-items-table"><thead><tr><th>№</th><th>Наименование</th><th>Код товара</th><th>Ед. изм.</th><th>Кол-во</th><th>Цена ${kind==='sale'?'продажи':'закупки'}, ₽</th><th>Итог, ₽</th><th></th></tr></thead><tbody id="purchase-rows"></tbody></table></div></section><section id="purchase-payment-panel" role="tabpanel" aria-labelledby="purchase-tab-payment" hidden><label>Оплачено, ₽<input name="paid" type="number" min="0" max="100000000" step="1" required value="${purchaseDraft.paid}" ${locked?'readonly':''}></label><p class="muted">${kind==='sale'?'Поступление':'Расход'} записывается на оплаченную сумму.</p></section><div class="purchase-totals"><div><span>Итого:</span><strong id="purchase-total"></strong></div><div><span>Оплачено:</span><strong id="purchase-paid"></strong></div><div><span>К оплате:</span><strong id="purchase-due"></strong></div></div><label>Комментарий<textarea name="comment" maxlength="2000" rows="4" ${locked?'readonly':''}>${e(purchaseDraft.comment)}</textarea></label><p class="statistics-note">${kind==='sale'?'При проведении списываются товары со склада.':'При проведении увеличиваются остатки и обновляется закупочная цена товаров.'} Черновик не меняет склад и финансы. Суммы — в целых рублях.</p><div class="form-error" role="alert"></div></div></form></div>`,true);
  $('.modal').classList.add('purchase-modal');renderPurchaseCatalog();renderPurchaseRows();
 }
 function purchaseLocked(){return !documentEditing;}
+function documentProduct(item){
+ return state.data.products.find(product=>product.id===item.product_id);
+}
+function editableDocumentFlavors(item){
+ const product=documentProduct(item);
+ const saved=new Map((item.flavors??[]).map(row=>[row.name,row]));
+ const options=new Map((product?.flavor_options??[]).map(option=>[option.name,option]));
+ if(purchaseKind==='sale'&&(product?.unassigned_stock>0||saved.has(null)))options.set(null,{name:null});
+ for(const flavor of saved.values())if(!options.has(flavor.name))options.set(flavor.name,flavor);
+ return [...options.values()].map(({name,markup=0})=>({
+  name, quantity:saved.get(name)?.quantity??0, markup, originalMarkup:markup
+ }));
+}
+function renderDocumentFlavors(item, locked){
+ const rows=item.flavors??editableDocumentFlavors(item);
+ const purchase=purchaseKind==='purchase';
+ return `<tr id="purchase-options-${item.product_id}" class="purchase-options"><td colspan="8"><div class="purchase-options-panel">
+  ${rows.length?`<div class="purchase-option-grid ${purchase?'':'sale-options'}">
+    <strong>Название</strong><strong>Кол-во</strong>${purchase?'<strong>Наценка ±, ₽</strong>':''}
+    ${rows.map((row,index)=>{
+     const name=row.name??'Без выбора вкуса';
+     return `<span>${e(name)}</span><input type="number" min="0" max="1000000" step="1" value="${row.quantity}" aria-label="Количество: ${e(name)}" data-document-flavor="quantity" data-index="${index}" ${locked?'readonly':''}>
+       ${purchase?`<input type="number" min="-100000000" max="100000000" step="1" value="${row.markup}" aria-label="Наценка: ${e(name)}" data-document-flavor="markup" data-index="${index}" ${locked?'readonly':''}>`:''}`;
+    }).join('')}
+  </div>`:''}
+  ${purchase&&!locked?`<div class="purchase-option-add">
+    <label for="new-purchase-flavor">Новый вкус</label><input id="new-purchase-flavor" type="text" maxlength="80">
+    <button type="button" class="button secondary" data-action="purchase-add-flavor" data-id="${item.product_id}">${icon('plus')}Добавить</button>
+  </div>`:''}
+ </div></td></tr>`;
+}
+function updateDocumentQuantity(item){
+ item.quantity=item.flavors.reduce((total, row)=>total+row.quantity,0);
+ const quantity=$(`[data-purchase-quantity="${item.product_id}"]`);
+ quantity.value=item.quantity;
+ quantity.readOnly=true;
+ quantity.classList.add('purchase-quantity-total');
+ $(`[data-purchase-line="${item.product_id}"]`).textContent=money(item.quantity*item.cost);
+ updatePurchaseTotals();
+}
+function addPurchaseFlavor(id){
+ const item=purchaseDraft.items.find(item=>item.product_id===id);
+ const input=$('#new-purchase-flavor');
+ const name=input.value.trim().normalize('NFC');
+ if(!name){input.focus();return;}
+ const rows=item.flavors??editableDocumentFlavors(item);
+ if(rows.some(row=>row.name.toLocaleLowerCase('ru')===name.toLocaleLowerCase('ru')))throw new Error('Вкус с таким названием уже есть.');
+ if(rows.length>=50)throw new Error('Добавьте до 50 вкусов.');
+ item.flavors=[...rows,{name,quantity:0,markup:0,originalMarkup:0}];
+ item.quantity=item.flavors.reduce((total,row)=>total+row.quantity,0);
+ renderPurchaseRows();
+ $(`[data-document-flavor="quantity"][data-index="${rows.length}"]`).focus();
+}
 function renderPurchaseCatalog(){
  const query=($('#purchase-search')?.value||'').toLocaleLowerCase('ru');
  const all=state.data.products.filter(p=>p.active);
@@ -297,7 +351,17 @@ function renderPurchaseCatalog(){
 }
 function renderPurchaseRows(){
  const query=($('#purchase-item-search')?.value||'').toLocaleLowerCase('ru'),locked=purchaseLocked();
- $('#purchase-rows').innerHTML=purchaseDraft.items.map((item,i)=>({item,i})).filter(({item})=>item.name.toLocaleLowerCase('ru').includes(query)).map(({item,i})=>`<tr><td>${i+1}</td><td><strong>${e(item.name)}</strong></td><td>${e(item.sku)}</td><td>шт.</td><td><input type="number" data-purchase-quantity="${item.product_id}" aria-label="Количество ${e(item.name)}" min="1" max="1000000" step="1" required value="${item.quantity}" ${locked?'readonly':''}></td><td><input type="number" data-purchase-cost="${item.product_id}" aria-label="Цена закупки ${e(item.name)}" min="0" max="100000000" step="1" required value="${item.cost}" ${locked?'readonly':''}></td><td data-purchase-line="${item.product_id}">${money(item.quantity*item.cost)}</td><td>${locked?'':`<button type="button" class="icon-button danger" data-action="purchase-remove" data-id="${item.product_id}" aria-label="Убрать ${e(item.name)}">${icon('close')}</button>`}</td></tr>`).join('')||'<tr><td colspan="8" class="purchase-empty">Выберите товары из списка слева</td></tr>';
+ $('#purchase-rows').innerHTML=purchaseDraft.items.map((item,i)=>({item,i})).filter(({item})=>item.name.toLocaleLowerCase('ru').includes(query)).map(({item,i})=>{
+  const id=item.product_id;
+  const expanded=purchaseOptionsId===id;
+  const hasOptions=Boolean(item.flavors)||!locked&&(purchaseKind==='purchase'||documentProduct(item)?.flavor_stock_tracked&&documentProduct(item)?.flavors.length);
+  const name=hasOptions?`<button type="button" class="text-button purchase-option-link" data-action="purchase-options" data-id="${id}" aria-expanded="${expanded}">${e(item.name)} ${icon('chevron')}</button>`:`<strong>${e(item.name)}</strong>`;
+  return `<tr><td>${i+1}</td><td>${name}</td><td>${e(item.sku)}</td><td>шт.</td>
+    <td><input type="number" class="${item.flavors?'purchase-quantity-total':''}" data-purchase-quantity="${id}" aria-label="Количество ${e(item.name)}" min="1" max="1000000" step="1" required value="${item.quantity}" ${locked||item.flavors?'readonly':''}></td>
+    <td><input type="number" data-purchase-cost="${id}" aria-label="Цена ${purchaseKind==='purchase'?'закупки':'продажи'} ${e(item.name)}" min="0" max="100000000" step="1" required value="${item.cost}" ${locked?'readonly':''}></td>
+    <td data-purchase-line="${id}">${money(item.quantity*item.cost)}</td><td>${locked?'':`<button type="button" class="icon-button danger" data-action="purchase-remove" data-id="${id}" aria-label="Убрать ${e(item.name)}">${icon('close')}</button>`}</td></tr>
+    ${expanded&&hasOptions?renderDocumentFlavors(item,locked):''}`;
+ }).join('')||'<tr><td colspan="8" class="purchase-empty">Выберите товары из списка слева</td></tr>';
  updatePurchaseTotals();
 }
 function updatePurchaseTotals(){
@@ -360,7 +424,26 @@ document.addEventListener('click',async event=>{
   else if(action==='edit-operation'){if(['purchase','sale'].includes(el.dataset.kind))purchaseModal(id,el.dataset.kind,true);else if(el.dataset.kind==='order')orderModal(id);else transactionModal(undefined,id);}
   else if(action==='delete-operation')openModal('Удалить операцию?','',`<p>Документ будет удалён из журнала. ${['purchase','sale'].includes(el.dataset.kind)?'Остатки и оплата будут пересчитаны. Изменение не выполнится, если оно приведёт к отрицательному остатку.':'Запись будет исключена из расчётов.'}</p><form id="operation-delete-form" data-id="${id}" data-kind="${el.dataset.kind}">${formActions('Удалить')}</form>`);
   else if(action==='purchase-category'||action==='purchase-categories'){purchaseCategory=action==='purchase-category'?value:null;$('#purchase-search').value='';renderPurchaseCatalog();}
-  else if(action==='purchase-add'){if(purchaseLocked())return;const p=state.data.products.find(p=>p.id===id);const item=purchaseDraft.items.find(i=>i.product_id===id);if(item)item.quantity++;else purchaseDraft.items.push({product_id:id,name:p.name,sku:p.sku,quantity:1,cost:purchaseKind==='sale'?p.price:p.cost});renderPurchaseRows();renderPurchaseCatalog();}
+  else if(action==='purchase-add'){
+   if(purchaseLocked())return;
+   const p=state.data.products.find(p=>p.id===id);
+   let item=purchaseDraft.items.find(i=>i.product_id===id);
+   if(item){if(item.flavors)purchaseOptionsId=id;else item.quantity++;}
+   else{
+    const hasFlavors=p.flavors?.length&&(purchaseKind==='purchase'||p.flavor_stock_tracked);
+    item={product_id:id,name:p.name,sku:p.sku,quantity:hasFlavors?0:1,cost:purchaseKind==='sale'?p.price:p.cost};
+    if(hasFlavors){item.flavors=editableDocumentFlavors(item);purchaseOptionsId=id;}
+    purchaseDraft.items.push(item);
+   }
+   renderPurchaseRows();
+   renderPurchaseCatalog();
+  }
+  else if(action==='purchase-options'){
+   purchaseOptionsId=purchaseOptionsId===id?null:id;
+   renderPurchaseRows();
+   $(`[data-action="purchase-options"][data-id="${id}"]`).focus({preventScroll:true});
+  }
+  else if(action==='purchase-add-flavor'){if(!purchaseLocked())addPurchaseFlavor(id);}
   else if(action==='purchase-remove'){if(purchaseLocked())return;purchaseDraft.items=purchaseDraft.items.filter(i=>i.product_id!==id);renderPurchaseRows();renderPurchaseCatalog();}
   else if(action==='purchase-tab'){for(const tab of ['items','payment']){document.getElementById('purchase-'+tab+'-panel').hidden=tab!==value;document.getElementById('purchase-tab-'+tab).setAttribute('aria-selected',String(tab===value));}}
   else if(action==='purchase-print'){$('#purchase-item-search').value='';renderPurchaseRows();window.print();}
@@ -390,6 +473,12 @@ document.addEventListener('input',event=>{
  if(target.id==='purchase-item-search')renderPurchaseRows();
  if(target.closest('#purchase-form')&&target.name==='paid')updatePurchaseTotals();
  if(target.dataset.purchaseQuantity||target.dataset.purchaseCost){const id=Number(target.dataset.purchaseQuantity||target.dataset.purchaseCost),item=purchaseDraft.items.find(i=>i.product_id===id);item[target.dataset.purchaseQuantity?'quantity':'cost']=Number(target.value)||0;document.querySelector(`[data-purchase-line="${id}"]`).textContent=money(item.quantity*item.cost);updatePurchaseTotals();}
+ if(target.dataset.documentFlavor&&!purchaseLocked()){
+  const item=purchaseDraft.items.find(item=>item.product_id===purchaseOptionsId);
+  item.flavors??=editableDocumentFlavors(item);
+  item.flavors[Number(target.dataset.index)][target.dataset.documentFlavor]=Number(target.value)||0;
+  updateDocumentQuantity(item);
+ }
  if(event.target.matches('.description-editor textarea'))event.target.closest('.description-editor').querySelector('.description-preview').innerHTML=formattedDescription(event.target.value);
  if(event.target.id==='table-search'){const position=event.target.selectionStart;state.query=event.target.value;state.pageNumber=1;renderMain();const input=$('#table-search');input.focus();try{input.setSelectionRange(position,position);}catch{}}
 });
@@ -444,7 +533,20 @@ document.addEventListener('submit',async event=>{
   else if(form.id==='delete-records-form'){for(const id of form.dataset.ids.split(','))await api(`/${form.dataset.kind}/${id}`,{method:'DELETE'});state.selected.clear();state.customerSelected.clear();await refresh();closeModal();toast('Удалено');}
   else if(form.id==='banner-form'){b.active=fd.has('active');const id=form.dataset.id;await mutate(id?`/banners/${id}`:'/banners',b,id?'PATCH':'POST');closeModal();}
   else if(form.id==='order-form'){await mutate(`/orders/${form.dataset.id}`,b);closeModal();}
-  else if(form.id==='purchase-form'){if(!purchaseDraft.items.length)throw new Error('Добавьте товары в документ.');const kind=purchaseKind,route=kind==='sale'?'sales':'purchases',payload={...purchaseDraft,...b,posted:fd.has('posted'),paid:Number(b.paid),items:purchaseDraft.items.map(item=>kind==='sale'?{product_id:item.product_id,quantity:item.quantity,price:item.cost}:item)};const saved=await api(purchaseDraft.id?`/${route}/${purchaseDraft.id}`:`/${route}`,{method:purchaseDraft.id?'PATCH':'POST',body:payload});await refresh();purchaseModal(saved.id,kind);toast(payload.posted?'Документ проведён':'Черновик сохранён');}
+  else if(form.id==='purchase-form'){
+   if(!purchaseDraft.items.length)throw new Error('Добавьте товары в документ.');
+   const kind=purchaseKind,route=kind==='sale'?'sales':'purchases';
+   const items=purchaseDraft.items.map(item=>({
+    product_id:item.product_id,quantity:item.quantity,[kind==='sale'?'price':'cost']:item.cost,
+    flavors:item.flavors?.map(row=>({
+     name:row.name,quantity:row.quantity,
+     markup:kind==='purchase'&&row.markup!==row.originalMarkup?row.markup:undefined
+    }))
+   }));
+   const payload={...purchaseDraft,...b,posted:fd.has('posted'),paid:Number(b.paid),items};
+   const saved=await api(purchaseDraft.id?`/${route}/${purchaseDraft.id}`:`/${route}`,{method:purchaseDraft.id?'PATCH':'POST',body:payload});
+   await refresh();purchaseModal(saved.id,kind);toast(payload.posted?'Документ проведён':'Черновик сохранён');
+  }
   else if(form.id==='transaction-form'){b.amount=Number(b.amount);await mutate(form.dataset.id?`/transactions/${form.dataset.id}`:'/transactions',b,form.dataset.id?'PATCH':'POST','Операция сохранена');closeModal();}
   else if(form.id==='shop-form')await mutate('/settings/shop',b);
   else if(form.id==='referral-form'){b.enabled=fd.has('enabled');await mutate('/settings/referral',b);}

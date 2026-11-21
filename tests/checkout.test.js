@@ -153,6 +153,59 @@ test('configured flavors reserve shared stock and remain in the order after the 
   assert.equal(stock(id),3);
 });
 
+test('purchases stock and price flavors independently and reverse only the recorded quantities', async () => {
+  const id = product(1);
+  const purchase = {
+    supplier:'Поставщик', paid:0, request_key:randomUUID(), posted:false,
+    items:[{product_id:id,quantity:999,cost:60,flavors:[
+      {name:'Мята',quantity:2,markup:30},{name:'Арбуз',quantity:5,markup:-20}
+    ]}]
+  };
+  const catalog = async () => (await request('/storefront','GET')).data.products.find(item=>item.id===id);
+  const stocks = async () => (await catalog()).flavor_options.map(({name,stock,markup})=>[name,stock,markup]);
+  const draft = await request('/purchases','POST',purchase,true);
+  assert.equal(draft.status,201);
+  assert.equal(stock(id),1);
+  assert.deepEqual(await stocks(),[['Мята',0,30],['Арбуз',0,-20]]);
+  const path = '/purchases/'+draft.data.id;
+  const posted = {...purchase,posted:true};
+  assert.equal((await request(path,'PATCH',posted,true)).status,200);
+  assert.equal((await request(path,'PATCH',posted,true)).status,200);
+  assert.equal(stock(id),8);
+  assert.equal((await catalog()).unassigned_stock,1);
+  const document = (await request('/bootstrap','GET',undefined,true)).data.purchases.find(item=>item.id===draft.data.id);
+  assert.equal(document.items[0].quantity,7);
+  assert.equal(document.total,420);
+  assert.deepEqual(await stocks(),[['Мята',2,30],['Арбуз',5,-20]]);
+
+  const mint={product_id:id,flavor:'Мята',quantity:2,price:230};
+  const melon={product_id:id,flavor:'Арбуз',quantity:1,price:180};
+  const buy = items => request('/storefront/orders','POST',{init_data:signedUser(1902),request_key:randomUUID(),items});
+  assert.equal((await buy([melon,{...mint,quantity:3}])).status,409);
+  assert.equal((await buy([{...mint,price:200}])).status,409);
+  assert.deepEqual(await stocks(),[['Мята',2,30],['Арбуз',5,-20]]);
+  const bought=await buy([mint,melon,{product_id:id,quantity:1,price:200}]);
+  assert.equal(bought.status,201);
+  assert.equal(bought.data.order.total,840);
+  assert.deepEqual(await stocks(),[['Мята',0,30],['Арбуз',4,-20]]);
+  assert.equal((await catalog()).unassigned_stock,0);
+  assert.equal((await request(path,'DELETE',undefined,true)).status,409);
+  const cancel = status => request('/orders/'+bought.data.order.id,'PATCH',{status},true);
+  assert.equal((await cancel('cancelled')).status,200);
+  assert.deepEqual(await stocks(),[['Мята',2,30],['Арбуз',5,-20]]);
+  assert.equal((await cancel('new')).status,200);
+  assert.equal((await cancel('cancelled')).status,200);
+
+  const sale=await request('/sales','POST',{customer:'Покупатель',paid:0,posted:true,request_key:randomUUID(),
+    items:[{product_id:id,quantity:5,price:180,flavors:[{name:'Арбуз',quantity:5}]}]},true);
+  assert.equal(sale.status,201);
+  assert.deepEqual(await stocks(),[['Мята',2,30],['Арбуз',0,-20]]);
+  assert.equal((await request('/sales/'+sale.data.id,'DELETE',undefined,true)).status,200);
+  assert.equal((await request(path,'DELETE',undefined,true)).status,200);
+  assert.equal(stock(id),1);
+  assert.deepEqual(await stocks(),[['Мята',0,30],['Арбуз',0,-20]]);
+});
+
 test('validates and preserves the meeting date in the order, history and manager notification', async () => {
   const id = product();
   const body = {...bodyFor(id),init_data:signedUser(1902)};

@@ -645,3 +645,5 @@ dialog .referral-rules :is(.referral-warning, .referral-tip) { padding: 10px; bo
 }
 .product-flavor-row + .product-flavor-row { border-top: 1px solid #eee5ea; }
 .product-flavor-row strong { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.product-flavor-row small { display: block; margin-top: 4px; color: #796671; font-size: 11px; }
+#product-quantity { display: flex; justify-content: center; margin: 16px 0 0; }
