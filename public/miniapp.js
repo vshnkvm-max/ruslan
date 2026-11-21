@@ -1210,12 +1210,16 @@ async function openCustomerOrders(more=false){
 function orderMeetingDate(value){
  return value?`<p class="order-meeting-date">Дата встречи <time datetime="${escape(value)}">${escape(value.split('-').reverse().join('.'))}</time></p>`:'';
 }
+function orderFulfillment(order){
+ return order.delivery?`<p class="order-fulfillment"><strong>${escape(order.delivery)}</strong>${order.address?`<span>${escape(order.address)}</span>`:''}</p>`:'';
+}
 function renderCustomerOrder(id){
  const state=currentCustomerHistory(),order=state.order?.id===id?state.order:null;
  show(`<h2>Заказ #${id}</h2><button class="profile-back" data-back-customer-orders>${icons.previousPhoto}${state.orderOrigin==='accruals'?'К начислениям':'К заказам'}</button>
  ${state.orderError?historyError(state.orderError,`data-retry-order="${id}"`):''}${state.orderLoading?'<p role="status">Загружаем заказ…</p>':''}
  ${order?`<p class="customer-order-status">${escape(orderStatus(order.status))} · ${reviewDate(order.created_at)}</p>
  ${orderMeetingDate(order.meeting_date)}
+ ${orderFulfillment(order)}
  <div class="customer-order-items">${order.items.map(item=>`<div><span>${escape(item.name)}<small>${item.quantity} × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity*item.price)}</strong></div>`).join('')}</div>
  <div class="customer-order-totals"><div><span>Стоимость товаров</span><strong>${moneyMarkup(order.total)}</strong></div>${order.balance_spent?`<div><span>${order.status==='cancelled'?'Рубли возвращены':'Списано рублей'}</span><strong>${moneyMarkup(order.balance_spent)}</strong></div>`:''}<div><span>${order.status==='cancelled'?'К оплате':'Итого к оплате'}</span><strong>${moneyMarkup(order.payable)}</strong></div></div>
  ${order.can_cancel?state.cancelConfirm?`<div class="profile-error"><p>Отменить заказ? Товары вернутся на склад${order.balance_spent?', списанные рубли — на баланс':''}.</p><button class="primary-button" data-confirm-order-cancel="${id}" ${state.cancelling?'disabled':''}>${state.cancelling?'Отменяем…':'Да, отменить'}</button><button class="secondary-button" data-keep-order="${id}" ${state.cancelling?'disabled':''}>Оставить заказ</button></div>`:`<button class="secondary-button customer-cancel-order" data-cancel-customer-order="${id}">Отменить заказ</button>`:''}`:''}`, 'order-detail',false);
@@ -1402,12 +1406,55 @@ function checkoutSpendLimit() {
   return Math.max(0,Math.min(Math.floor(balance),Math.floor(checkoutTotal()/2)));
 }
 const moscowDate = () => new Date().toLocaleDateString('sv-SE', {timeZone:'Europe/Moscow'});
+function checkoutFulfillment(draft) {
+  const mode = draft.delivery_method;
+  const delivery = mode === 'metro' || mode === 'address';
+  return `<fieldset id="checkout-fulfillment" class="checkout-fulfillment">
+    <legend>Способ получения</legend>
+    <div class="checkout-choices">
+      <label><input type="radio" name="checkout-receiving" id="checkout-pickup" ${delivery ? '' : 'checked'}>Самовывоз</label>
+      <label><input type="radio" name="checkout-receiving" id="checkout-delivery" ${delivery ? 'checked' : ''}>Доставка</label>
+    </div>
+    <fieldset id="checkout-delivery-fields" class="checkout-delivery-fields" hidden>
+      <legend>Куда доставить</legend>
+      <div class="checkout-choices">
+        <label><input type="radio" name="checkout-destination" value="metro" ${mode === 'address' ? '' : 'checked'}>До метро</label>
+        <label><input type="radio" name="checkout-destination" value="address" ${mode === 'address' ? 'checked' : ''}>По адресу</label>
+      </div>
+      <div class="checkout-location" id="checkout-metro-location">
+        <label for="checkout-metro">Станция метро</label>
+        <input id="checkout-metro" type="text" maxlength="120" value="${mode === 'metro' ? escape(draft.delivery_location) : ''}" aria-describedby="checkout-metro-price" required>
+        <span class="checkout-note" id="checkout-metro-price">По линии метро — 100 ₽. Возможны исключения.</span>
+      </div>
+      <div class="checkout-location" id="checkout-address-location" hidden>
+        <label for="checkout-address">Адрес доставки</label>
+        <input id="checkout-address" type="text" autocomplete="street-address" maxlength="300" value="${mode === 'address' ? escape(draft.delivery_location) : ''}" aria-describedby="checkout-address-price" required>
+        <span class="checkout-note" id="checkout-address-price">Стоимость доставки рассчитывается отдельно.</span>
+      </div>
+    </fieldset>
+  </fieldset>`;
+}
+function refreshCheckoutFulfillment() {
+  const fieldset = $('#checkout-fulfillment');
+  if (!fieldset) return;
+  const delivery = $('#checkout-delivery').checked;
+  const metro = $('input[name="checkout-destination"]:checked').value === 'metro';
+  fieldset.disabled = checkoutLocked;
+  fieldset.hidden = checkoutLocked && !checkoutDraft.delivery_method;
+  $('#checkout-delivery-fields').hidden = !delivery;
+  $('#checkout-metro-location').hidden = !metro;
+  $('#checkout-metro').disabled = !delivery || !metro;
+  $('#checkout-address-location').hidden = metro;
+  $('#checkout-address').disabled = !delivery || metro;
+  $('#checkout-payable-label').textContent = delivery ? 'К оплате за товары' : 'К оплате';
+}
 function refreshCheckoutPayment() {
   if (!checkoutDraft || !$('#details').open || $('#details').dataset.view !== 'checkout' || !$('#checkout-rubles')) return;
   const max = checkoutSpendLimit();
   if (!checkoutLocked) checkoutDraft.balance_spend = Math.min(max,Math.max(0,Math.floor(Number(checkoutDraft.balance_spend)||0)));
   const spent = Number(checkoutDraft.balance_spend)||0, toggle = $('[data-toggle-rubles]'), slider = $('#checkout-rubles');
   $('#checkout-meeting-date').disabled = checkoutLocked;
+  refreshCheckoutFulfillment();
   toggle.hidden = checkoutLocked;
   toggle.disabled = checkoutSubmitting || max === 0;
   toggle.textContent = checkoutSpendPanelOpen ? 'Не списывать' : 'Списать рубли';
@@ -1442,6 +1489,7 @@ function openCheckout() {
     <label class="checkout-meeting-date" for="checkout-meeting-date">Дата встречи
       <input id="checkout-meeting-date" type="date" min="${moscowDate()}" max="9999-12-31" value="${escape(checkoutDraft.meeting_date??'')}" required>
     </label>
+    ${checkoutFulfillment(checkoutDraft)}
     <div class="checkout-items">${items.map(item => `<div class="checkout-item"><span>${escape(item.name)}<small>${item.quantity} шт. × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity * item.price)}</strong></div>`).join('')}</div>
     <div class="checkout-subtotal"><span>Товары</span><strong>${moneyMarkup(total)}</strong></div>
     <div class="checkout-rubles"><button class="primary-button secondary-button" data-toggle-rubles aria-expanded="false" aria-controls="checkout-rubles-panel">Списать рубли</button>
@@ -1449,7 +1497,7 @@ function openCheckout() {
       <div id="checkout-rubles-panel" hidden><label for="checkout-rubles">Списать с баланса <output id="checkout-rubles-output" for="checkout-rubles">0 ₽</output></label><input id="checkout-rubles" type="range" min="0" max="0" step="1" value="0"></div>
     </div>
     <div class="checkout-subtotal" id="checkout-wallet-row" hidden><span>Списано бонусных рублей</span><strong id="checkout-wallet-amount"></strong></div>
-    <div class="cart-total"><span>К оплате</span><strong id="checkout-payable">${moneyMarkup(total)}</strong></div>
+    <div class="cart-total"><span id="checkout-payable-label">К оплате</span><strong id="checkout-payable">${moneyMarkup(total)}</strong></div>
     <p class="checkout-cash-note">${icons.wallet}Оплата только наличными</p>
     ${cashback > 0 ? `<div class="checkout-subtotal checkout-cashback"><span>Кэшбек ${cashbackPercent}% после выполнения</span><strong>+${moneyMarkup(cashback)}</strong></div>` : ''}
     <p class="checkout-error" role="alert" hidden></p>
@@ -1473,6 +1521,16 @@ async function confirmCheckout() {
       return;
     }
     draft.meeting_date = date.value;
+    const method = $('#checkout-delivery').checked ? $('input[name="checkout-destination"]:checked').value : 'pickup';
+    const location = method === 'pickup' ? null : $(`#checkout-${method}`);
+    if (location && (!location.value.trim() || !location.validity.valid)) {
+      errorElement.hidden = false;
+      errorElement.textContent = method === 'metro' ? 'Укажите станцию метро.' : 'Укажите адрес доставки.';
+      location.focus();
+      return;
+    }
+    draft.delivery_method = method;
+    draft.delivery_location = location?.value.trim();
   }
   const confirm = $('[data-confirm-checkout]'), cancel = $('[data-cancel-checkout]');
   checkoutSubmitting = true; confirm.disabled = true; cancel.disabled = true; confirm.textContent = 'Подтверждаем…'; errorElement.hidden = true;
@@ -1513,8 +1571,9 @@ async function confirmCheckout() {
     if ($('#details').open && modalVersion === dialogVersion) {
       show(`<h2>${title}</h2>
         ${orderMeetingDate(order.meeting_date)}
+        ${orderFulfillment(order)}
         ${order.balance_spent ? `<div class="checkout-subtotal"><span>${cancelled ? 'Возвращено рублей' : 'Оплата рублями'}</span><strong>${moneyMarkup(order.balance_spent)}</strong></div>` : ''}
-        <div class="cart-total"><span>К оплате</span><strong>${moneyMarkup(order.payable??order.total)}</strong></div>
+        <div class="cart-total"><span>${order.address ? 'К оплате за товары' : 'К оплате'}</span><strong>${moneyMarkup(order.payable??order.total)}</strong></div>
         ${managerId ? `<p class="checkout-manager">Telegram ID менеджера <a href="tg://user?id=${managerId}">${managerId}</a></p>` : ''}
         <button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
     } else notify(managerId ? `${title}. Telegram ID менеджера ${managerId}` : title);
@@ -1693,6 +1752,7 @@ function handleCartAction(event) {
 }
 $('#detail-content').onclick = handleCartAction;
 $('#detail-content').addEventListener('change',event=>{
+ if(event.target.matches('#checkout-fulfillment input[type="radio"]'))refreshCheckoutFulfillment();
  if(event.target.id==='review-sort'){reviewFeed.sort=event.target.value;void loadReviewFeed();}
  if(event.target.id==='review-media-only'){reviewFeed.media=event.target.checked;void loadReviewFeed();}
  if(event.target.id==='review-files')void uploadReviewFiles([...event.target.files]);

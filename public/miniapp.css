@@ -160,14 +160,14 @@ button:disabled { cursor: default; }
 .secondary-button { background: #fff7fa; color: #6e4d5b; box-shadow: none; }
 dialog[data-view="checkout"] { position: fixed; inset: auto 0 0; width: 100%; max-width: var(--app-width); max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); margin: 0 auto; border: 0; border-radius: 24px 24px 0 0; padding-bottom: max(28px, env(safe-area-inset-bottom)); background: #fff9fb; overscroll-behavior: contain; }
 dialog[data-view="checkout"] > .close { display: none; }
-.checkout-meeting-date {
+.checkout-meeting-date, .checkout-location {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   font-size: 14px;
   font-weight: 650;
 }
-.checkout-meeting-date input {
+.checkout-meeting-date input, .checkout-location input {
   display: block;
   -webkit-appearance: none;
   appearance: none;
@@ -190,7 +190,33 @@ dialog[data-view="checkout"] > .close { display: none; }
   text-align: start;
 }
 .checkout-meeting-date input:disabled { opacity: .75; }
-dialog .checkout-cash-note, dialog .order-meeting-date, dialog .checkout-manager {
+.checkout-fulfillment, .checkout-delivery-fields {
+  min-inline-size: 0;
+  margin: 14px 0 0;
+  padding: 0;
+  border: 0;
+}
+.checkout-fulfillment legend { padding: 0; margin-bottom: 8px; font-size: 14px; font-weight: 650; }
+.checkout-delivery-fields legend { font-size: 13px; }
+.checkout-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.checkout-choices label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 9px;
+  border: 1px solid #dfd0d8;
+  border-radius: 12px;
+  background: #fff;
+  color: #382f35;
+  font-size: 13px;
+  font-weight: 650;
+}
+.checkout-choices input { flex: 0 0 auto; margin: 0; accent-color: var(--red); }
+.checkout-choices label:has(input:checked) { border-color: #da8293; background: #fff0f3; }
+.checkout-location { margin: 12px 0 0; }
+.checkout-location .checkout-note { font-weight: 400; }
+dialog .checkout-cash-note, dialog .order-meeting-date, dialog .checkout-manager, dialog .order-fulfillment {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -202,6 +228,7 @@ dialog .checkout-cash-note, dialog .order-meeting-date, dialog .checkout-manager
   font-size: 13px;
   font-weight: 650;
 }
+dialog .order-fulfillment { display: grid; gap: 4px; overflow-wrap: anywhere; }
 .checkout-manager { flex-wrap: wrap; }
 .checkout-manager a {
   color: inherit;

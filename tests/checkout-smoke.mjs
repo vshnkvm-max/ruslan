@@ -47,6 +47,12 @@ try {
   await page.locator('#product-add').click();
   await page.locator('[data-open-cart]').click();
   await page.locator('[data-checkout]').click();
+  const pickup = page.getByRole('radio',{name:'Самовывоз',exact:true});
+  const delivery = page.getByRole('radio',{name:'Доставка',exact:true});
+  const metroInput = page.locator('#checkout-metro');
+  const addressInput = page.locator('#checkout-address');
+  assert.equal(await pickup.isChecked(),true);
+  assert.equal(await metroInput.isHidden(),true);
   assert.match(await page.locator('dialog').innerText(), /Тестовый товар/);
   assert.match(await page.locator('dialog').innerText(), /2\s*300/);
   const cashback = page.locator('.checkout-cashback');
@@ -75,9 +81,18 @@ try {
   await page.locator('.checkout-error:not([hidden])').filter({hasText:'Выберите дату встречи'}).waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n,0);
   await dateInput.fill(meetingDate);
+  await delivery.check();
+  assert.equal(await metroInput.isVisible(),true);
+  assert.equal(await addressInput.isHidden(),true);
+  await page.locator('[data-confirm-checkout]').click();
+  assert.match(await page.locator('.checkout-error').innerText(),/Укажите станцию метро/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n,0);
+  await metroInput.fill('Площадь Маркса');
+  assert.equal(await page.locator('#checkout-payable-label').innerText(),'К оплате за товары');
   const saved = page.waitForResponse(response => response.url().endsWith('/api/storefront/orders'));
   await page.locator('[data-confirm-checkout]').click(); await saved;
   await page.getByRole('heading', { name: 'Заказ #1 принят', exact: true }).waitFor();
+  assert.match(await page.locator('.order-fulfillment').innerText(),/Доставка до метро\s+Площадь Маркса/);
   const manager = page.locator('.checkout-manager');
   assert.match(await manager.innerText(), /Telegram ID менеджера/);
   assert.equal(await manager.getByRole('link', {name:managerId, exact:true}).getAttribute('href'), 'tg://user?id=' + managerId);
@@ -94,6 +109,13 @@ try {
   await page.locator('[data-checkout]').click();
   await page.locator('[data-toggle-rubles]').click();assert.equal(await page.locator('#checkout-rubles').inputValue(),'840');
   await dateInput.fill(meetingDate);
+  await delivery.check();
+  await page.getByRole('radio',{name:'По адресу',exact:true}).check();
+  assert.equal(await metroInput.isHidden(),true);
+  await page.locator('[data-confirm-checkout]').click();
+  assert.match(await page.locator('.checkout-error').innerText(),/Укажите адрес доставки/);
+  const streetAddress = 'ул. Ленина, 10';
+  await addressInput.fill(streetAddress);
   await page.route('**/api/storefront/orders', async route => { await route.fetch(); await route.abort('failed'); });
   await page.locator('[data-confirm-checkout]').click(); await page.locator('.checkout-error:not([hidden])').waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2);
@@ -102,8 +124,11 @@ try {
   await page.locator('#cart-tab').click(); await page.getByRole('button', { name: 'Проверить заказ', exact: true }).click();
   assert.equal(await dateInput.inputValue(),meetingDate);
   assert.equal(await dateInput.isDisabled(),true);
+  assert.equal(await addressInput.inputValue(),streetAddress);
+  assert.equal(await addressInput.isDisabled(),true);
   assert.match(await page.locator('#checkout-rubles-limit').innerText(),/840/);assert.equal(await page.locator('#checkout-rubles-panel').isHidden(),true);
   await page.locator('[data-confirm-checkout]').click(); await page.getByRole('heading', { name: 'Заказ #2 принят', exact: true }).waitFor();
+  assert.match(await page.locator('.order-fulfillment').innerText(),/Доставка по адресу\s+ул\. Ленина, 10/);
   await manager.getByRole('link', {name:managerId, exact:true}).waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n, 2); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 2);
 
@@ -113,12 +138,14 @@ try {
   const displayMeetingDate = meetingDate.split('-').reverse().join('.');
   await admin.getByRole('columnheader',{name:'Дата встречи',exact:true}).waitFor();
   await orderRow.getByRole('cell',{name:displayMeetingDate,exact:true}).waitFor();
+  assert.equal(await orderRow.locator('.order-destination').innerText(),streetAddress);
   await orderRow.locator('[data-action=order-detail]').first().click();
   await admin.locator('#order-form').waitFor();
   assert.doesNotMatch(await admin.locator('#order-form').innerText(),/Выполненные заказы включаются|Товары зарезервированы/);
   assert.match(await admin.locator('.modal').innerText(), /Тестовый Покупатель/);
   assert.match(await admin.locator('.modal').innerText(), /Не задан ORDER_BOT_TOKEN/);
   await admin.locator('.modal').getByText(displayMeetingDate,{exact:true}).waitFor();
+  assert.match(await admin.locator('.modal .order-destination').innerText(),/Доставка по адресу · ул\. Ленина, 10/);
   await admin.locator('#order-status').selectOption('cancelled'); await admin.locator('#order-form [type=submit]').click();
   await admin.locator('.modal').waitFor({ state: 'detached' }); assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock, 3);
   assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,840);
@@ -194,6 +221,7 @@ try {
   }), 'the date field aligns with checkout content on a narrow screen');
   await page.locator('[data-confirm-checkout]').click();
   await page.getByRole('heading',{name:'Заказ #3 принят',exact:true}).waitFor();
+  assert.equal(await page.locator('.order-fulfillment').innerText(),'Самовывоз');
   assert.deepEqual(db.prepare('SELECT name FROM order_items WHERE order_id=3 ORDER BY id').all().map(row=>row.name),['Тестовый товар — Ягода','Тестовый товар — Мята']);
   assert.deepEqual(db.prepare('SELECT price FROM order_items WHERE order_id=3 ORDER BY id').all().map(row=>row.price),[2400,2250]);
   assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock,4);
@@ -208,7 +236,9 @@ try {
   const credit = page.locator('.balance-history-row').filter({hasText:'Кэшбек за заказ #1'});
   await credit.waitFor();
   assert.match(await credit.innerText(),/\+115\s₽/);
+  await credit.getByRole('button',{name:'Открыть заказ',exact:true}).click();
+  await page.locator('.order-fulfillment').getByText('Площадь Маркса',{exact:true}).waitFor();
   assert.deepEqual(errors, []);
-  console.log('PASS: mobile checkout, manager contact in confirmation, wallet payments and refunds, retry, flavors, meeting date, cash notice, cashback preview and balance history');
+  console.log('PASS: mobile checkout, pickup and delivery details, manager contact, wallet payments and refunds, retry, flavors, meeting date, cash notice, cashback and order history');
   await context.close();
 } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); rmSync(directory, { recursive: true, force: true }); }

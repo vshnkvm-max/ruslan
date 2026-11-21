@@ -227,3 +227,42 @@ test('validates and preserves the meeting date in the order, history and manager
   assert.ok(text.includes('Дата встречи: '+meeting_date.split('-').reverse().join('.')));
   assert.ok(text.includes('К ОПЛАТЕ: 400 ₽ наличными'));
 });
+
+test('checkout validates delivery and preserves the selected location in receipts, history and manager notifications', async () => {
+  const id = product(10);
+  const body = {...bodyFor(id),init_data:signedUser(1903)};
+  for (const invalid of [
+    {delivery_method:'delivery'},
+    {delivery_method:'metro'},
+    {delivery_method:'metro',delivery_location:'а'.repeat(121)},
+    {delivery_method:'address',delivery_location:'   '},
+    {delivery_method:'address',delivery_location:'улица\nквартира'}
+  ]) {
+    assert.equal((await request('/storefront/orders','POST',{...body,...invalid})).status,400);
+  }
+  assert.equal(stock(id),10);
+
+  for (const [method,location,delivery,address] of [
+    ['pickup',undefined,'Самовывоз',''],
+    ['metro','  Площадь Маркса  ','Доставка до метро','Площадь Маркса'],
+    ['address','ул. Ленина, 10, кв. 4','Доставка по адресу','ул. Ленина, 10, кв. 4']
+  ]) {
+    const payload = {...body,request_key:randomUUID(),delivery_method:method,delivery_location:location};
+    const created = await request('/storefront/orders','POST',payload);
+    assert.equal(created.status,201);
+    const order = created.data.order;
+    assert.equal(order.delivery,delivery);
+    assert.equal(order.address,address);
+    const retry = await request('/storefront/orders','POST',{...payload,delivery_method:'pickup'});
+    assert.equal(retry.status,200);
+    assert.equal(retry.data.order.id,order.id);
+    assert.equal(retry.data.order.delivery,delivery);
+    assert.equal(retry.data.order.address,address);
+    const history = await request('/storefront/orders/'+order.id,'POST',{init_data:body.init_data});
+    assert.equal(history.data.order.delivery,delivery);
+    assert.equal(history.data.order.address,address);
+    const messages = JSON.parse(app.db.prepare('SELECT messages FROM order_notifications WHERE order_id=?').get(order.id).messages).join('\n');
+    assert.ok(messages.includes('Получение: '+delivery+(address?' · '+address:'')));
+  }
+  assert.equal(stock(id),4);
+});

@@ -121,6 +121,8 @@ h1,h2,h3{letter-spacing:-.025em}button:focus-visible,a:focus-visible{outline-col
 .review-bottom>div{flex-wrap:wrap}
 
 button[data-action="order-detail"]:is(.text-button, .customer-order) { color: #000; }
+.order-destination { white-space: normal; overflow-wrap: anywhere; }
+.cell-note.order-destination { max-width: 220px; }
 
 .purchase-items-table .purchase-quantity-total { background: #edf1f6; color: #4b6179; }
 .purchase-option-link { font-size: 12px; text-align: left; }
