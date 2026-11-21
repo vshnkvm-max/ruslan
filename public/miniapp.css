@@ -252,7 +252,7 @@ dialog .checkout-cash-note, dialog .order-meeting-date, dialog .checkout-manager
 .profile-error { margin: 12px 0; padding: 12px; border-radius: 14px; background: #fff0f3; color: #9c3e58; }
 .profile-error p { margin: 0; font-size: 12px; }
 .profile-error .primary-button { margin-top: 10px; }
-.profile-order { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid #9c82901c; font-size: 12px; }
+.profile-order { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-top: 1px solid #9c82901c; color: #000; font-size: 12px; }
 .profile-order > div { min-width: 0; }
 .profile-order small { display: block; margin-top: 5px; color: #897682; font-size: 10px; }
 .profile-order > strong { white-space: nowrap; }

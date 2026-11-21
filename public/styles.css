@@ -119,3 +119,5 @@ h1,h2,h3{letter-spacing:-.025em}button:focus-visible,a:focus-visible{outline-col
 .admin-review-media{display:flex;gap:12px;overflow-x:auto;margin:12px 0}.admin-review-media>img,.admin-review-media>video{width:200px;height:160px;flex:0 0 200px;object-fit:contain;border-radius:12px;background:#eef0f2}.admin-review-media>video{background:#111}
 
 .review-bottom>div{flex-wrap:wrap}
+
+button[data-action="order-detail"]:is(.text-button, .customer-order) { color: #000; }
