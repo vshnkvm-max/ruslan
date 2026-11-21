@@ -88,11 +88,19 @@ try {
   assert.match(await page.locator('.checkout-error').innerText(),/Укажите станцию метро/);
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n,0);
   await metroInput.fill('Площадь Маркса');
-  assert.equal(await page.locator('#checkout-payable-label').innerText(),'К оплате за товары');
+  const deliveryFeeRow = page.locator('#checkout-delivery-fee-row');
+  assert.match(await deliveryFeeRow.innerText(),/Доставка до метро\s*100\s*₽/);
+  assert.equal(await page.locator('#checkout-payable-label').innerText(),'К оплате');
+  assert.match(await page.locator('#checkout-payable').innerText(),/1\s*700/);
+  await page.getByRole('radio',{name:'По адресу',exact:true}).check();
+  assert.equal(await deliveryFeeRow.isHidden(),true);
+  assert.match(await page.locator('#checkout-payable').innerText(),/1\s*600/);
+  await page.getByRole('radio',{name:'До метро',exact:true}).check();
   const saved = page.waitForResponse(response => response.url().endsWith('/api/storefront/orders'));
   await page.locator('[data-confirm-checkout]').click(); await saved;
   await page.getByRole('heading', { name: 'Заказ #1 принят', exact: true }).waitFor();
   assert.match(await page.locator('.order-fulfillment').innerText(),/Доставка до метро\s+Площадь Маркса/);
+  assert.match(await page.locator('dialog .cart-total').innerText(),/1\s*700/);
   const manager = page.locator('.checkout-manager');
   assert.match(await manager.innerText(), /Telegram ID менеджера/);
   assert.equal(await manager.getByRole('link', {name:managerId, exact:true}).getAttribute('href'), 'tg://user?id=' + managerId);
@@ -227,6 +235,8 @@ try {
   assert.equal(db.prepare('SELECT stock FROM products WHERE id=1').get().stock,4);
   await admin.goto(base+'/#orders');
   await admin.locator('[data-action=order-detail][data-id="1"]').first().click();
+  assert.match(await admin.locator('.modal .order-line').filter({hasText:'Доставка до метро'}).innerText(),/100\s*₽/);
+  assert.match(await admin.locator('.modal .order-total').innerText(),/1\s*700/);
   await admin.locator('#order-status').selectOption('completed');
   await admin.locator('#order-form [type=submit]').click();
   await admin.locator('.modal').waitFor({state:'detached'});
@@ -238,6 +248,8 @@ try {
   assert.match(await credit.innerText(),/\+115\s₽/);
   await credit.getByRole('button',{name:'Открыть заказ',exact:true}).click();
   await page.locator('.order-fulfillment').getByText('Площадь Маркса',{exact:true}).waitFor();
+  assert.match(await page.locator('.customer-order-totals').innerText(),/Доставка до метро\s+100\s*₽/);
+  assert.match(await page.locator('.customer-order-totals').innerText(),/К оплате\s+1\s*700\s*₽/);
   assert.deepEqual(errors, []);
   console.log('PASS: mobile checkout, pickup and delivery details, manager contact, wallet payments and refunds, retry, flavors, meeting date, cash notice, cashback and order history');
   await context.close();

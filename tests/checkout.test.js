@@ -228,9 +228,13 @@ test('validates and preserves the meeting date in the order, history and manager
   assert.ok(text.includes('К ОПЛАТЕ: 400 ₽ наличными'));
 });
 
-test('checkout validates delivery and preserves the selected location in receipts, history and manager notifications', async () => {
+test('checkout validates delivery and charges the saved metro fee once per order', async () => {
   const id = product(10);
-  const body = {...bodyFor(id),init_data:signedUser(1903)};
+  const extra = product(10);
+  const body = {...bodyFor(id),init_data:signedUser(1903),items:[
+    {product_id:id,quantity:2,price:200},{product_id:extra,quantity:1,price:200}
+  ]};
+  assert.equal((await request('/storefront','GET')).data.metro_delivery_fee,100);
   for (const invalid of [
     {delivery_method:'delivery'},
     {delivery_method:'metro'},
@@ -240,29 +244,49 @@ test('checkout validates delivery and preserves the selected location in receipt
   ]) {
     assert.equal((await request('/storefront/orders','POST',{...body,...invalid})).status,400);
   }
+  const stale = await request('/storefront/orders','POST',{...body,delivery_method:'metro',delivery_location:'Площадь Маркса',delivery_fee:0});
+  assert.equal(stale.status,409);
   assert.equal(stock(id),10);
+  assert.equal(stock(extra),10);
 
-  for (const [method,location,delivery,address] of [
-    ['pickup',undefined,'Самовывоз',''],
-    ['metro','  Площадь Маркса  ','Доставка до метро','Площадь Маркса'],
-    ['address','ул. Ленина, 10, кв. 4','Доставка по адресу','ул. Ленина, 10, кв. 4']
+  for (const [method,location,delivery,address,fee] of [
+    ['pickup',undefined,'Самовывоз','',0],
+    ['metro','  Площадь Маркса  ','Доставка до метро','Площадь Маркса',100],
+    ['address','ул. Ленина, 10, кв. 4','Доставка по адресу','ул. Ленина, 10, кв. 4',0]
   ]) {
-    const payload = {...body,request_key:randomUUID(),delivery_method:method,delivery_location:location};
+    const payload = {...body,request_key:randomUUID(),delivery_method:method,delivery_location:location,delivery_fee:fee};
     const created = await request('/storefront/orders','POST',payload);
     assert.equal(created.status,201);
     const order = created.data.order;
     assert.equal(order.delivery,delivery);
     assert.equal(order.address,address);
-    const retry = await request('/storefront/orders','POST',{...payload,delivery_method:'pickup'});
+    assert.equal(order.delivery_fee,fee);
+    assert.equal(order.payable,600+fee);
+    const retry = await request('/storefront/orders','POST',{...payload,delivery_method:'pickup',delivery_fee:0});
     assert.equal(retry.status,200);
     assert.equal(retry.data.order.id,order.id);
     assert.equal(retry.data.order.delivery,delivery);
     assert.equal(retry.data.order.address,address);
+    assert.equal(retry.data.order.delivery_fee,fee);
+    assert.equal(retry.data.order.payable,600+fee);
     const history = await request('/storefront/orders/'+order.id,'POST',{init_data:body.init_data});
     assert.equal(history.data.order.delivery,delivery);
     assert.equal(history.data.order.address,address);
+    assert.equal(history.data.order.payable,600+fee);
     const messages = JSON.parse(app.db.prepare('SELECT messages FROM order_notifications WHERE order_id=?').get(order.id).messages).join('\n');
     assert.ok(messages.includes('Получение: '+delivery+(address?' · '+address:'')));
+    if(fee){
+      assert.ok(messages.includes('ДОСТАВКА: 100 ₽'));
+      assert.ok(messages.includes('К ОПЛАТЕ: 700 ₽ наличными'));
+      assert.equal((await request('/orders/'+order.id,'PATCH',{status:'completed'},true)).status,200);
+      const bootstrap = (await request('/bootstrap','GET',undefined,true)).data;
+      assert.equal(bootstrap.transactions.find(transaction=>transaction.id==='o'+order.id).amount,700);
+      const balance = (await request('/storefront/transactions','POST',{init_data:body.init_data})).data;
+      assert.equal(balance.items.find(item=>item.kind==='cashback'&&item.order_id===order.id).amount,30);
+    }
   }
   assert.equal(stock(id),4);
+  assert.equal(stock(extra),7);
+  const profile = (await request('/storefront/profile','POST',{init_data:body.init_data})).data;
+  assert.equal(profile.stats.total,1900);
 });

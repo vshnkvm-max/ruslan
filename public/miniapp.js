@@ -69,6 +69,7 @@ const money = value => new Intl.NumberFormat('ru-RU', {
   style: 'currency', currency: 'RUB', maximumFractionDigits: 0
 }).format(value);
 const moneyMarkup = value => money(value).replace('₽', '<span class="currency-symbol">₽</span>');
+const metroDeliveryFee = () => data?.metro_delivery_fee ?? 0;
 // Telegram's display data is used only for presentation and local cart separation.
 // It never authorizes access to customers, orders or any other private API.
 let user = telegram?.initDataUnsafe?.user;
@@ -507,6 +508,7 @@ async function load({animateProducts=true} = {}) {
     reconcileCart();
     render(animateProducts);
     if (activePage === 'cart') renderCart();
+    refreshCheckoutPayment();
     openStartProduct();
     return true;
   } catch(error) {
@@ -1080,7 +1082,7 @@ function openInfo(type) {
         <h3 id="important-delivery-title"><span aria-hidden="true">02</span> Получение заказов</h3>
         <p>Заказ можно получить при личной встрече в месте самовывоза или оформить доставку.</p>
         <div class="important-inset"><strong>Самовывоз · бесплатно</strong><p>Новосибирск, метро «Площадь Маркса», <strong>выход № 4</strong>, ТЦ «Грани».</p></div>
-        <ul><li><strong>По линии метро — 100 ₽.</strong> Возможны исключения.</li><li><strong>Вне линии метро</strong> — стоимость рассчитывается отдельно.</li></ul>
+        <ul><li><strong>По линии метро</strong> — ${metroDeliveryFee() ? moneyMarkup(metroDeliveryFee()) : 'стоимость указана при оформлении'}.</li><li><strong>Вне линии метро</strong> — стоимость рассчитывается отдельно.</li></ul>
       </section>
 
       <section class="important-card important-returns" aria-labelledby="important-returns-title">
@@ -1195,7 +1197,7 @@ function renderCustomerOrders(){
  show(`<h2>Заказы</h2><button class="profile-back" data-back-profile>${icons.previousPhoto}В профиль</button>
  ${!state.key?'<p>Откройте магазин через Telegram, чтобы увидеть свои заказы.</p>':''}
  ${state.ordersError?historyError(state.ordersError,'data-retry-orders'):''}
- <div class="customer-order-list">${state.orders.map(order=>`<button class="profile-order customer-order-button" data-customer-order="${order.id}"><div><strong>Заказ #${order.id}</strong><small>${escape(orderStatus(order.status))} · ${reviewDate(order.created_at)}</small></div><strong>${moneyMarkup(order.total)} ${icons.arrow}</strong></button>`).join('')}</div>
+ <div class="customer-order-list">${state.orders.map(order=>`<button class="profile-order customer-order-button" data-customer-order="${order.id}"><div><strong>Заказ #${order.id}</strong><small>${escape(orderStatus(order.status))} · ${reviewDate(order.created_at)}</small></div><strong>${moneyMarkup(order.total+(order.delivery_fee??0))} ${icons.arrow}</strong></button>`).join('')}</div>
  ${state.ordersLoading?'<p role="status">Загружаем заказы…</p>':state.key&&!state.ordersError&&!state.orders.length?'<p>Заказов пока нет.</p>':''}
  ${state.ordersNext?`<button class="secondary-button" data-more-orders ${state.ordersLoading?'disabled':''}>Показать ещё</button>`:''}`, 'my-orders',false);
 }
@@ -1221,7 +1223,12 @@ function renderCustomerOrder(id){
  ${orderMeetingDate(order.meeting_date)}
  ${orderFulfillment(order)}
  <div class="customer-order-items">${order.items.map(item=>`<div><span>${escape(item.name)}<small>${item.quantity} × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity*item.price)}</strong></div>`).join('')}</div>
- <div class="customer-order-totals"><div><span>Стоимость товаров</span><strong>${moneyMarkup(order.total)}</strong></div>${order.balance_spent?`<div><span>${order.status==='cancelled'?'Рубли возвращены':'Списано рублей'}</span><strong>${moneyMarkup(order.balance_spent)}</strong></div>`:''}<div><span>${order.status==='cancelled'?'К оплате':'Итого к оплате'}</span><strong>${moneyMarkup(order.payable)}</strong></div></div>
+ <div class="customer-order-totals">
+  <div><span>Стоимость товаров</span><strong>${moneyMarkup(order.total)}</strong></div>
+  ${order.delivery_fee?`<div><span>Доставка до метро</span><strong>${moneyMarkup(order.delivery_fee)}</strong></div>`:''}
+  ${order.balance_spent?`<div><span>${order.status==='cancelled'?'Рубли возвращены':'Списано рублей'}</span><strong>${moneyMarkup(order.balance_spent)}</strong></div>`:''}
+  <div><span>${order.address&&!order.delivery_fee?'К оплате за товары':'К оплате'}</span><strong>${moneyMarkup(order.payable)}</strong></div>
+ </div>
  ${order.can_cancel?state.cancelConfirm?`<div class="profile-error"><p>Отменить заказ? Товары вернутся на склад${order.balance_spent?', списанные рубли — на баланс':''}.</p><button class="primary-button" data-confirm-order-cancel="${id}" ${state.cancelling?'disabled':''}>${state.cancelling?'Отменяем…':'Да, отменить'}</button><button class="secondary-button" data-keep-order="${id}" ${state.cancelling?'disabled':''}>Оставить заказ</button></div>`:`<button class="secondary-button customer-cancel-order" data-cancel-customer-order="${id}">Отменить заказ</button>`:''}`:''}`, 'order-detail',false);
 }
 async function openCustomerOrder(id,origin){
@@ -1400,10 +1407,10 @@ function pendingCheckout() {
     return pending && typeof pending.request_key === 'string' && Array.isArray(pending.items) && pending.items.length ? pending : null;
   } catch { return checkoutPending.get(cartKey) || null; }
 }
-function checkoutTotal() { return checkoutDraft?.items.reduce((sum,item)=>sum+item.price*item.quantity,0) || 0; }
+function checkoutGoodsTotal() { return checkoutDraft?.items.reduce((sum,item)=>sum+item.price*item.quantity,0) || 0; }
 function checkoutSpendLimit() {
   const balance = headerBalanceState.key === (telegram?.initData || '') && Number.isFinite(headerBalanceState.value) ? headerBalanceState.value : 0;
-  return Math.max(0,Math.min(Math.floor(balance),Math.floor(checkoutTotal()/2)));
+  return Math.max(0,Math.min(Math.floor(balance),Math.floor(checkoutGoodsTotal()/2)));
 }
 const moscowDate = () => new Date().toLocaleDateString('sv-SE', {timeZone:'Europe/Moscow'});
 function checkoutFulfillment(draft) {
@@ -1423,8 +1430,7 @@ function checkoutFulfillment(draft) {
       </div>
       <div class="checkout-location" id="checkout-metro-location">
         <label for="checkout-metro">Станция метро</label>
-        <input id="checkout-metro" type="text" maxlength="120" value="${mode === 'metro' ? escape(draft.delivery_location) : ''}" aria-describedby="checkout-metro-price" required>
-        <span class="checkout-note" id="checkout-metro-price">По линии метро — 100 ₽. Возможны исключения.</span>
+        <input id="checkout-metro" type="text" maxlength="120" value="${mode === 'metro' ? escape(draft.delivery_location) : ''}" required>
       </div>
       <div class="checkout-location" id="checkout-address-location" hidden>
         <label for="checkout-address">Адрес доставки</label>
@@ -1436,7 +1442,7 @@ function checkoutFulfillment(draft) {
 }
 function refreshCheckoutFulfillment() {
   const fieldset = $('#checkout-fulfillment');
-  if (!fieldset) return;
+  if (!fieldset) return 0;
   const delivery = $('#checkout-delivery').checked;
   const metro = $('input[name="checkout-destination"]:checked').value === 'metro';
   fieldset.disabled = checkoutLocked;
@@ -1446,7 +1452,11 @@ function refreshCheckoutFulfillment() {
   $('#checkout-metro').disabled = !delivery || !metro;
   $('#checkout-address-location').hidden = metro;
   $('#checkout-address').disabled = !delivery || metro;
-  $('#checkout-payable-label').textContent = delivery ? 'К оплате за товары' : 'К оплате';
+  const deliveryFee = delivery && metro ? (checkoutLocked ? checkoutDraft.delivery_fee ?? metroDeliveryFee() : metroDeliveryFee()) : 0;
+  $('#checkout-delivery-fee-row').hidden = !deliveryFee;
+  $('#checkout-delivery-fee').textContent = money(deliveryFee);
+  $('#checkout-payable-label').textContent = delivery && !deliveryFee ? 'К оплате за товары' : 'К оплате';
+  return deliveryFee;
 }
 function refreshCheckoutPayment() {
   if (!checkoutDraft || !$('#details').open || $('#details').dataset.view !== 'checkout' || !$('#checkout-rubles')) return;
@@ -1454,7 +1464,7 @@ function refreshCheckoutPayment() {
   if (!checkoutLocked) checkoutDraft.balance_spend = Math.min(max,Math.max(0,Math.floor(Number(checkoutDraft.balance_spend)||0)));
   const spent = Number(checkoutDraft.balance_spend)||0, toggle = $('[data-toggle-rubles]'), slider = $('#checkout-rubles');
   $('#checkout-meeting-date').disabled = checkoutLocked;
-  refreshCheckoutFulfillment();
+  const deliveryFee = refreshCheckoutFulfillment();
   toggle.hidden = checkoutLocked;
   toggle.disabled = checkoutSubmitting || max === 0;
   toggle.textContent = checkoutSpendPanelOpen ? 'Не списывать' : 'Списать рубли';
@@ -1463,10 +1473,10 @@ function refreshCheckoutPayment() {
   slider.max = String(checkoutLocked ? Math.max(max,spent) : max); slider.value = String(spent); slider.disabled = checkoutSubmitting || checkoutLocked || max === 0;
   slider.setAttribute('aria-valuetext',money(spent));
   $('#checkout-rubles-output').textContent = money(spent);
-  $('#checkout-rubles-limit').textContent = checkoutLocked ? `Выбрано к списанию: ${money(spent)}.` : Number.isFinite(headerBalanceState.value) ? `На балансе ${money(headerBalanceState.value)}. Можно списать до ${money(max)} — не более 50% заказа.` : 'Баланс пока недоступен. Можно оформить заказ без списания рублей.';
+  $('#checkout-rubles-limit').textContent = checkoutLocked ? `Выбрано к списанию: ${money(spent)}.` : Number.isFinite(headerBalanceState.value) ? `На балансе ${money(headerBalanceState.value)}. Можно списать до ${money(max)} — не более 50% стоимости товаров.` : 'Баланс пока недоступен. Можно оформить заказ без списания рублей.';
   $('#checkout-wallet-row').hidden = spent === 0;
   $('#checkout-wallet-amount').textContent = '−' + money(spent);
-  $('#checkout-payable').textContent = money(checkoutTotal()-spent);
+  $('#checkout-payable').textContent = money(checkoutGoodsTotal()+deliveryFee-spent);
 }
 function toggleCheckoutRubles() {
   if (checkoutSubmitting || checkoutLocked || !checkoutDraft || checkoutSpendLimit() === 0) return;
@@ -1481,7 +1491,7 @@ function openCheckout() {
   if (!items.length) return;
   checkoutDraft = pending || { request_key: crypto.randomUUID(), items, balance_spend:0 };
   checkoutLocked = Boolean(pending); checkoutSpendPanelOpen = false;
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = checkoutGoodsTotal();
   const cashbackPercent = Number(data?.cashback_percent) || 0;
   const cashback = Math.floor(total * cashbackPercent / 100);
   show(`<h2>Подтверждение заказа</h2>
@@ -1492,6 +1502,7 @@ function openCheckout() {
     ${checkoutFulfillment(checkoutDraft)}
     <div class="checkout-items">${items.map(item => `<div class="checkout-item"><span>${escape(item.name)}<small>${item.quantity} шт. × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity * item.price)}</strong></div>`).join('')}</div>
     <div class="checkout-subtotal"><span>Товары</span><strong>${moneyMarkup(total)}</strong></div>
+    <div class="checkout-subtotal" id="checkout-delivery-fee-row" hidden><span>Доставка до метро</span><strong id="checkout-delivery-fee"></strong></div>
     <div class="checkout-rubles"><button class="primary-button secondary-button" data-toggle-rubles aria-expanded="false" aria-controls="checkout-rubles-panel">Списать рубли</button>
       <p id="checkout-rubles-limit" class="checkout-note"></p>
       <div id="checkout-rubles-panel" hidden><label for="checkout-rubles">Списать с баланса <output id="checkout-rubles-output" for="checkout-rubles">0 ₽</output></label><input id="checkout-rubles" type="range" min="0" max="0" step="1" value="0"></div>
@@ -1531,6 +1542,7 @@ async function confirmCheckout() {
     }
     draft.delivery_method = method;
     draft.delivery_location = location?.value.trim();
+    draft.delivery_fee = method === 'metro' ? metroDeliveryFee() : 0;
   }
   const confirm = $('[data-confirm-checkout]'), cancel = $('[data-cancel-checkout]');
   checkoutSubmitting = true; confirm.disabled = true; cancel.disabled = true; confirm.textContent = 'Подтверждаем…'; errorElement.hidden = true;
@@ -1572,8 +1584,9 @@ async function confirmCheckout() {
       show(`<h2>${title}</h2>
         ${orderMeetingDate(order.meeting_date)}
         ${orderFulfillment(order)}
+        ${order.delivery_fee ? `<div class="checkout-subtotal"><span>Доставка до метро</span><strong>${moneyMarkup(order.delivery_fee)}</strong></div>` : ''}
         ${order.balance_spent ? `<div class="checkout-subtotal"><span>${cancelled ? 'Возвращено рублей' : 'Оплата рублями'}</span><strong>${moneyMarkup(order.balance_spent)}</strong></div>` : ''}
-        <div class="cart-total"><span>${order.address ? 'К оплате за товары' : 'К оплате'}</span><strong>${moneyMarkup(order.payable??order.total)}</strong></div>
+        <div class="cart-total"><span>${order.address && !order.delivery_fee ? 'К оплате за товары' : 'К оплате'}</span><strong>${moneyMarkup(order.payable??order.total)}</strong></div>
         ${managerId ? `<p class="checkout-manager">Telegram ID менеджера <a href="tg://user?id=${managerId}">${managerId}</a></p>` : ''}
         <button class="primary-button" data-continue>Продолжить покупки${icons.arrow}</button>`, 'checkout');
     } else notify(managerId ? `${title}. Telegram ID менеджера ${managerId}` : title);
@@ -1752,7 +1765,7 @@ function handleCartAction(event) {
 }
 $('#detail-content').onclick = handleCartAction;
 $('#detail-content').addEventListener('change',event=>{
- if(event.target.matches('#checkout-fulfillment input[type="radio"]'))refreshCheckoutFulfillment();
+ if(event.target.matches('#checkout-fulfillment input[type="radio"]'))refreshCheckoutPayment();
  if(event.target.id==='review-sort'){reviewFeed.sort=event.target.value;void loadReviewFeed();}
  if(event.target.id==='review-media-only'){reviewFeed.media=event.target.checked;void loadReviewFeed();}
  if(event.target.id==='review-files')void uploadReviewFiles([...event.target.files]);
