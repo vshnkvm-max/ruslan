@@ -36,9 +36,14 @@ try {
   assert.equal((await savedManager).status(), 200);
   const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message));
   await page.goto(base + '/miniapp'); await page.waitForFunction(()=>document.querySelector('#header-balance-value')?.textContent==='1 540'); await page.locator('[data-product="1"]').click();
+  const addButtonBox = await page.locator('#product-add').boundingBox();
   await page.locator('[data-add="1"]').click();
   const simpleQuantity=page.locator('#product-quantity');
   assert.equal(await page.locator('#product-add').isHidden(),true);
+  const cartButtonBox = await page.locator('#product-cart').boundingBox();
+  assert.equal(cartButtonBox.width, addButtonBox.width);
+  assert.equal(cartButtonBox.height, addButtonBox.height);
+  assert.equal((await simpleQuantity.locator('.quantity-control').boundingBox()).x, addButtonBox.x);
   await simpleQuantity.locator('[data-cart-change="1"]').click();
   assert.equal(await simpleQuantity.locator('output').innerText(),'2');
   await simpleQuantity.locator('[data-cart-change="-1"]').click();

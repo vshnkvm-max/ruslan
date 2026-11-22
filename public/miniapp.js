@@ -716,7 +716,7 @@ function openProduct(id, { toReviews = false } = {}) {
   show(`${productGallery(product)}<div class="product-title-row"><h2>${escape(product.name)}</h2><div class="product-title-actions"><button type="button" class="product-share" data-share-product="${product.id}" aria-label="Поделиться товаром">${icons.telegram}<span>Поделиться</span></button><button type="button" class="product-close" data-product-close aria-label="Закрыть товар">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div></div><strong class="price">${productPriceMarkup(product)}</strong>
     <p class="detail-stock">${product.stock > 0 ? 'В наличии' : 'Нет в наличии'}</p>
     ${product.flavors?.length?productFlavorRows(product):`${description}<button class="primary-button" id="product-add" data-add="${product.id}">${icons.bag}<span>Добавить в корзину</span></button>
-      <div id="product-quantity" hidden>${quantityControls(product.id,product.name,0,true)}</div>`}<button class="secondary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>${product.flavors?.length?description:''}<section class="product-review-section" id="product-reviews"><h3>Отзывы</h3><p>Загружаем отзывы…</p></section>`, 'product');
+      <div id="product-quantity" hidden>${quantityControls(product.id,product.name,0,true)}</div>`}<button class="primary-button" id="product-cart" data-open-cart hidden>Открыть корзину ${icons.arrow}</button>${product.flavors?.length?description:''}<section class="product-review-section" id="product-reviews"><h3>Отзывы</h3><p>Загружаем отзывы…</p></section>`, 'product');
   $('#gallery-track')?.addEventListener('scroll',updateGallery,{passive:true});
   updateProductAddButton();
   void loadProductReviews(id);
