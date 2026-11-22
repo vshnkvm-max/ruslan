@@ -264,25 +264,36 @@ dialog .order-fulfillment { display: grid; gap: 4px; overflow-wrap: anywhere; }
 .checkout-rubles .checkout-note { margin: 7px 0 0; font-size: 12px; }
 .checkout-summary {
   margin-top: 16px;
-  padding: 14px;
-  border: 1px solid #e8dce3;
-  border-radius: 16px;
-  background: #fff;
-  color: #382f35;
-  font-size: 13px;
+  padding: 15px;
+  border: 1px solid #392e35;
+  border-radius: 22px;
+  background: #211c20;
+  color: #f9f4f7;
+  font-size: 14px;
+  line-height: 1.35;
 }
 .checkout-summary dl { display: grid; gap: 8px; margin: 0; }
-.checkout-summary .checkout-summary-prices, .checkout-summary-total { margin-top: 11px; padding-top: 11px; border-top: 1px solid #eee3e9; }
+.checkout-summary .checkout-summary-prices, .checkout-summary-total {
+  margin-top: 11px;
+  padding-top: 11px;
+  border-top: 1px solid #3b3037;
+}
 .checkout-summary dl > div, .checkout-summary-total, .checkout-summary-reward {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
 }
-.checkout-summary dd { margin: 0; font-weight: 650; text-align: right; overflow-wrap: anywhere; }
-.checkout-summary-total { font-size: 16px; }
-.checkout-summary-total > strong:last-child, .checkout-summary-reward > strong { white-space: nowrap; }
-.checkout-summary-reward { margin-top: 10px; padding: 8px 10px; border-radius: 10px; color: #14613b; background: #eaf7ef; font-size: 12px; }
+.checkout-summary dt { color: #c1b4bc; }
+.checkout-summary dd { min-width: 0; margin: 0; font-weight: 650; text-align: right; overflow-wrap: anywhere; }
+.checkout-summary .currency-symbol { font-weight: inherit; }
+.checkout-summary-total { font-size: clamp(21px, 6.4vw, 27px); line-height: 1.15; letter-spacing: -.025em; }
+.checkout-summary-total > strong { font-weight: 800; }
+.checkout-summary-total > strong:last-child, .checkout-summary-reward > strong {
+  text-align: right;
+  white-space: nowrap;
+}
+.checkout-summary-reward { margin-top: 11px; color: #b7d9c4; font-size: 12px; }
 .detail-stock { color: var(--muted); }
 .profile-card { padding: 20px; border: 1px solid #fff; border-radius: 20px; background: #ffffffed; }
 .profile-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }
