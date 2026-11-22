@@ -1433,7 +1433,7 @@ function checkoutMetroPicker(station) {
     <input type="hidden" id="checkout-metro-value" value="${escape(station)}" hidden>
     <button type="button" id="checkout-metro" class="checkout-metro-toggle" aria-expanded="false"
       aria-controls="checkout-metro-options" aria-labelledby="checkout-metro-label checkout-metro-selected">
-      <span class="checkout-metro-mark" id="checkout-metro-selected-mark" aria-hidden="true" hidden>М</span>
+      <span class="checkout-metro-mark" id="checkout-metro-selected-mark" aria-hidden="true" hidden></span>
       <span id="checkout-metro-selected">Выберите станцию</span>
       ${icons.chevron}
     </button>
@@ -1443,7 +1443,7 @@ function checkoutMetroPicker(station) {
         const lineName = line === 'green' ? 'зелёная ветка' : 'красная ветка';
         return `<li><button type="button" data-metro-station="${escape(name)}" data-metro-color="${line}"
           aria-label="${escape(name)}, ${lineName}" aria-pressed="false">
-          <span class="checkout-metro-mark" data-line="${line}" aria-hidden="true">М</span>
+          <span class="checkout-metro-mark" data-line="${line}" aria-hidden="true"></span>
           <span>${escape(name)}</span>
         </button></li>`;
       }).join('')}
