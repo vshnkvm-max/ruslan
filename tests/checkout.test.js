@@ -238,6 +238,7 @@ test('checkout validates delivery and charges the saved metro fee once per order
   assert.equal(catalog.metro_delivery_fee,100);
   assert.equal(catalog.balance_spend_step,50);
   assert.deepEqual(catalog.metro_lines.map(line=>line.stations.length),[9,5]);
+  assert.deepEqual(catalog.metro_lines.map(line=>line.color),['red','green']);
   for (const invalid of [
     {delivery_method:'delivery'},
     {delivery_method:'metro'},

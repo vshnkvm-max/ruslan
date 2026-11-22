@@ -302,7 +302,15 @@ async function closeDetails() {
   dialog.close();
 }
 $('#details').addEventListener('close', () => { resetSheetGesture();scheduleBannerAuto();document.body.style.overflow = ''; delete $('#details').dataset.closing; setNav(); syncTelegramSwipes(); });
-$('#details').addEventListener('cancel', event => { event.preventDefault(); void closeDetails(); });
+$('#details').addEventListener('cancel', event => {
+  event.preventDefault();
+  if ($('#checkout-metro')?.getAttribute('aria-expanded') === 'true') {
+    setCheckoutMetroOpen(false);
+    $('#checkout-metro').focus();
+    return;
+  }
+  void closeDetails();
+});
 
 let sheetGesture=null,swipeOwner=null;
 function holdTelegramSwipes(){
@@ -1416,12 +1424,55 @@ function checkoutSpendLimit() {
   return Math.max(0,Math.floor(Math.min(balance,checkoutGoodsTotal()/2)/step)*step);
 }
 const moscowDate = () => new Date().toLocaleDateString('sv-SE', {timeZone:'Europe/Moscow'});
+function checkoutMetroPicker(station) {
+  const stations = (data?.metro_lines ?? [])
+    .flatMap(line => line.stations.map(name => ({name, color:line.color})))
+    .sort((a,b) => a.name.localeCompare(b.name,'ru'));
+  return `<div class="checkout-location" id="checkout-metro-location">
+    <span id="checkout-metro-label">Станция метро</span>
+    <input type="hidden" id="checkout-metro-value" value="${escape(station)}" hidden>
+    <button type="button" id="checkout-metro" class="checkout-metro-toggle" aria-expanded="false"
+      aria-controls="checkout-metro-options" aria-labelledby="checkout-metro-label checkout-metro-selected">
+      <span class="checkout-metro-mark" id="checkout-metro-selected-mark" aria-hidden="true" hidden>М</span>
+      <span id="checkout-metro-selected">Выберите станцию</span>
+      ${icons.chevron}
+    </button>
+    <ul id="checkout-metro-options" class="checkout-metro-options" aria-labelledby="checkout-metro-label" hidden>
+      ${stations.map(({name,color})=>{
+        const line = color === 'green' ? 'green' : 'red';
+        const lineName = line === 'green' ? 'зелёная ветка' : 'красная ветка';
+        return `<li><button type="button" data-metro-station="${escape(name)}" data-metro-color="${line}"
+          aria-label="${escape(name)}, ${lineName}" aria-pressed="false">
+          <span class="checkout-metro-mark" data-line="${line}" aria-hidden="true">М</span>
+          <span>${escape(name)}</span>
+        </button></li>`;
+      }).join('')}
+    </ul>
+  </div>`;
+}
+function setCheckoutMetroOpen(open) {
+  $('#checkout-metro-options').hidden = !open;
+  $('#checkout-metro').setAttribute('aria-expanded',String(open));
+}
+function refreshCheckoutMetro(enabled) {
+  const station = $('#checkout-metro-value');
+  const toggle = $('#checkout-metro');
+  const options = [...$('#checkout-metro-options').querySelectorAll('[data-metro-station]')];
+  const selected = options.find(option=>option.dataset.metroStation===station.value);
+  if (!selected && !checkoutLocked) station.value = '';
+  for (const option of options) option.setAttribute('aria-pressed',String(option===selected));
+  const mark = $('#checkout-metro-selected-mark');
+  mark.hidden = !selected;
+  mark.dataset.line = selected?.dataset.metroColor ?? '';
+  $('#checkout-metro-selected').textContent = station.value || 'Выберите станцию';
+  toggle.disabled = !enabled || checkoutLocked;
+  if (toggle.disabled) setCheckoutMetroOpen(false);
+  return station.value;
+}
 function checkoutFulfillment(draft) {
   const mode = draft.delivery_method;
   const delivery = mode === 'metro' || mode === 'address';
   const station = mode === 'metro' ? draft.delivery_location : '';
-  const lines = data?.metro_lines ?? [];
-  const legacyStation = station && !lines.some(line=>line.stations.includes(station));
   return `<fieldset id="checkout-fulfillment" class="checkout-fulfillment">
     <legend>Способ получения</legend>
     <div class="checkout-choices">
@@ -1438,14 +1489,7 @@ function checkoutFulfillment(draft) {
         <label><input type="radio" name="checkout-destination" value="metro" ${mode === 'address' ? '' : 'checked'}>По метро</label>
         <label><input type="radio" name="checkout-destination" value="address" ${mode === 'address' ? 'checked' : ''}>По адресу</label>
       </div>
-      <div class="checkout-location" id="checkout-metro-location">
-        <label for="checkout-metro">Станция метро</label>
-        <select id="checkout-metro" required>
-          <option value="">Выберите станцию</option>
-          ${legacyStation ? `<option value="${escape(station)}" data-saved-station selected>${escape(station)}</option>` : ''}
-          ${lines.map(line=>`<optgroup label="${escape(line.label)}">${line.stations.map(name=>`<option${name===station?' selected':''}>${escape(name)}</option>`).join('')}</optgroup>`).join('')}
-        </select>
-      </div>
+      ${checkoutMetroPicker(station)}
       <div class="checkout-location" id="checkout-address-location" hidden>
         <label for="checkout-address">Адрес доставки</label>
         <input id="checkout-address" type="text" autocomplete="street-address" maxlength="300" value="${mode === 'address' ? escape(draft.delivery_location) : ''}" aria-describedby="checkout-address-price" required>
@@ -1464,14 +1508,12 @@ function refreshCheckoutFulfillment() {
   $('#checkout-pickup-info').hidden = delivery;
   $('#checkout-delivery-fields').hidden = !delivery;
   $('#checkout-metro-location').hidden = !metro;
-  const station = $('#checkout-metro');
-  if (!checkoutLocked) station.querySelector('[data-saved-station]')?.remove();
-  station.disabled = !delivery || !metro;
+  const station = refreshCheckoutMetro(delivery && metro);
   $('#checkout-address-location').hidden = metro;
   const address = $('#checkout-address');
   address.disabled = !delivery || metro;
   let receiving = fieldset.hidden ? 'Согласование с менеджером' : 'Самовывоз';
-  if (delivery) receiving = metro ? (station.value ? 'м. ' + station.value : 'По метро') : (address.value.trim() || 'По адресу');
+  if (delivery) receiving = metro ? (station ? 'м. ' + station : 'По метро') : (address.value.trim() || 'По адресу');
   $('#checkout-summary-fulfillment').textContent = receiving;
   const deliveryFee = delivery && metro ? (checkoutLocked ? checkoutDraft.delivery_fee ?? metroDeliveryFee() : metroDeliveryFee()) : 0;
   $('#checkout-delivery-fee').textContent = delivery && !metro ? 'Уточняется' : money(deliveryFee);
@@ -1570,11 +1612,14 @@ async function confirmCheckout() {
     }
     draft.meeting_date = date.value;
     const method = $('#checkout-delivery').checked ? $('input[name="checkout-destination"]:checked').value : 'pickup';
-    const location = method === 'pickup' ? null : $(`#checkout-${method}`);
+    const location = method === 'metro' ? $('#checkout-metro-value') : method === 'address' ? $('#checkout-address') : null;
     if (location && (!location.value.trim() || !location.validity.valid)) {
       errorElement.hidden = false;
       errorElement.textContent = method === 'metro' ? 'Выберите станцию метро.' : 'Укажите адрес доставки.';
-      location.focus();
+      if (method === 'metro') {
+        setCheckoutMetroOpen(true);
+        $('#checkout-metro').focus();
+      } else location.focus();
       return;
     }
     draft.delivery_method = method;
@@ -1772,6 +1817,21 @@ function handleCartAction(event) {
  if(event.target.closest('[data-review-more-choices]')&&reviewDraft&&!reviewDraft.busy){const draft=reviewDraft;draft.busy=true;void loadReviewEligibility(draft.productId,draft.next).then(result=>{if(reviewDraft===draft){draft.choices.push(...result.items);draft.next=result.next_offset;}}).catch(error=>{draft.error=error.message;}).finally(()=>{draft.busy=false;if(reviewDraft===draft&&$('#details').dataset.view==='review-form')renderReviewForm();});return;}
 
  const spend=event.target.closest('[data-adjust-rubles]');if(spend){adjustCheckoutRubles(Number(spend.dataset.adjustRubles));return;}
+ const metroToggle = event.target.closest('#checkout-metro');
+ if (metroToggle) {
+  if (!metroToggle.disabled) setCheckoutMetroOpen(metroToggle.getAttribute('aria-expanded') !== 'true');
+  return;
+ }
+ const metroStation = event.target.closest('[data-metro-station]');
+ if (metroStation) {
+  if (checkoutLocked) return;
+  $('#checkout-metro-value').value = metroStation.dataset.metroStation;
+  setCheckoutMetroOpen(false);
+  if ($('.checkout-error').textContent.startsWith('Выберите станцию метро')) $('.checkout-error').hidden = true;
+  refreshCheckoutPayment();
+  $('#checkout-metro').focus();
+  return;
+ }
  if(event.target.closest('[data-my-reviews]')){renderMyReviews();return;}
  if(event.target.closest('[data-back-profile]')){void navigateToPage('profile');return;}
  if(event.target.closest('[data-retry-profile]')){void loadProfile();return;}
@@ -1801,8 +1861,21 @@ function handleCartAction(event) {
   else if (event.target.closest('[data-continue]')) void continueShopping();
 }
 $('#detail-content').onclick = handleCartAction;
+$('#detail-content').addEventListener('keydown',event=>{
+ const picker = event.target.closest('#checkout-metro-location');
+ if (!picker || !['ArrowUp','ArrowDown','Home','End'].includes(event.key) || $('#checkout-metro').matches(':disabled')) return;
+ const stations = [...picker.querySelectorAll('[data-metro-station]')];
+ if (!stations.length) return;
+ event.preventDefault();
+ setCheckoutMetroOpen(true);
+ const index = stations.indexOf(event.target);
+ const last = stations.length-1;
+ const next = event.key==='Home' ? 0 : event.key==='End' ? last
+   : event.key==='ArrowDown' ? Math.min(index+1,last) : index<0 ? last : Math.max(index-1,0);
+ stations[next].focus();
+});
 $('#detail-content').addEventListener('change',event=>{
- if(event.target.matches('#checkout-fulfillment input[type="radio"], #checkout-metro, #checkout-meeting-date'))refreshCheckoutPayment();
+ if(event.target.matches('#checkout-fulfillment input[type="radio"], #checkout-meeting-date'))refreshCheckoutPayment();
  if(event.target.id==='review-sort'){reviewFeed.sort=event.target.value;void loadReviewFeed();}
  if(event.target.id==='review-media-only'){reviewFeed.media=event.target.checked;void loadReviewFeed();}
  if(event.target.id==='review-files')void uploadReviewFiles([...event.target.files]);

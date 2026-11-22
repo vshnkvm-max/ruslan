@@ -167,7 +167,7 @@ dialog[data-view="checkout"] > .close { display: none; }
   font-size: 14px;
   font-weight: 650;
 }
-.checkout-meeting-date input, .checkout-location input, .checkout-location select {
+.checkout-meeting-date input, .checkout-location input, .checkout-metro-toggle {
   display: block;
   -webkit-appearance: none;
   appearance: none;
@@ -184,7 +184,52 @@ dialog[data-view="checkout"] > .close { display: none; }
   font-size: 16px;
   text-align: start;
 }
-.checkout-location select { -webkit-appearance: auto; appearance: auto; }
+.checkout-metro-toggle, .checkout-metro-options button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.checkout-metro-toggle > svg { flex: 0 0 16px; width: 16px; height: 16px; margin-left: auto; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.checkout-metro-toggle[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.checkout-metro-toggle:disabled { opacity: .75; }
+.checkout-metro-options {
+  max-height: min(250px, 36dvh);
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #dfd0d8;
+  border-radius: 12px;
+  background: #fff;
+  list-style: none;
+}
+.checkout-metro-options li + li { border-top: 1px solid #eee4ea; }
+.checkout-metro-options button {
+  width: 100%;
+  min-height: 45px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: #382f35;
+  font-size: 14px;
+  font-weight: 550;
+}
+.checkout-metro-options [aria-pressed="true"] { background: #fff0f3; }
+.checkout-metro-options button:focus-visible { outline: 2px solid var(--red); outline-offset: -3px; }
+.checkout-metro-mark {
+  display: grid;
+  flex: 0 0 23px;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border-radius: 50%;
+  background: #c9162a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+.checkout-metro-mark[data-line="green"] { background: #277839; }
 .checkout-meeting-date input::-webkit-date-and-time-value {
   min-width: 0;
   margin: 0;
