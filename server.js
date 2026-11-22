@@ -13,6 +13,7 @@ import { recordProductView } from './lib/product-views.js';
 import { createStorefrontOrders, orderBalanceSpendStep, orderCashbackPercent, orderMetroDeliveryFee, orderMetroLines } from './lib/storefront-orders.js';
 import { createStorefrontReferrals } from './lib/storefront-referrals.js';
 import { createOrderNotifier } from './lib/order-notifications.js';
+import { createOrderPush } from './lib/order-push.js';
 import { verifiedTelegramUser } from './lib/telegram-auth.js';
 import { loadStorefrontProfile, loadStorefrontBalance } from './lib/storefront-profile.js';
 import { createStorefrontReviews } from './lib/storefront-reviews.js';
@@ -55,14 +56,15 @@ function imageValue(value, allowLegacy=false) {
  return value;
 }
 
-export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/shop.db'), secureCookie=process.env.COOKIE_SECURE==='true',botToken=process.env.BOT_TOKEN||'',orderBotToken=process.env.ORDER_BOT_TOKEN||'',orderChatId=process.env.ORDER_CHAT_ID||'',orderManagerUsernames=process.env.ORDER_MANAGER_USERNAMES||'',telegramFetch=fetch}={}) {
+export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/shop.db'), secureCookie=process.env.COOKIE_SECURE==='true',botToken=process.env.BOT_TOKEN||'',orderBotToken=process.env.ORDER_BOT_TOKEN||'',orderChatId=process.env.ORDER_CHAT_ID||'',orderManagerUsernames=process.env.ORDER_MANAGER_USERNAMES||'',telegramFetch=fetch,pushSend}={}) {
   const db=openDatabase(dbPath);
   const productImages=createProductImages(db,imageValue,fail);
   const documents=createInventoryDocuments(db,{fail,str,num,bool,token});
   const serveStatic=createStaticAssets(root);
   const getSettings=key => JSON.parse(db.prepare('SELECT value FROM settings WHERE key=?').get(key).value);
   const referrals=createStorefrontReferrals(db,{botToken,fail,settings:()=>getSettings('referral'),botUsername:()=>getSettings('shop').botUsername||'gas_shop_vape_bot'});
-  const storefrontOrders=createStorefrontOrders(db,{botToken,fail,referrals});
+  const orderPush=createOrderPush(db,{fail,send:pushSend});
+  const storefrontOrders=createStorefrontOrders(db,{botToken,fail,referrals,enqueuePush:orderPush.enqueue});
   const customerHistory=createCustomerHistory(db,{botToken,fail,orders:storefrontOrders});
   const customerBalances=createCustomerBalances(db,{fail,num,str});
   const reviewMedia=createReviewMedia(db,{directory:resolve(dirname(dbPath),'review-media'),botToken,fail});
@@ -237,7 +239,20 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(!session) fail(401,'Войдите в аккаунт администратора.');
         if(method!=='GET'&&req.headers['x-csrf-token']!==session.csrf) fail(403,'Сессия запроса недействительна. Обновите страницу.');
         if(path==='/api/auth/me'&&method==='GET') return json(res,200,{username:session.username,csrf:session.csrf});
-        if(path==='/api/auth/logout'&&method==='POST') {db.prepare('DELETE FROM sessions WHERE token=?').run(session.token);return json(res,200,{ok:true},{'Set-Cookie':`session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie?'; Secure':''}`});}
+        const pushCookie = (id, age) => `order_push_device=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${age}${secureCookie?'; Secure':''}`;
+        if(path==='/api/auth/logout'&&method==='POST') {
+          const device=req.headers.cookie?.match(/(?:^|;\s*)order_push_device=([a-f0-9]{64})(?:;|$)/)?.[1];
+          if(device)orderPush.unsubscribe(session.admin_id,device);
+          db.prepare('DELETE FROM sessions WHERE token=?').run(session.token);
+          return json(res,200,{ok:true},{'Set-Cookie':[`session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie?'; Secure':''}`,pushCookie('',0)]});
+        }
+        if(path==='/api/order-push'&&method==='GET')return json(res,200,{publicKey:orderPush.publicKey()});
+        if(path==='/api/order-push'&&method==='POST') {
+          const subscription=await body(req,4096);
+          if(getSession(req)?.token!==session.token)fail(401,'Войдите в аккаунт администратора.');
+          const device=orderPush.subscribe(session.admin_id,subscription);
+          return json(res,200,{ok:true},{'Set-Cookie':pushCookie(device,365*86400)});
+        }
         if(path==='/api/bootstrap'&&method==='GET') return json(res,200,{...bootstrap(),user:{username:session.username,csrf:session.csrf}});
         if(path==='/api/images'&&method==='POST') return json(res,201,{image:productImages.upload((await body(req)).image)});
         const customerBalance=path.match(/^\/api\/customers\/(\d+)\/balance$/);
@@ -396,9 +411,9 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
   });
   server.requestTimeout=90000;
   server.headersTimeout=20000;
-  server.on('listening',()=>notifier.start());
-  server.on('close',()=>{notifier.stop();reviewMedia.stop();db.close();});
-  return {server,db,notifier};
+  server.on('listening',()=>{notifier.start();orderPush.start();});
+  server.on('close',()=>{notifier.stop();orderPush.stop();reviewMedia.stop();db.close();});
+  return {server,db,notifier,orderPush};
 }
 
 function validateCustomer(b) {

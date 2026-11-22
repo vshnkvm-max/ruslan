@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHmac, randomUUID } from 'node:crypto';
+import { createECDH, createHmac, randomBytes, randomUUID } from 'node:crypto';
+import webPush from 'web-push';
 import { createApp } from '../server.js';
 import { digest } from '../lib/auth.js';
 import { createOrderNotifier } from '../lib/order-notifications.js';
 const directory = mkdtempSync(join(tmpdir(), 'shop-checkout-')), botToken = 'test-only:main-bot';
 let app, base;
+const pushAttempts = [];
 function signedUser(id = 702, date = Math.floor(Date.now() / 1000)) {
   const params = new URLSearchParams({ user: JSON.stringify({ id, first_name: 'Покупатель', username: 'buyer' }), auth_date: String(date), query_id: 'test' });
   const text = [...params].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join('\n');
@@ -16,7 +18,13 @@ function signedUser(id = 702, date = Math.floor(Date.now() / 1000)) {
   return params.toString();
 }
 before(async () => {
-  app = createApp({ dbPath: join(directory, 'shop.db'), botToken });
+  app = createApp({ dbPath: join(directory, 'shop.db'), botToken, pushSend: async (subscription, payload, options) => {
+    const wire = webPush.generateRequestDetails(subscription, payload, options);
+    assert.equal(wire.headers['Content-Encoding'], 'aes128gcm');
+    pushAttempts.push({ path: new URL(subscription.endpoint).pathname, payload: JSON.parse(payload) });
+    if (subscription.endpoint.endsWith('/expired')) throw Object.assign(new Error(), {statusCode:410});
+    if (pushAttempts.filter(attempt => attempt.path === '/retry').length === 1) throw Object.assign(new Error(), {statusCode:503});
+  } });
   app.db.prepare("INSERT INTO admins(id,username,password) VALUES (1,'admin','unused')").run();
   app.db.prepare('INSERT INTO sessions VALUES (?,1,?,?)').run(digest('a'.repeat(64)), 'csrf', Date.now() + 1000000);
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
@@ -25,7 +33,7 @@ before(async () => {
 after(async () => { await new Promise(resolve => app.server.close(resolve)); rmSync(directory, { recursive: true, force: true }); });
 async function request(path, method, body, admin = false) {
   const response = await fetch(base + '/api' + path, { method, headers: { 'Content-Type': 'application/json', ...(admin ? { Cookie: 'session=' + 'a'.repeat(64), 'X-CSRF-Token': 'csrf' } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
-  return { status: response.status, data: await response.json() };
+  return { status: response.status, data: await response.json(), headers: response.headers };
 }
 const product = (stock = 5, price = 200) => Number(app.db.prepare("INSERT INTO products(name,sku,category,price,cost,stock,image) VALUES ('Товар',?,'',?,50,?,'')").run(randomUUID(), price, stock).lastInsertRowid);
 const stock = id => app.db.prepare('SELECT stock FROM products WHERE id=?').get(id).stock;
@@ -294,4 +302,46 @@ test('checkout validates delivery and charges the saved metro fee once per order
   assert.equal(stock(extra),7);
   const profile = (await request('/storefront/profile','POST',{init_data:body.init_data})).data;
   assert.equal(profile.stats.total,1900);
+});
+
+test('administrator subscriptions receive only new orders and can retry, expire and sign out', async () => {
+  const ecdh = createECDH('prime256v1');
+  const keys = {p256dh:ecdh.generateKeys().toString('base64url'),auth:randomBytes(16).toString('base64url')};
+  const subscription = {endpoint:'https://fcm.googleapis.com/retry',keys};
+  assert.equal((await request('/order-push','GET')).status,401);
+  assert.equal((await request('/order-push','POST',subscription)).status,401);
+  const {data:config} = await request('/order-push','GET',undefined,true);
+  assert.deepEqual(Object.keys(config),['publicKey']);
+  assert.equal(config.publicKey.length,87);
+  assert.equal((await request('/order-push','GET',undefined,true)).data.publicKey,config.publicKey);
+  for (const endpoint of ['http://fcm.googleapis.com/retry','https://fcm.googleapis.com.example.org/retry','https://127.0.0.1/retry']) {
+    assert.equal((await request('/order-push','POST',{...subscription,endpoint},true)).status,400);
+  }
+  const saved = await request('/order-push','POST',subscription,true);
+  assert.equal(saved.status,200);
+  assert.equal((await request('/order-push','POST',subscription,true)).status,200);
+  assert.equal((await request('/order-push','POST',{...subscription,endpoint:'https://web.push.apple.com/expired'},true)).status,200);
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM order_push_devices').get().n,2);
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM order_push_deliveries').get().n,0);
+
+  const orderBody = {...bodyFor(product(6)),init_data:signedUser(9021)};
+  const created = await request('/storefront/orders','POST',orderBody);
+  assert.equal(created.status,201);
+  const {id:orderId} = created.data.order;
+  assert.equal((await request('/storefront/orders','POST',orderBody)).status,200);
+  await app.orderPush.flush();
+  assert.deepEqual(pushAttempts.map(attempt=>attempt.path).sort(),['/expired','/retry']);
+  assert.ok(pushAttempts.every(attempt=>attempt.payload.orderId===orderId));
+  assert.deepEqual({...app.db.prepare('SELECT order_id, attempts FROM order_push_deliveries').get()},{order_id:orderId,attempts:1});
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM order_push_devices').get().n,1);
+  app.db.prepare('UPDATE order_push_deliveries SET next_attempt_at=0 WHERE order_id=?').run(orderId);
+  await app.orderPush.flush();
+  assert.equal(pushAttempts.length,3);
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM order_push_deliveries').get().n,0);
+
+  const logout = await fetch(base+'/api/auth/logout',{method:'POST',headers:{
+    Cookie:'session='+'a'.repeat(64)+'; '+saved.headers.get('set-cookie').split(';')[0], 'X-CSRF-Token':'csrf'
+  }});
+  assert.equal(logout.status,200);
+  assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM order_push_devices').get().n,0);
 });

@@ -55,6 +55,39 @@ let state={user:null,data:null,page:'products',query:'',filter:'all',category:'a
 let previousFocus=null;
 let lastRenderedPage=null;
 let requestedFilter=null;
+const supportsOrderPush = window.isSecureContext && 'serviceWorker' in navigator &&
+ 'PushManager' in window && 'Notification' in window;
+let orderPushSetup, orderPushDevice, orderPushOwner, orderPushSaving, orderPushPrompted;
+
+async function enableOrderPush(userGesture=false) {
+ const owner=state.user;
+ if(!supportsOrderPush || !owner || Notification.permission==='denied' || orderPushSaving || orderPushOwner===owner)return;
+ orderPushSetup ??= Promise.all([
+  navigator.serviceWorker.register('/order-push-worker.js').then(()=>navigator.serviceWorker.ready),
+  api('/order-push')
+ ]).then(([registration,{publicKey}])=>{
+  const applicationServerKey=Uint8Array.from(atob(publicKey.replace(/-/g,'+').replace(/_/g,'/')),char=>char.charCodeAt(0));
+  orderPushDevice={registration,options:{applicationServerKey,userVisibleOnly:true}};
+  return orderPushDevice;
+ }).catch(()=>{orderPushSetup=null;});
+ if(Notification.permission==='default') {
+  if(!userGesture || orderPushPrompted)return;
+  orderPushPrompted=true;
+ }
+ orderPushSaving=true;
+ try {
+  if(!orderPushDevice && Notification.permission==='default' && await Notification.requestPermission()!=='granted')return;
+  const device=orderPushDevice || await orderPushSetup;
+  if(!device || state.user!==owner)return;
+  const subscription=await device.registration.pushManager.subscribe(device.options);
+  if(state.user!==owner)return;
+  await api('/order-push',{method:'POST',body:subscription.toJSON()});
+  orderPushOwner=owner;
+ } catch {
+  // A dismissed permission or a temporary delivery service failure leaves the admin usable.
+ } finally {orderPushSaving=false;}
+}
+
 async function api(path,options={}) {
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
  try {
@@ -79,6 +112,7 @@ function renderLogin(error='') {
  $('#app').innerHTML=`<main class="login-layout"><section class="login-form-side"><div class="login-form-wrap"><div class="login-icon">${icon('lock')}</div><h1>Вход в панель</h1><form id="login-form"><label>Логин<input name="username" placeholder="Введите логин" autocomplete="username" required maxlength="80"></label><label>Пароль<div class="password-input"><input name="password" type="password" placeholder="Введите пароль" autocomplete="current-password" required maxlength="1024"><button type="button" class="icon-button" data-action="toggle-password" aria-label="Показать пароль">${icon('eye')}</button></div></label><div class="form-error" role="alert">${e(error)}</div><button type="submit" class="button primary login-submit">Войти в аккаунт ${icon('arrow')}</button></form><p class="login-note">Учётную запись выдаёт владелец магазина.</p></div></section></main>`;
 }
 function renderShell(){
+ void enableOrderPush();
  const d=state.data;const pending=d.orders.filter(o=>o.status==='new').length;
  $('#app').innerHTML=`<div class="app-layout"><div class="sidebar-backdrop" data-action="close-nav"></div><aside class="sidebar"><div class="brand inventory-brand">${icon('box')}<span>Учет товара</span></div><button class="button primary create-document" data-action="create-document">${icon('plus')}Создать документ</button><div class="store-card"><span class="store-avatar">${icon('bag')}</span><div><strong>${e(d.shop.name||'Магазин')}</strong><small><span class="small-dot"></span> Управление магазином</small></div></div><div class="nav-heading">Категории</div><nav aria-label="Главное меню">${nav.map(([key,ico,label],i)=>`${key==='referrals'?'<div class="nav-heading growth-label">НАСТРОЙКИ</div>':''}<a href="#${key}" class="nav-item ${state.page===key?'active':''}" ${state.page===key?'aria-current="page"':''}>${icon(ico)}<span>${label}</span>${key==='orders'&&pending?`<b>${pending}</b>`:''}${key==='reviews'&&d.reviews.some(r=>r.status==='pending')?'<i class="nav-dot"></i>':''}</a>`).join('')}</nav><div class="sidebar-bottom"><button class="account" data-action="account"><span class="avatar admin-avatar">А</span><span><strong>${e(state.user.username)}</strong><small>Администратор</small></span>${icon('down')}</button></div></aside><div class="workspace"><header class="topbar"><div class="breadcrumb"><button class="icon-button mobile-menu" data-action="open-nav" aria-label="Открыть меню">${icon('menu')}</button><span class="header-section">${e(nav.find(n=>n[0]===state.page)?.[2]||'Настройки')}</span></div><div class="topbar-actions"><button class="icon-button notification" data-action="notifications" aria-label="Новые заказы">${icon('bell')}${pending?'<i></i>':''}</button><span class="topbar-divider"></span><button class="avatar small-avatar" data-action="account" aria-label="Аккаунт администратора">${icon('users')}</button><button class="header-account" data-action="account">Администратор ${icon('down')}</button></div></header><main id="main-content" tabindex="-1"></main></div></div>`;
  renderMain();
@@ -383,6 +417,7 @@ function exportData(){
 async function mutate(path,body,method='PATCH',message='Изменения сохранены'){await api(path,{method,body});await refresh();toast(message);}
 document.addEventListener('click',async event=>{
  if(event.target.closest('.sidebar nav a'))document.body.classList.remove('nav-open');
+ if(event.isTrusted && event.target.closest('nav a[href="#orders"], [data-action="notifications"]'))void enableOrderPush(true);
  const el=event.target.closest('[data-action]');if(!el)return;
  const action=el.dataset.action,id=Number(el.dataset.id),value=el.dataset.value;
  if(el.disabled)return;
