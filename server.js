@@ -357,7 +357,9 @@ export function createApp({dbPath=process.env.DB_PATH || resolve(root,'.data/sho
         if(path==='/api/settings/shop'&&method==='PATCH') {
           const b=await body(req), saved=getSettings('shop'), shop={};
           b.address??=saved.address;
-          for(const key of ['name','headline','description','phone','address','hours']) shop[key]=str(b[key],key,key==='description'?2000:200,key==='name');
+          for(const key of ['name','headline','description','phone','address','hours']) {
+            shop[key]=b[key]===undefined?(saved[key]??''):str(b[key],key,key==='description'?2000:200,key==='name');
+          }
           const bot=str(b.botUsername??saved.botUsername??'gas_shop_vape_bot','Имя бота',32,false).replace(/^@/,'');
           if(bot&&!/^[A-Za-z0-9_]{5,32}$/.test(bot))fail(400,'Проверьте имя Telegram-бота.');
           shop.botUsername=bot;

@@ -29,7 +29,6 @@ try {
   await admin.getByLabel('Пароль', { exact: true }).fill('checkout-test-password');
   await admin.locator('#login-form [type=submit]').click();
   const managerId = '1234567890123';
-  await admin.getByLabel('Название магазина').fill('Тестовый магазин');
   await admin.getByLabel('Telegram ID менеджера', { exact: true }).fill(managerId);
   const savedManager = admin.waitForResponse(response => response.url().endsWith('/api/settings/shop'));
   await admin.locator('#shop-form [type=submit]').click();

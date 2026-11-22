@@ -48,8 +48,9 @@ try {
   if(section==='referrals')assert.equal(await page.locator('#referral-form input[name=enabled]').isChecked(),false);
  }
  await page.locator('nav a[href="#content"]').click();
- assert.equal(await page.locator('#shop-form [name=address]').count(),0);
- for(const field of ['name','headline','description','phone','hours'])assert.equal(await page.locator(`#shop-form [name=${field}]`).inputValue(),'');
+ const shopForm=page.locator('#shop-form');
+ assert.deepEqual(await shopForm.evaluate(form=>[...new FormData(form).keys()]),['phone','botUsername','managerTelegramId']);
+ assert.equal(await shopForm.getByLabel('Телефон',{exact:true}).inputValue(),'');
  await page.getByRole('button',{name:/Баннеры/}).click();
  await page.getByRole('heading',{name:'Баннеров пока нет',exact:true}).waitFor();
  assert.equal(await page.locator('[data-action=preview],.content-aside').count(),0);
@@ -58,6 +59,8 @@ try {
  console.log('PASS: empty default sections, blank settings, disabled referrals, empty storefront and reload');
  // Business scenarios use explicit fixtures only in this temporary test database.
  insertTestFixtures(db);
+ const shopDetails={name:'UI store',headline:'UI storefront',description:'Saved description',hours:'10:00–20:00'};
+ db.prepare("UPDATE settings SET value=? WHERE key='shop'").run(JSON.stringify({...storefront.shop,...shopDetails}));
  const viewedProducts=db.prepare('SELECT id,name FROM products WHERE active=1 AND visible=1 AND stock>0 AND deleted=0 ORDER BY id LIMIT 11').all();
  for(const [i,p] of viewedProducts.entries())for(let n=0;n<=i;n++){const response=await fetch(base+`/api/storefront/products/${p.id}/view`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({visitor_id:(n+1).toString(16).padStart(64,'0')})});assert.ok(response.ok);}
  await page.goto(base+'/#statistics');await page.reload();await page.locator('.top-products-table').waitFor();
@@ -125,9 +128,14 @@ try {
   await page.locator(`nav a[href="#${section}"][aria-current="page"]`).waitFor();
   assert.ok(await page.locator('#main-content h1').innerText());if(!['statistics','customers','referrals'].includes(section))assert.equal(await page.locator('.metrics-grid').count(),0);if(section==='customers'&&screenshots)await page.screenshot({path:join(screenshots,'customers.png'),fullPage:true});
  }
- await page.getByLabel('Название магазина').fill('UI store');
- await page.locator('#shop-form button[type=submit]').click();
- await page.waitForFunction(()=>document.querySelector('.store-card strong').textContent==='UI store');
+ const phone='+7 900 000-00-00';
+ await shopForm.getByLabel('Телефон',{exact:true}).fill(phone);
+ const shopSaved=page.waitForResponse(response=>response.url().endsWith('/api/settings/shop'));
+ await shopForm.locator('button[type=submit]').click();
+ assert.equal((await shopSaved).status(),200);
+ const savedShop=(await (await page.request.get(base+'/api/storefront')).json()).shop;
+ assert.equal(savedShop.phone,phone);
+ for(const [key,value] of Object.entries(shopDetails))assert.equal(savedShop[key],value);
  await page.getByRole('button',{name:/Баннеры/}).click();
  await page.getByRole('button',{name:'Добавить баннер'}).click();
  await page.getByLabel('Заголовок',{exact:true}).fill('UI Banner');
