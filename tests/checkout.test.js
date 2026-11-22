@@ -234,10 +234,14 @@ test('checkout validates delivery and charges the saved metro fee once per order
   const body = {...bodyFor(id),init_data:signedUser(1903),items:[
     {product_id:id,quantity:2,price:200},{product_id:extra,quantity:1,price:200}
   ]};
-  assert.equal((await request('/storefront','GET')).data.metro_delivery_fee,100);
+  const catalog = (await request('/storefront','GET')).data;
+  assert.equal(catalog.metro_delivery_fee,100);
+  assert.equal(catalog.balance_spend_step,50);
+  assert.deepEqual(catalog.metro_lines.map(line=>line.stations.length),[9,5]);
   for (const invalid of [
     {delivery_method:'delivery'},
     {delivery_method:'metro'},
+    {delivery_method:'metro',delivery_location:'Несуществующая станция'},
     {delivery_method:'metro',delivery_location:'а'.repeat(121)},
     {delivery_method:'address',delivery_location:'   '},
     {delivery_method:'address',delivery_location:'улица\nквартира'}
@@ -251,7 +255,7 @@ test('checkout validates delivery and charges the saved metro fee once per order
 
   for (const [method,location,delivery,address,fee] of [
     ['pickup',undefined,'Самовывоз','',0],
-    ['metro','  Площадь Маркса  ','Доставка до метро','Площадь Маркса',100],
+    ['metro','  Площадь Маркса  ','Доставка по метро','Площадь Маркса',100],
     ['address','ул. Ленина, 10, кв. 4','Доставка по адресу','ул. Ленина, 10, кв. 4',0]
   ]) {
     const payload = {...body,request_key:randomUUID(),delivery_method:method,delivery_location:location,delivery_fee:fee};

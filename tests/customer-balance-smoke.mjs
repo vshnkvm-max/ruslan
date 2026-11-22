@@ -25,8 +25,9 @@ try{
  await mobile.route('https://telegram.org/**',route=>route.fulfill({contentType:'text/javascript',body:''}));
  const mini=await mobile.newPage();mini.on('pageerror',error=>errors.push(error.message));await mini.goto(base+'/miniapp');
  await mini.waitForFunction(()=>document.querySelector('#header-balance-value')?.textContent==='1 500');
- await mini.locator('[data-product="1"]').click();await mini.locator('[data-add="1"]').click();await mini.locator('[data-open-cart]').click();await mini.locator('[data-checkout]').click();await mini.locator('[data-toggle-rubles]').click();
- assert.equal(await mini.locator('#checkout-rubles').inputValue(),'1000');await mini.locator('#checkout-meeting-date').fill(new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'}));await mini.locator('[data-confirm-checkout]').click();await mini.getByRole('heading',{name:'Заказ #6 принят',exact:true}).waitFor();assert.equal(db.prepare('SELECT balance FROM customers WHERE id=1').get().balance,500);
+ await mini.locator('[data-product="1"]').click();await mini.locator('[data-add="1"]').click();await mini.locator('[data-open-cart]').click();await mini.locator('[data-checkout]').click();
+ for(let step=0;step<20;step++)await mini.locator('[data-adjust-rubles="1"]').click();
+ assert.match(await mini.locator('#checkout-rubles-output').innerText(),/^1\s*000\s₽$/);await mini.locator('#checkout-meeting-date').fill(new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'}));await mini.locator('[data-confirm-checkout]').click();await mini.getByRole('heading',{name:'Заказ #6 принят',exact:true}).waitFor();assert.equal(db.prepare('SELECT balance FROM customers WHERE id=1').get().balance,500);
  // A stale admin form must not silently overwrite the buyer's payment.
  await admin.locator('#customer-balance-form [type=submit]').click();await admin.locator('#customer-balance-form .form-error').filter({hasText:'Баланс клиента изменился'}).waitFor();
  assert.equal(db.prepare('SELECT balance FROM customers WHERE id=1').get().balance,500);assert.match(await admin.locator('#customer-balance-current').innerText(),/500/);

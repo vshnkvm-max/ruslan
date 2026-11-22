@@ -27,7 +27,7 @@ test('rubles pay at most half; duplicate confirmations debit stock and balance e
 });
 test('invalid amounts, spending above 50 percent and insufficient funds change neither stock nor balance',async()=>{
   const b=buyer(100),p=product();
-  for(const [amount,status] of [[-1,400],[0.5,400],['50',400],[null,400],[501,400],[200,409]]){
+  for(const [amount,status] of [[-1,400],[0.5,400],['50',400],[null,400],[37,400],[550,400],[200,409]]){
     const response=await request('/storefront/orders',payload(b,p,amount));assert.equal(response.status,status,JSON.stringify(response));assert.equal(balance(b),100);assert.equal(stock(p),10);
   }
   assert.deepEqual(ledger(b),[]);assert.equal(app.db.prepare('SELECT COUNT(*) AS n FROM orders WHERE customer_id=?').get(b.id).n,0);
@@ -55,11 +55,11 @@ test('failed restoration rolls back stock and balance together',async()=>{
   assert.equal((await request('/orders/'+id,{status:'new'},'PATCH',true)).status,409);assert.equal(balance(b),100);assert.equal(stock(p),10);assert.deepEqual(ledger(b),[-500,500]);
   assert.equal(app.db.prepare('SELECT status FROM orders WHERE id=?').get(id).status,'cancelled');
 });
-test('odd totals round the maximum down to whole rubles and legacy requests can pay without a wallet',async()=>{
-  const b=buyer(),p=product(1001);
-  assert.equal((await request('/storefront/orders',payload(b,p,501))).status,400);
-  const paid=await request('/storefront/orders',payload(b,p,500));assert.equal(paid.status,201);assert.equal(paid.data.order.payable,501);
-  const empty=buyer(0),legacy=payload(empty,p,undefined),order=await request('/storefront/orders',legacy);assert.equal(order.status,201);assert.equal(order.data.order.payable,1001);assert.equal(order.data.order.balance_spent,0);assert.deepEqual(ledger(empty),[]);
+test('only multiples of 50 below the half-total cap are accepted, and old requests may omit spending',async()=>{
+  const b=buyer(),p=product(1099);
+  assert.equal((await request('/storefront/orders',payload(b,p,550))).status,400);
+  const paid=await request('/storefront/orders',payload(b,p,500));assert.equal(paid.status,201);assert.equal(paid.data.order.payable,599);
+  const empty=buyer(0),legacy=payload(empty,p,undefined),order=await request('/storefront/orders',legacy);assert.equal(order.status,201);assert.equal(order.data.order.payable,1099);assert.equal(order.data.order.balance_spent,0);assert.deepEqual(ledger(empty),[]);
 });
 test('admin ledger uses the remaining payment and notification includes the wallet breakdown',async()=>{
   const b=buyer(),p=product(),response=await request('/storefront/orders',{...payload(b,p,300),total:1,payable:0}),id=response.data.order.id;

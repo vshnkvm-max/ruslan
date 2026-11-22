@@ -167,7 +167,7 @@ dialog[data-view="checkout"] > .close { display: none; }
   font-size: 14px;
   font-weight: 650;
 }
-.checkout-meeting-date input, .checkout-location input {
+.checkout-meeting-date input, .checkout-location input, .checkout-location select {
   display: block;
   -webkit-appearance: none;
   appearance: none;
@@ -184,6 +184,7 @@ dialog[data-view="checkout"] > .close { display: none; }
   font-size: 16px;
   text-align: start;
 }
+.checkout-location select { -webkit-appearance: auto; appearance: auto; }
 .checkout-meeting-date input::-webkit-date-and-time-value {
   min-width: 0;
   margin: 0;
@@ -214,6 +215,8 @@ dialog[data-view="checkout"] > .close { display: none; }
 }
 .checkout-choices input { flex: 0 0 auto; margin: 0; accent-color: var(--red); }
 .checkout-choices label:has(input:checked) { border-color: #da8293; background: #fff0f3; }
+.checkout-pickup-info { display: grid; gap: 7px; margin-top: 12px; font-size: 13px; }
+.checkout-pickup-address { padding: 11px 12px; border-radius: 12px; background: #f8edf2; color: #624352; line-height: 1.45; }
 .checkout-location { margin: 12px 0 0; }
 .checkout-location .checkout-note { font-weight: 400; }
 dialog .checkout-cash-note, dialog .order-meeting-date, dialog .checkout-manager, dialog .order-fulfillment {
@@ -254,14 +257,32 @@ dialog .order-fulfillment { display: grid; gap: 4px; overflow-wrap: anywhere; }
 .checkout-error { color: #b00025; font-size: 13px; line-height: 1.5; }
 .checkout-subtotal { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 16px; font-size: 13px; }
 .checkout-subtotal > strong { white-space: nowrap; }
-.checkout-cashback { padding: 10px 12px; border-radius: 12px; background: #eaf7ef; color: #14613b; }
 .checkout-rubles { margin-top: 18px; padding: 14px; border-radius: 16px; background: #f8edf2; }
-.checkout-rubles .primary-button { margin-top: 0; }
-.checkout-rubles .checkout-note { margin: 10px 0 0; font-size: 12px; }
-#checkout-rubles-panel { padding-top: 16px; }
-#checkout-rubles-panel label { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
-#checkout-rubles-output { color: var(--red); font-weight: 700; white-space: nowrap; }
-#checkout-rubles { display: block; width: 100%; margin: 12px 0 0; min-height: 30px; accent-color: var(--red); touch-action: pan-x; }
+.checkout-rubles-control { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+.checkout-rubles-control .quantity-control button { width: 38px; height: 38px; }
+.checkout-rubles-control output { min-width: 54px; color: var(--red); white-space: nowrap; }
+.checkout-rubles .checkout-note { margin: 7px 0 0; font-size: 12px; }
+.checkout-summary {
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid #e8dce3;
+  border-radius: 16px;
+  background: #fff;
+  color: #382f35;
+  font-size: 13px;
+}
+.checkout-summary dl { display: grid; gap: 8px; margin: 0; }
+.checkout-summary .checkout-summary-prices, .checkout-summary-total { margin-top: 11px; padding-top: 11px; border-top: 1px solid #eee3e9; }
+.checkout-summary dl > div, .checkout-summary-total, .checkout-summary-reward {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.checkout-summary dd { margin: 0; font-weight: 650; text-align: right; overflow-wrap: anywhere; }
+.checkout-summary-total { font-size: 16px; }
+.checkout-summary-total > strong:last-child, .checkout-summary-reward > strong { white-space: nowrap; }
+.checkout-summary-reward { margin-top: 10px; padding: 8px 10px; border-radius: 10px; color: #14613b; background: #eaf7ef; font-size: 12px; }
 .detail-stock { color: var(--muted); }
 .profile-card { padding: 20px; border: 1px solid #fff; border-radius: 20px; background: #ffffffed; }
 .profile-identity { display: flex; align-items: center; gap: 13px; min-width: 0; }
