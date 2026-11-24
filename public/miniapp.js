@@ -1571,7 +1571,6 @@ function refreshCheckoutFulfillment() {
   $('#checkout-summary-fulfillment').textContent = receiving;
   const deliveryFee = delivery && metro ? (checkoutLocked ? checkoutDraft.delivery_fee ?? metroDeliveryFee() : metroDeliveryFee()) : 0;
   $('#checkout-delivery-fee').textContent = delivery && !metro ? 'Уточняется' : money(deliveryFee);
-  $('#checkout-payable-label').textContent = delivery && !deliveryFee ? 'Итого за товары' : 'Итого';
   return deliveryFee;
 }
 function refreshCheckoutPayment(editingRubles = false) {

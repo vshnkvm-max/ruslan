@@ -147,6 +147,7 @@ try {
   assert.match(await page.locator('#checkout-payable').innerText(),/1\s*700/);
   await page.getByRole('radio',{name:'По адресу',exact:true}).check();
   assert.equal(await deliveryFee.innerText(),'Уточняется');
+  assert.equal(await page.locator('#checkout-payable-label').innerText(),'Итого');
   assert.match(await page.locator('#checkout-payable').innerText(),/1\s*600/);
   await page.getByRole('radio',{name:'По метро',exact:true}).check();
   const saved = page.waitForResponse(response => response.url().endsWith('/api/storefront/orders'));
