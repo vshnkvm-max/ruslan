@@ -55,6 +55,7 @@ const icons = {
   minus: icon('<path d="M5 12h14"/>'),
   user: icon('<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'),
   wallet: icon('<path d="M20 8V5H5a2 2 0 0 0 0 4h16v11H5a2 2 0 0 1-2-2V7m18 5h-5v5h5M17 14.5h.01"/>'),
+  calendar: icon('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/>'),
   reviews: icon('<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9H13a8.5 8.5 0 0 1 8 8v.5ZM8 11h8M8 15h5"/>'),
   bag: icon('<path d="M4 7h16l-1 14H5ZM8 8V6a4 4 0 0 1 8 0v2"/>'),
   package: icon('<path d="m12 3 9 5v9l-9 5-9-5V8ZM3 8l9 5 9-5M12 13v9M8 5l9 5"/>'),
@@ -1418,12 +1419,65 @@ function pendingCheckout() {
 }
 function checkoutGoodsTotal() { return checkoutDraft?.items.reduce((sum,item)=>sum+item.price*item.quantity,0) || 0; }
 const checkoutSpendStep = () => data?.balance_spend_step ?? 50;
+function checkoutBalance() {
+  const { key, value } = headerBalanceState;
+  return key === (telegram?.initData || '') && Number.isFinite(value) ? value : null;
+}
 function checkoutSpendLimit() {
-  const balance = headerBalanceState.key === (telegram?.initData || '') && Number.isFinite(headerBalanceState.value) ? headerBalanceState.value : 0;
   const step = checkoutSpendStep();
-  return Math.max(0,Math.floor(Math.min(balance,checkoutGoodsTotal()/2)/step)*step);
+  return Math.max(0,Math.floor(Math.min(checkoutBalance() ?? 0,checkoutGoodsTotal()/2)/step)*step);
 }
 const moscowDate = () => new Date().toLocaleDateString('sv-SE', {timeZone:'Europe/Moscow'});
+const checkoutWeekday = new Intl.DateTimeFormat('ru-RU', { weekday:'short', timeZone:'UTC' });
+const shortCheckoutDate = value => value.slice(5).split('-').reverse().join('.');
+function checkoutDateCards(today) {
+  const date = new Date(today + 'T12:00:00Z');
+  return ['Сегодня','Завтра','Послезавтра'].map(label => {
+    const value = date.toISOString().slice(0,10);
+    const weekday = checkoutWeekday.format(date).toUpperCase();
+    date.setUTCDate(date.getUTCDate() + 1);
+    return `<button type="button" class="checkout-date-card" data-checkout-date="${value}" aria-pressed="false">
+      <span>${label}</span><strong>${weekday}</strong><time datetime="${value}">${shortCheckoutDate(value)}</time>
+    </button>`;
+  }).join('');
+}
+function checkoutMeetingDate(value) {
+  const today = moscowDate();
+  return `<section class="checkout-meeting-date" aria-labelledby="checkout-date-heading">
+    <div class="checkout-date-heading">
+      <strong id="checkout-date-heading">Дата встречи</strong>
+      <label class="checkout-calendar" title="Другая дата">
+        <span id="checkout-custom-date" hidden></span>${icons.calendar}
+        <input id="checkout-meeting-date" type="date" aria-label="Другая дата встречи" min="${today}"
+          max="9999-12-31" value="${escape(value)}" required>
+      </label>
+    </div>
+    <div class="checkout-date-cards">${checkoutDateCards(today)}</div>
+  </section>`;
+}
+function refreshCheckoutDate(disabled) {
+  const input = $('#checkout-meeting-date');
+  const today = moscowDate();
+  if (input.min !== today) {
+    input.min = today;
+    $('.checkout-date-cards').innerHTML = checkoutDateCards(today);
+  }
+  input.disabled = disabled;
+  let selected = false;
+  for (const card of document.querySelectorAll('[data-checkout-date]')) {
+    const active = card.dataset.checkoutDate === input.value;
+    card.setAttribute('aria-pressed', String(active));
+    card.disabled = disabled;
+    selected ||= active;
+  }
+  const date = input.value ? shortCheckoutDate(input.value) : '';
+  const custom = $('#checkout-custom-date');
+  custom.hidden = !date || selected;
+  custom.textContent = date;
+  $('#checkout-summary-date').textContent = date || '—';
+  const error = $('.checkout-error');
+  if (date && input.validity.valid && error.textContent.startsWith('Выберите дату встречи')) error.hidden = true;
+}
 function checkoutMetroPicker(station) {
   const stations = (data?.metro_lines ?? [])
     .flatMap(line => line.stations.map(name => ({name, color:line.color})))
@@ -1520,32 +1574,41 @@ function refreshCheckoutFulfillment() {
   $('#checkout-payable-label').textContent = delivery && !deliveryFee ? 'Итого за товары' : 'Итого';
   return deliveryFee;
 }
-function refreshCheckoutPayment() {
+function refreshCheckoutPayment(editingRubles = false) {
   if (!checkoutDraft || !$('#details').open || $('#details').dataset.view !== 'checkout' || !$('#checkout-summary')) return;
   const max = checkoutSpendLimit();
   const step = checkoutSpendStep();
   if (!checkoutLocked) checkoutDraft.balance_spend = Math.min(max,Math.max(0,Math.floor((checkoutDraft.balance_spend||0)/step)*step));
   const spent = checkoutDraft.balance_spend || 0;
-  const date = $('#checkout-meeting-date');
   const disabled = checkoutSubmitting || checkoutLocked;
-  date.disabled = checkoutLocked;
-  $('#checkout-summary-date').textContent = date.value ? date.value.slice(5).split('-').reverse().join('.') : '—';
+  refreshCheckoutDate(disabled);
   const deliveryFee = refreshCheckoutFulfillment();
+  const toggle = $('#checkout-rubles-toggle');
+  toggle.disabled = disabled || !max;
+  $('#checkout-rubles-fields').hidden = !toggle.checked;
+  const amount = $('#checkout-rubles-amount');
+  amount.disabled = disabled || !max;
+  amount.max = checkoutLocked ? Math.max(max, spent) : max;
+  if (!editingRubles) amount.value = spent;
   $('[data-adjust-rubles="-1"]').disabled = disabled || spent === 0;
   $('[data-adjust-rubles="1"]').disabled = disabled || spent >= max;
-  $('#checkout-rubles-output').textContent = money(spent);
+  const balance = checkoutBalance();
+  $('#checkout-rubles-available').textContent = balance === null ? 'Баланс пока недоступен.' : `Доступно: ${money(balance)}`;
   const spendHint = $('#checkout-rubles-limit');
   spendHint.hidden = checkoutLocked;
-  spendHint.textContent = Number.isFinite(headerBalanceState.value)
-    ? (max ? `Доступно до ${money(max)} · шаг ${money(step)}` : `Для списания доступно меньше ${money(step)}.`)
-    : 'Баланс пока недоступен.';
+  spendHint.textContent = `Максимум ${money(max)} (до 50% от заказа)`;
   $('#checkout-wallet-amount').textContent = (spent ? '−' : '') + money(spent);
   $('#checkout-payable').textContent = money(checkoutGoodsTotal()+deliveryFee-spent);
 }
 function adjustCheckoutRubles(direction) {
-  if (checkoutSubmitting || checkoutLocked || !checkoutDraft) return;
+  if (checkoutSubmitting || checkoutLocked || !checkoutDraft || !$('#checkout-rubles-toggle').checked) return;
   checkoutDraft.balance_spend += direction * checkoutSpendStep();
   refreshCheckoutPayment();
+}
+function editCheckoutRubles(input, editing) {
+  if (input.disabled || !checkoutDraft) return;
+  checkoutDraft.balance_spend = Number.isFinite(input.valueAsNumber) ? input.valueAsNumber : 0;
+  refreshCheckoutPayment(editing);
 }
 function openCheckout() {
   if (checkoutSubmitting) return;
@@ -1559,21 +1622,27 @@ function openCheckout() {
   const cashback = Math.floor(total * cashbackPercent / 100);
   show(`<h2>Подтверждение заказа</h2>
     ${pending ? '<p>Проверим, сохранился ли предыдущий заказ. Повторного списания не будет.</p>' : ''}
-    <label class="checkout-meeting-date" for="checkout-meeting-date">Дата встречи
-      <input id="checkout-meeting-date" type="date" min="${moscowDate()}" max="9999-12-31" value="${escape(checkoutDraft.meeting_date??'')}" required>
-    </label>
+    ${checkoutMeetingDate(checkoutDraft.meeting_date)}
     ${checkoutFulfillment(checkoutDraft)}
     <div class="checkout-items">${items.map(item => `<div class="checkout-item"><span>${escape(item.name)}<small>${item.quantity} шт. × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity * item.price)}</strong></div>`).join('')}</div>
     <div class="checkout-rubles">
-      <div class="checkout-rubles-control">
-        <strong>Списать бонусы</strong>
-        <div class="quantity-control" role="group" aria-label="Списать бонусы">
+      <label class="checkout-rubles-heading">
+        <span><strong>Оплатить баллами</strong><small id="checkout-rubles-available"></small></span>
+        <span class="checkout-rubles-switch">
+          <input type="checkbox" role="switch" id="checkout-rubles-toggle" aria-label="Оплатить баллами"
+            aria-controls="checkout-rubles-fields" ${checkoutDraft.balance_spend > 0 ? 'checked' : ''}>
+          <span aria-hidden="true"></span>
+        </span>
+      </label>
+      <div id="checkout-rubles-fields" hidden>
+        <div class="checkout-rubles-control">
+          <input id="checkout-rubles-amount" type="number" inputmode="numeric" min="0" step="${checkoutSpendStep()}"
+            aria-label="Сумма списания" aria-describedby="checkout-rubles-limit">
           <button type="button" data-adjust-rubles="-1" aria-label="Уменьшить списание на ${checkoutSpendStep()} ₽">${icons.minus}</button>
-          <output id="checkout-rubles-output" aria-label="Сумма списания">${moneyMarkup(0)}</output>
           <button type="button" data-adjust-rubles="1" aria-label="Увеличить списание на ${checkoutSpendStep()} ₽">${icons.plus}</button>
         </div>
+        <p id="checkout-rubles-limit" class="checkout-note"></p>
       </div>
-      <p id="checkout-rubles-limit" class="checkout-note"></p>
     </div>
     <section id="checkout-summary" class="checkout-summary" aria-label="Итог заказа">
       <dl>
@@ -1583,11 +1652,11 @@ function openCheckout() {
       <dl class="checkout-summary-prices">
         <div><dt>Сумма</dt><dd>${moneyMarkup(total)}</dd></div>
         <div><dt>Скидка</dt><dd>${moneyMarkup(0)}</dd></div>
-        <div><dt>Списано бонусов</dt><dd id="checkout-wallet-amount"></dd></div>
+        <div><dt>Списано баллов</dt><dd id="checkout-wallet-amount"></dd></div>
         <div><dt>Доставка</dt><dd id="checkout-delivery-fee"></dd></div>
+        <div class="checkout-summary-reward"><dt>Кэшбек</dt><dd>${cashback ? '+' : ''}${moneyMarkup(cashback)}</dd></div>
       </dl>
       <div class="checkout-summary-total"><strong id="checkout-payable-label">Итого</strong><strong id="checkout-payable">${moneyMarkup(total)}</strong></div>
-      <div class="checkout-summary-reward"><span>Будет начислено бонусов за заказ</span><strong>${cashback ? '+' : ''}${moneyMarkup(cashback)}</strong></div>
     </section>
     <p class="checkout-cash-note">${icons.wallet}Оплата только наличными</p>
     <p class="checkout-error" role="alert" hidden></p>
@@ -1603,11 +1672,11 @@ async function confirmCheckout() {
   const draft = checkoutDraft, ownerKey = cartKey, dialogVersion = modalVersion, initData = telegram.initData;
   if (!checkoutLocked) {
     const date = $('#checkout-meeting-date');
-    date.min = moscowDate();
+    refreshCheckoutDate(false);
     if (!date.validity.valid) {
       errorElement.hidden = false;
       errorElement.textContent = 'Выберите дату встречи, начиная с сегодняшнего дня.';
-      date.focus();
+      $('[data-checkout-date]').focus();
       return;
     }
     draft.meeting_date = date.value;
@@ -1816,6 +1885,14 @@ function handleCartAction(event) {
  const removeReview=event.target.closest('[data-remove-review-file]');if(removeReview&&reviewDraft&&!reviewDraft.busy){reviewDraft.files.splice(Number(removeReview.dataset.removeReviewFile),1);renderReviewForm();return;}
  if(event.target.closest('[data-review-more-choices]')&&reviewDraft&&!reviewDraft.busy){const draft=reviewDraft;draft.busy=true;void loadReviewEligibility(draft.productId,draft.next).then(result=>{if(reviewDraft===draft){draft.choices.push(...result.items);draft.next=result.next_offset;}}).catch(error=>{draft.error=error.message;}).finally(()=>{draft.busy=false;if(reviewDraft===draft&&$('#details').dataset.view==='review-form')renderReviewForm();});return;}
 
+ const dateCard=event.target.closest('[data-checkout-date]');
+ if(dateCard){
+  if(!dateCard.disabled && !checkoutLocked) {
+   $('#checkout-meeting-date').value = dateCard.dataset.checkoutDate;
+   refreshCheckoutPayment();
+  }
+  return;
+ }
  const spend=event.target.closest('[data-adjust-rubles]');if(spend){adjustCheckoutRubles(Number(spend.dataset.adjustRubles));return;}
  const metroToggle = event.target.closest('#checkout-metro');
  if (metroToggle) {
@@ -1876,13 +1953,21 @@ $('#detail-content').addEventListener('keydown',event=>{
 });
 $('#detail-content').addEventListener('change',event=>{
  if(event.target.matches('#checkout-fulfillment input[type="radio"], #checkout-meeting-date'))refreshCheckoutPayment();
+ if(event.target.id==='checkout-rubles-toggle' && !event.target.disabled) {
+  if(!event.target.checked)checkoutDraft.balance_spend=0;
+  refreshCheckoutPayment();
+ }
+ if(event.target.id==='checkout-rubles-amount')editCheckoutRubles(event.target,false);
  if(event.target.id==='review-sort'){reviewFeed.sort=event.target.value;void loadReviewFeed();}
  if(event.target.id==='review-media-only'){reviewFeed.media=event.target.checked;void loadReviewFeed();}
  if(event.target.id==='review-files')void uploadReviewFiles([...event.target.files]);
  if(event.target.id==='review-purchase'&&reviewDraft&&!reviewDraft.busy){reviewDraft.selected=event.target.value;reviewDraft.files=[];renderReviewForm();}
 });
 $('#detail-content').addEventListener('input',event=>{if(event.target.id==='review-text'&&reviewDraft)reviewDraft.text=event.target.value;});
-$('#detail-content').addEventListener('input',event=>{if(event.target.matches('#checkout-address, #checkout-meeting-date'))refreshCheckoutPayment();});
+$('#detail-content').addEventListener('input',event=>{
+ if(event.target.matches('#checkout-address, #checkout-meeting-date'))refreshCheckoutPayment();
+ if(event.target.id==='checkout-rubles-amount')editCheckoutRubles(event.target,true);
+});
 $('#cart-content').onclick = handleCartAction;
 $('#profile-page').onclick = handleCartAction;
 $('#profile-page').addEventListener('keydown', event => {

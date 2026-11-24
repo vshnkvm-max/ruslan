@@ -59,8 +59,12 @@ try {
   const pickupInfo = page.locator('#checkout-pickup-info');
   const increaseRubles = page.locator('[data-adjust-rubles="1"]');
   const decreaseRubles = page.locator('[data-adjust-rubles="-1"]');
-  const rubles = page.locator('#checkout-rubles-output');
-  const addRubles = async steps => {for (let step=0;step<steps;step++) await increaseRubles.click();};
+  const rublesToggle = page.getByRole('switch',{name:'Оплатить баллами',exact:true});
+  const rubles = page.locator('#checkout-rubles-amount');
+  const addRubles = async steps => {
+    if (!await rublesToggle.isChecked()) await rublesToggle.check();
+    for (let step=0;step<steps;step++) await increaseRubles.click();
+  };
   assert.equal(await pickup.isChecked(),true);
   assert.equal(await metroInput.isHidden(),true);
   assert.match(await pickupInfo.innerText(), /Площадь Маркса.*выход № 4.*Грани/);
@@ -68,15 +72,29 @@ try {
   assert.match(await page.locator('dialog').innerText(), /Тестовый товар/);
   assert.match(await page.locator('dialog').innerText(), /2\s*300/);
   const cashback = page.locator('.checkout-summary-reward');
-  assert.match(await cashback.innerText(), /Будет начислено бонусов за заказ\s*\+115\s₽/);
+  assert.match(await cashback.innerText(), /Кэшбек\s*\+115\s₽/);
+  assert.equal(await cashback.evaluate(row=>getComputedStyle(row).color),'rgb(22, 128, 69)');
   assert.match(await page.locator('.checkout-summary-prices').innerText(),/Скидка\s+0\s₽/);
   const sheet = await page.locator('dialog').evaluate(element => ({ bottom: element.getBoundingClientRect().bottom, viewport: innerHeight }));
   assert.equal(sheet.bottom, sheet.viewport);
+  assert.equal(await rubles.isHidden(),true);
+  await rublesToggle.check();
+  assert.match(await page.locator('#checkout-rubles-available').innerText(),/Доступно:\s*1\s*540\s₽/);
   assert.equal(await decreaseRubles.isDisabled(),true);
   await addRubles(1);
-  assert.match(await rubles.innerText(),/^50\s₽$/);
+  assert.equal(await rubles.inputValue(),'50');
   await decreaseRubles.click();
-  assert.match(await rubles.innerText(),/^0\s₽$/);
+  assert.equal(await rubles.inputValue(),'0');
+  await rubles.fill('137');
+  await rubles.blur();
+  assert.equal(await rubles.inputValue(),'100');
+  assert.match(await page.locator('#checkout-payable').innerText(),/2\s*200/);
+  await rubles.fill('9999');
+  await rubles.blur();
+  assert.equal(await rubles.inputValue(),'1150');
+  await rublesToggle.uncheck();
+  assert.equal(await rubles.isHidden(),true);
+  assert.match(await page.locator('#checkout-payable').innerText(),/2\s*300/);
   await addRubles(23);
   assert.equal(await increaseRubles.isDisabled(),true);
   assert.match(await page.locator('#checkout-payable').innerText(),/1\s*150/);
@@ -95,7 +113,10 @@ try {
   await page.locator('[data-confirm-checkout]').click();
   await page.locator('.checkout-error:not([hidden])').filter({hasText:'Выберите дату встречи'}).waitFor();
   assert.equal(db.prepare('SELECT COUNT(*) AS n FROM orders').get().n,0);
-  await dateInput.fill(meetingDate);
+  const tomorrow = page.getByRole('button',{name:/^Завтра/});
+  await tomorrow.click();
+  assert.equal(await tomorrow.getAttribute('aria-pressed'),'true');
+  assert.equal(await dateInput.inputValue(),meetingDate);
   assert.equal(await page.locator('#checkout-summary-date').innerText(),meetingDate.slice(5).split('-').reverse().join('.'));
   await delivery.check();
   assert.equal(await pickupInfo.isHidden(),true);
@@ -148,7 +169,7 @@ try {
   await page.locator('[data-product="1"]').click(); await page.locator('[data-add="1"]').click(); await page.locator('[data-open-cart]').click();
   await page.locator('[data-checkout]').click();
   await addRubles(16);
-  assert.match(await rubles.innerText(),/^800\s₽$/);
+  assert.equal(await rubles.inputValue(),'800');
   assert.equal(await increaseRubles.isDisabled(),true);
   await dateInput.fill(meetingDate);
   await delivery.check();
@@ -168,7 +189,8 @@ try {
   assert.equal(await dateInput.isDisabled(),true);
   assert.equal(await addressInput.inputValue(),streetAddress);
   assert.equal(await addressInput.isDisabled(),true);
-  assert.match(await rubles.innerText(),/^800\s₽$/);
+  assert.equal(await rubles.inputValue(),'800');
+  assert.equal(await rublesToggle.isDisabled(),true);
   assert.equal(await increaseRubles.isDisabled(),true);
   assert.equal(await decreaseRubles.isDisabled(),true);
   await page.locator('[data-confirm-checkout]').click(); await page.getByRole('heading', { name: 'Заказ #2 принят', exact: true }).waitFor();
@@ -262,14 +284,17 @@ try {
   await names.nth(1).waitFor();
   assert.deepEqual(await names.allTextContents(),['Тестовый товар — Ягода','Тестовый товар — Мята']);
   await page.locator('[data-checkout]').click();
-  await dateInput.fill(meetingDate);
-  assert.ok(await dateInput.evaluate(input=>{
-    const field=input.getBoundingClientRect();
-    const label=input.labels[0].getBoundingClientRect();
+  const laterDate = new Date(Date.now()+5*86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'});
+  await dateInput.fill(laterDate);
+  assert.equal(await page.locator('#checkout-custom-date').innerText(),laterDate.slice(5).split('-').reverse().join('.'));
+  await tomorrow.click();
+  assert.equal(await page.locator('#checkout-custom-date').isHidden(),true);
+  assert.ok(await page.locator('.checkout-date-cards').evaluate(cards=>{
+    const field=cards.getBoundingClientRect();
     const items=document.querySelector('.checkout-items').getBoundingClientRect();
-    return Math.abs(field.left-label.left)<1 && Math.abs(field.right-label.right)<1
+    return cards.children.length===3 && cards.scrollWidth<=cards.clientWidth
       && Math.abs(field.left-items.left)<1 && Math.abs(field.right-items.right)<1;
-  }), 'the date field aligns with checkout content on a narrow screen');
+  }), 'the three date cards align with checkout content on a narrow screen');
   await page.locator('[data-confirm-checkout]').click();
   await page.getByRole('heading',{name:'Заказ #3 принят',exact:true}).waitFor();
   assert.equal(await page.locator('.order-fulfillment').innerText(),'Самовывоз');
