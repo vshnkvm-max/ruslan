@@ -55,7 +55,6 @@ const icons = {
   minus: icon('<path d="M5 12h14"/>'),
   user: icon('<circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/>'),
   wallet: icon('<path d="M20 8V5H5a2 2 0 0 0 0 4h16v11H5a2 2 0 0 1-2-2V7m18 5h-5v5h5M17 14.5h.01"/>'),
-  calendar: icon('<rect x="3" y="5" width="18" height="16" rx="3"/><path d="M7 3v4m10-4v4M3 10h18"/>'),
   reviews: icon('<path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9H13a8.5 8.5 0 0 1 8 8v.5ZM8 11h8M8 15h5"/>'),
   bag: icon('<path d="M4 7h16l-1 14H5ZM8 8V6a4 4 0 0 1 8 0v2"/>'),
   package: icon('<path d="m12 3 9 5v9l-9 5-9-5V8ZM3 8l9 5 9-5M12 13v9M8 5l9 5"/>'),
@@ -1441,42 +1440,33 @@ function checkoutDateCards(today) {
     </button>`;
   }).join('');
 }
-function checkoutMeetingDate(value) {
+function checkoutMeetingDate() {
   const today = moscowDate();
   return `<section class="checkout-meeting-date" aria-labelledby="checkout-date-heading">
-    <div class="checkout-date-heading">
-      <strong id="checkout-date-heading">Дата встречи</strong>
-      <label class="checkout-calendar" title="Другая дата">
-        <span id="checkout-custom-date" hidden></span>${icons.calendar}
-        <input id="checkout-meeting-date" type="date" aria-label="Другая дата встречи" min="${today}"
-          max="9999-12-31" value="${escape(value)}" required>
-      </label>
-    </div>
-    <div class="checkout-date-cards">${checkoutDateCards(today)}</div>
+    <strong id="checkout-date-heading" class="checkout-date-heading">Дата встречи</strong>
+    <div class="checkout-date-cards" data-today="${today}">${checkoutDateCards(today)}</div>
   </section>`;
 }
 function refreshCheckoutDate(disabled) {
-  const input = $('#checkout-meeting-date');
+  const cards = $('.checkout-date-cards');
   const today = moscowDate();
-  if (input.min !== today) {
-    input.min = today;
-    $('.checkout-date-cards').innerHTML = checkoutDateCards(today);
+  if (cards.dataset.today !== today) {
+    cards.dataset.today = today;
+    cards.innerHTML = checkoutDateCards(today);
   }
-  input.disabled = disabled;
+  const value = checkoutDraft.meeting_date;
   let selected = false;
-  for (const card of document.querySelectorAll('[data-checkout-date]')) {
-    const active = card.dataset.checkoutDate === input.value;
+  for (const card of cards.querySelectorAll('[data-checkout-date]')) {
+    const active = card.dataset.checkoutDate === value;
     card.setAttribute('aria-pressed', String(active));
     card.disabled = disabled;
     selected ||= active;
   }
-  const date = input.value ? shortCheckoutDate(input.value) : '';
-  const custom = $('#checkout-custom-date');
-  custom.hidden = !date || selected;
-  custom.textContent = date;
-  $('#checkout-summary-date').textContent = date || '—';
+  const displayDate = typeof value === 'string' && (selected || checkoutLocked) ? shortCheckoutDate(value) : '';
+  $('#checkout-summary-date').textContent = displayDate || '—';
   const error = $('.checkout-error');
-  if (date && input.validity.valid && error.textContent.startsWith('Выберите дату встречи')) error.hidden = true;
+  if (selected && error.textContent.startsWith('Выберите дату встречи')) error.hidden = true;
+  return selected;
 }
 function checkoutMetroPicker(station) {
   const stations = (data?.metro_lines ?? [])
@@ -1621,7 +1611,7 @@ function openCheckout() {
   const cashback = Math.floor(total * cashbackPercent / 100);
   show(`<h2>Подтверждение заказа</h2>
     ${pending ? '<p>Проверим, сохранился ли предыдущий заказ. Повторного списания не будет.</p>' : ''}
-    ${checkoutMeetingDate(checkoutDraft.meeting_date)}
+    ${checkoutMeetingDate()}
     ${checkoutFulfillment(checkoutDraft)}
     <div class="checkout-items">${items.map(item => `<div class="checkout-item"><span>${escape(item.name)}<small>${item.quantity} шт. × ${moneyMarkup(item.price)}</small></span><strong>${moneyMarkup(item.quantity * item.price)}</strong></div>`).join('')}</div>
     <div class="checkout-rubles">
@@ -1670,15 +1660,12 @@ async function confirmCheckout() {
   if (!telegram?.initData) { errorElement.hidden = false; errorElement.textContent = 'Откройте магазин через Telegram, чтобы оформить заказ.'; return; }
   const draft = checkoutDraft, ownerKey = cartKey, dialogVersion = modalVersion, initData = telegram.initData;
   if (!checkoutLocked) {
-    const date = $('#checkout-meeting-date');
-    refreshCheckoutDate(false);
-    if (!date.validity.valid) {
+    if (!refreshCheckoutDate(false)) {
       errorElement.hidden = false;
-      errorElement.textContent = 'Выберите дату встречи, начиная с сегодняшнего дня.';
+      errorElement.textContent = 'Выберите дату встречи из трёх ближайших дней.';
       $('[data-checkout-date]').focus();
       return;
     }
-    draft.meeting_date = date.value;
     const method = $('#checkout-delivery').checked ? $('input[name="checkout-destination"]:checked').value : 'pickup';
     const location = method === 'metro' ? $('#checkout-metro-value') : method === 'address' ? $('#checkout-address') : null;
     if (location && (!location.value.trim() || !location.validity.valid)) {
@@ -1887,7 +1874,7 @@ function handleCartAction(event) {
  const dateCard=event.target.closest('[data-checkout-date]');
  if(dateCard){
   if(!dateCard.disabled && !checkoutLocked) {
-   $('#checkout-meeting-date').value = dateCard.dataset.checkoutDate;
+   checkoutDraft.meeting_date = dateCard.dataset.checkoutDate;
    refreshCheckoutPayment();
   }
   return;
@@ -1951,7 +1938,7 @@ $('#detail-content').addEventListener('keydown',event=>{
  stations[next].focus();
 });
 $('#detail-content').addEventListener('change',event=>{
- if(event.target.matches('#checkout-fulfillment input[type="radio"], #checkout-meeting-date'))refreshCheckoutPayment();
+ if(event.target.matches('#checkout-fulfillment input[type="radio"]'))refreshCheckoutPayment();
  if(event.target.id==='checkout-rubles-toggle' && !event.target.disabled) {
   if(!event.target.checked)checkoutDraft.balance_spend=0;
   refreshCheckoutPayment();
@@ -1964,7 +1951,7 @@ $('#detail-content').addEventListener('change',event=>{
 });
 $('#detail-content').addEventListener('input',event=>{if(event.target.id==='review-text'&&reviewDraft)reviewDraft.text=event.target.value;});
 $('#detail-content').addEventListener('input',event=>{
- if(event.target.matches('#checkout-address, #checkout-meeting-date'))refreshCheckoutPayment();
+ if(event.target.id==='checkout-address')refreshCheckoutPayment();
  if(event.target.id==='checkout-rubles-amount')editCheckoutRubles(event.target,true);
 });
 $('#cart-content').onclick = handleCartAction;

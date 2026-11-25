@@ -107,7 +107,7 @@ try {
   await page.locator('[data-checkout]').click();
   await addRubles(14);
   assert.match(await page.locator('#checkout-payable').innerText(),/1\s*600/);
-  const dateInput = page.locator('#checkout-meeting-date');
+  assert.equal(await page.locator('dialog input[type="date"]').count(),0);
   const meetingDate = new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'});
   assert.ok(await page.getByText('Оплата только наличными',{exact:true}).isVisible());
   await page.locator('[data-confirm-checkout]').click();
@@ -116,7 +116,7 @@ try {
   const tomorrow = page.getByRole('button',{name:/^Завтра/});
   await tomorrow.click();
   assert.equal(await tomorrow.getAttribute('aria-pressed'),'true');
-  assert.equal(await dateInput.inputValue(),meetingDate);
+  assert.equal(await tomorrow.getAttribute('data-checkout-date'),meetingDate);
   assert.equal(await page.locator('#checkout-summary-date').innerText(),meetingDate.slice(5).split('-').reverse().join('.'));
   await delivery.check();
   assert.equal(await pickupInfo.isHidden(),true);
@@ -172,7 +172,7 @@ try {
   await addRubles(16);
   assert.equal(await rubles.inputValue(),'800');
   assert.equal(await increaseRubles.isDisabled(),true);
-  await dateInput.fill(meetingDate);
+  await tomorrow.click();
   await delivery.check();
   await page.getByRole('radio',{name:'По адресу',exact:true}).check();
   assert.equal(await metroInput.isHidden(),true);
@@ -186,8 +186,9 @@ try {
   assert.equal(db.prepare('SELECT balance FROM customers WHERE telegram_id=97531').get().balance,40);
   await page.unroute('**/api/storefront/orders'); await page.reload(); await page.locator('[data-product="1"]').waitFor();
   await page.locator('#cart-tab').click(); await page.getByRole('button', { name: 'Проверить заказ', exact: true }).click();
-  assert.equal(await dateInput.inputValue(),meetingDate);
-  assert.equal(await dateInput.isDisabled(),true);
+  assert.equal(await tomorrow.getAttribute('aria-pressed'),'true');
+  assert.equal(await tomorrow.isDisabled(),true);
+  assert.equal(await page.locator('#checkout-summary-date').innerText(),meetingDate.slice(5).split('-').reverse().join('.'));
   assert.equal(await addressInput.inputValue(),streetAddress);
   assert.equal(await addressInput.isDisabled(),true);
   assert.equal(await rubles.inputValue(),'800');
@@ -285,11 +286,7 @@ try {
   await names.nth(1).waitFor();
   assert.deepEqual(await names.allTextContents(),['Тестовый товар — Ягода','Тестовый товар — Мята']);
   await page.locator('[data-checkout]').click();
-  const laterDate = new Date(Date.now()+5*86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'});
-  await dateInput.fill(laterDate);
-  assert.equal(await page.locator('#checkout-custom-date').innerText(),laterDate.slice(5).split('-').reverse().join('.'));
   await tomorrow.click();
-  assert.equal(await page.locator('#checkout-custom-date').isHidden(),true);
   assert.ok(await page.locator('.checkout-date-cards').evaluate(cards=>{
     const field=cards.getBoundingClientRect();
     const items=document.querySelector('.checkout-items').getBoundingClientRect();

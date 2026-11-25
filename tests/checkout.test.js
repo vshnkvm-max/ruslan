@@ -217,11 +217,12 @@ test('purchases stock and price flavors independently and reverse only the recor
 test('validates and preserves the meeting date in the order, history and manager notification', async () => {
   const id = product();
   const body = {...bodyFor(id),init_data:signedUser(1902)};
-  for (const meeting_date of ['2000-01-01','2099-02-30','2099-1-10','',19000101]){
+  const day = offset => new Date(Date.now()+offset*86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'});
+  for (const meeting_date of ['2000-01-01','2099-02-30','2099-1-10','',19000101,day(3),day(30)]){
     assert.equal((await request('/storefront/orders','POST',{...body,meeting_date})).status,400);
   }
   assert.equal(stock(id),5);
-  const meeting_date = new Date(Date.now()+86400000).toLocaleDateString('sv-SE',{timeZone:'Europe/Moscow'});
+  const meeting_date = day(2);
   const created = await request('/storefront/orders','POST',{...body,meeting_date});
   assert.equal(created.status,201);
   const order = created.data.order;
