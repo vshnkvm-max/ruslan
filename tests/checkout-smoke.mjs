@@ -293,6 +293,18 @@ try {
     return cards.children.length===3 && cards.scrollWidth<=cards.clientWidth
       && Math.abs(field.left-items.left)<1 && Math.abs(field.right-items.right)<1;
   }), 'the three date cards align with checkout content on a narrow screen');
+  const headings = await page.locator('.checkout-date-heading, .checkout-fulfillment > legend, .checkout-pickup-info > strong')
+    .evaluateAll(nodes=>nodes.map(node=>{
+      const style=getComputedStyle(node);
+      return [style.fontFamily,style.fontSize,style.fontWeight,style.lineHeight];
+    }));
+  assert.equal(headings.length,3);
+  assert.deepEqual(headings,[headings[0],headings[0],headings[0]]);
+  const sheetScroll = await page.locator('dialog').evaluate(element=>{
+    const style=getComputedStyle(element);
+    return [style.overflowX,style.overflowY,style.overscrollBehaviorX,style.touchAction,element.scrollWidth===element.clientWidth];
+  });
+  assert.deepEqual(sheetScroll,['hidden','auto','none','pan-y',true]);
   await page.locator('[data-confirm-checkout]').click();
   await page.getByRole('heading',{name:'Заказ #3 принят',exact:true}).waitFor();
   assert.equal(await page.locator('.order-fulfillment').innerText(),'Самовывоз');

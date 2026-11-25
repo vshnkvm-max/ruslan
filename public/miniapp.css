@@ -158,7 +158,24 @@ button:disabled { cursor: default; }
 .primary-button:disabled { color: #a4929b; background: #f1e9ed; box-shadow: none; }
 .primary-button svg { flex-shrink: 0; }
 .secondary-button { background: #fff7fa; color: #6e4d5b; box-shadow: none; }
-dialog[data-view="checkout"] { position: fixed; inset: auto 0 0; width: 100%; max-width: var(--app-width); max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); margin: 0 auto; border: 0; border-radius: 24px 24px 0 0; padding-bottom: max(28px, env(safe-area-inset-bottom)); background: #fff9fb; overscroll-behavior: contain; }
+html:has(dialog[data-view="checkout"][open]) { overflow-x: hidden; overscroll-behavior-x: none; }
+dialog[data-view="checkout"] {
+  position: fixed;
+  inset: auto 0 0;
+  width: 100%;
+  max-width: var(--app-width);
+  max-height: calc(100dvh - max(12px, env(safe-area-inset-top)));
+  margin: 0 auto;
+  border: 0;
+  border-radius: 24px 24px 0 0;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+  background: #fff9fb;
+  overflow: hidden auto;
+  overscroll-behavior: none contain;
+  touch-action: pan-y;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 dialog[data-view="checkout"] > .close { display: none; }
 dialog[data-view="checkout"] h2 { color: #21182a; font-weight: 800; }
 .checkout-meeting-date, .checkout-location {
@@ -228,7 +245,12 @@ dialog[data-view="checkout"] h2 { color: #21182a; font-weight: 800; }
 }
 .checkout-metro-mark[data-line="red"] { background-image: url("/miniapp/metro-red.jpg"); }
 .checkout-metro-mark[data-line="green"] { background-image: url("/miniapp/metro-green.jpg"); }
-.checkout-date-heading { font-size: 16px; font-weight: 750; color: #21182a; }
+.checkout-date-heading, .checkout-fulfillment > legend, .checkout-pickup-info > strong {
+  color: #21182a;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.25;
+}
 .checkout-date-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .checkout-date-card {
   display: grid;
@@ -252,8 +274,8 @@ dialog[data-view="checkout"] h2 { color: #21182a; font-weight: 800; }
   padding: 0;
   border: 0;
 }
-.checkout-fulfillment legend { padding: 0; margin-bottom: 8px; font-size: 14px; font-weight: 650; }
-.checkout-delivery-fields legend { font-size: 13px; }
+.checkout-fulfillment legend { padding: 0; margin-bottom: 8px; }
+.checkout-delivery-fields legend { font-size: 13px; font-weight: 650; }
 .checkout-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .checkout-choices label {
   display: flex;
